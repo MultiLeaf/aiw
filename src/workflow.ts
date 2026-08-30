@@ -240,6 +240,22 @@ export async function runCommand(
       );
       return { exitCode: 0, output: `Specification artifact created: ${path}` };
     }
+    if (command === "adr") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const id = args.find((arg) => arg.startsWith("--id="))?.slice(5) || "001";
+      const title = args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Decision";
+      const path = join(
+        root,
+        ".context/adrs",
+        `ADR-${id}-${title.toLowerCase().replaceAll(" ", "-")}.md`,
+      );
+      fs.write(
+        path,
+        `# ADR-${id}: ${title}\n\n- **Status:** proposed\n- **Related artifacts:**\n  - .aiw/generated/specs/\n\n## Context\n\n## Alternatives\n\n1. **Alternative A** — Description and trade-offs.\n2. **Alternative B** — Description and trade-offs.\n\n## Decision\n\n## Rationale\n\n## Consequences\n\n`,
+      );
+      return { exitCode: 0, output: `Architecture decision record created: ${path}` };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -263,7 +279,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

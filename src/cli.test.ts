@@ -189,6 +189,19 @@ describe("AI Workflow CLI", () => {
     expect(artifact).toContain("Then");
   });
 
+  it("creates an ADR with alternatives, decision, rationale, and links", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["adr", "--id=007", "--title=Use Neutral Adapters"], cwd);
+    expect(result.exitCode).toBe(0);
+    const path = join(cwd, ".context/adrs/ADR-007-use-neutral-adapters.md");
+    const artifact = await readFile(path, "utf8");
+    expect(artifact).toContain("## Alternatives");
+    expect(artifact).toContain("## Decision");
+    expect(artifact).toContain("## Rationale");
+    expect(artifact).toContain(".aiw/generated/specs/");
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
