@@ -268,6 +268,26 @@ export async function runCommand(
       );
       return { exitCode: 0, output: `Implementation plan created: ${path}` };
     }
+    if (command === "verify") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const specPath = join(aiw, "generated/specs/specification.md");
+      const planPath = join(aiw, "generated/plans/implementation-plan.md");
+      const issues: string[] = [];
+      if (!fs.exists(specPath)) issues.push("Specification artifact is missing.");
+      else if (!fs.read(specPath).includes("Acceptance criteria"))
+        issues.push("Requirements have no acceptance criteria.");
+      if (!fs.exists(planPath)) issues.push("Implementation plan is missing.");
+      else if (!fs.read(planPath).includes("Validation"))
+        issues.push("Requirements have no linked validation commands.");
+      return issues.length
+        ? { exitCode: 1, error: `Verification failed: ${issues.join(" ")}` }
+        : {
+            exitCode: 0,
+            output:
+              "Verification passed: requirements have acceptance criteria and validation coverage.",
+          };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -291,7 +311,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

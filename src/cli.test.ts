@@ -216,6 +216,17 @@ describe("AI Workflow CLI", () => {
     expect(artifact).toContain("npm run check");
   });
 
+  it("reports missing verification evidence and passes after required artifacts exist", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    expect((await run(["verify"], cwd)).error).toContain("Specification artifact is missing");
+    await run(["spec"], cwd);
+    await run(["plan"], cwd);
+    const result = await run(["verify"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Verification passed");
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
