@@ -5,7 +5,6 @@ export const BASE_DIRECTORIES = [
   "generated/plans",
   "generated/docs",
   "generated/artifacts",
-  "context/adrs",
 ];
 export const INSTALL_USAGE =
   "aiw install [--target target] | scan | status | target <target> | validate";

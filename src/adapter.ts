@@ -1,10 +1,12 @@
 import { join } from "node:path";
 import { TARGETS, type Target, type FileSystem } from "./types.js";
+import { getAdapterCapabilities } from "./adapter-contract.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
 export function generateAiInit(root: string, target: string, fs: FileSystem): void {
   if (!isTarget(target)) throw new Error(`Unsupported target: ${target}`);
+  getAdapterCapabilities(target);
   const paths: Record<Target, string> = {
     codex: ".agents/skills/ai-init/SKILL.md",
     claude: ".claude/skills/ai-init/SKILL.md",

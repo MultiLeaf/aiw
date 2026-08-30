@@ -6,16 +6,19 @@ import type { CommandResult, FileSystem } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
 import { applyOverrides, parseOverrides } from "./confirmation.js";
 import { mergeFacts } from "./intelligence.js";
-import { createInterpretationRequest, type Interpreter } from "./interpreter.js";
-import { scanProject } from "./scanner.js";
+import { createInterpretationRequest } from "./interpreter.js";
 import { recommendCapabilities, serializeRecommendations } from "./recommendations.js";
 import { selectRecommendations } from "./selection.js";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { generateProjectResources } from "./generator.js";
 import { detectDrift } from "./drift.js";
+import { parseManifest } from "./manifest.js";
+import type { WorkflowDependencies } from "./services.js";
+import { validatePackageContract } from "./package-contract.js";
+import { scanProject } from "./scanner.js";
 
-export type WorkflowServices = { interpreter?: Interpreter };
+export type WorkflowServices = WorkflowDependencies;
 
 export async function runCommand(
   args: string[],
@@ -48,9 +51,9 @@ export async function runCommand(
     if (command === "scan") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
-      const profile = await profileProject(root);
+      const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       if (services.interpreter) {
-        const scan = await scanProject(root);
+        const scan = await (services.scanner?.scan(root) ?? scanProject(root));
         const inferred = await services.interpreter.interpret(
           createInterpretationRequest(profile, scan.files),
         );
@@ -109,8 +112,9 @@ export async function runCommand(
     if (command === "recommend") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
-      const profile = await profileProject(root);
-      const recommendations = recommendCapabilities(profile);
+      const profile = await (services.profiler?.profile(root) ?? profileProject(root));
+      const recommendations =
+        services.recommender?.recommend(profile) ?? recommendCapabilities(profile);
       const selectedArg = args.find((arg) => arg.startsWith("--select="))?.split("=", 2)[1];
       if (!selectedArg && !stdin.isTTY) {
         return {
@@ -162,15 +166,21 @@ export async function runCommand(
           ? fs.read(join(aiw, "manifest.yml"))
           : "AI Workflow is not installed.",
       };
-    if (command === "validate")
+    if (command === "validate") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "AI Workflow is not installed." };
+      parseManifest(fs.read(join(aiw, "manifest.yml")));
+      const packageArg = args.find((arg) => arg.startsWith("--package="));
+      if (packageArg) validatePackageContract(fs.read(join(root, packageArg.slice(10))));
       return {
-        exitCode: fs.exists(join(aiw, "manifest.yml")) ? 0 : 1,
+        exitCode: 0,
         output: "Configuration is valid.",
       };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | recommend [--select=id,id] | status | target <target> | confirm | validate",
+        "aiw install [--target target] | scan | recommend [--select=id,id] | status | target <target> | confirm | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

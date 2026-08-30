@@ -96,6 +96,29 @@ describe("AI Workflow CLI", () => {
     expect(result.error).toContain("Unsupported target");
   });
 
+  it("reports actionable errors when validating an invalid manifest", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(cwd, ".aiw/manifest.yml"),
+      "schema: 1\nproject:\n  name: demo\ntarget:\n  active: unsupported\npolicies:\n  artifact_language: en\n",
+    );
+
+    const result = await run(["validate"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Manifest target.active is unsupported");
+  });
+
+  it("validates the package contract through the CLI", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { copyFile } = await import("node:fs/promises");
+    await copyFile(join(process.cwd(), "resources/package.yaml"), join(cwd, "package.yaml"));
+    const result = await run(["validate", "--package=package.yaml"], cwd);
+    expect(result.exitCode).toBe(0);
+  });
+
   it("persists an accepted fact override", async () => {
     const cwd = await project();
     await run(["install"], cwd);

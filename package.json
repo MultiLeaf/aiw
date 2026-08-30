@@ -11,9 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
+    "security:check": "npm audit --audit-level=high",
     "format": "prettier --write \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
-    "check": "npm run format:check && npm run lint && npm run build && npm test",
+    "check": "npm run format:check && npm run lint && npm run build && npm test && npm run security:check",
     "start": "node dist/cli.js"
   },
   "engines": {

@@ -7,6 +7,10 @@ provider: local
 source: ./resources
 engines:
   ai_workflow: ">=0.1.0"
+dependencies: []
+permissions: []
+provenance:
+  source: ./resources
 resources:
   skills:
     - { id: project-init, version: 0.1.0, path: skills/project-init.md }

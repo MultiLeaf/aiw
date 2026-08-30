@@ -12,7 +12,7 @@ facts:
     state: detected
     method: deterministic
     confidence: 1
-    evidence: ["src/adapter.ts", "src/cli.test.ts", "src/cli.ts", "src/confirmation.test.ts", "src/confirmation.ts", "src/constants.ts", "src/evidence.test.ts", "src/evidence.ts", "src/files.ts", "src/intelligence.test.ts", "src/intelligence.ts", "src/interpreter.test.ts", "src/interpreter.ts", "src/profile.test.ts", "src/profile.ts", "src/scanner.test.ts", "src/scanner.ts", "src/types.ts", "src/workflow.ts"]
+    evidence: ["src/adapter-contract.test.ts", "src/adapter-contract.ts", "src/adapter.ts", "src/ci.test.ts", "src/cli.test.ts", "src/cli.ts", "src/confirmation.test.ts", "src/confirmation.ts", "src/constants.ts", "src/drift.test.ts", "src/drift.ts", "src/evidence.test.ts", "src/evidence.ts", "src/files.ts", "src/generator.test.ts", "src/generator.ts", "src/intelligence.test.ts", "src/intelligence.ts", "src/interpreter.test.ts", "src/interpreter.ts", "src/manifest.test.ts", "src/manifest.ts", "src/package-contract.test.ts", "src/package-contract.ts", "src/profile.test.ts", "src/profile.ts", "src/quality-pipeline.test.ts", "src/recommendations.test.ts", "src/recommendations.ts", "src/scanner.test.ts", "src/scanner.ts", "src/selection.test.ts", "src/selection.ts", "src/services.test.ts", "src/services.ts", "src/types.ts", "src/workflow.ts"]
   - key: package-manager
     value: npm
     state: detected
@@ -37,6 +37,12 @@ facts:
     method: deterministic
     confidence: 1
     evidence: []
+  - key: ci.provider
+    value: github-actions
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: []
 runtime:
   languages: [javascript, typescript]
 frameworks: []
@@ -45,7 +51,7 @@ quality:
   linter: eslint
   formatter: prettier
 testing: vitest
-ci: []
+ci: [github-actions]
 workspaces: []
 policies:
   artifact_language: en
