@@ -184,6 +184,19 @@ describe("AI Workflow CLI", () => {
     expect((await run(["doctor"], cwd)).output).toContain("health check passed");
   });
 
+  it("repairs missing structure and uninstalls only owned files", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const dryRun = await run(["uninstall", "--dry-run"], cwd);
+    expect(dryRun.output).toContain("Would remove");
+    expect(await stat(join(cwd, ".aiw/manifest.yml"))).toBeTruthy();
+    const repaired = await run(["repair"], cwd);
+    expect(repaired.output).toContain("repaired");
+    const removed = await run(["uninstall"], cwd);
+    expect(removed.output).toContain("removed");
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
+  });
+
   it("persists an accepted fact override", async () => {
     const cwd = await project();
     await run(["install"], cwd);

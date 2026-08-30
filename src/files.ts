@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { FileSystem } from "./types.js";
 export const nodeFileSystem: FileSystem = {
@@ -9,4 +9,5 @@ export const nodeFileSystem: FileSystem = {
     writeFileSync(path, content);
   },
   mkdir: (path) => mkdirSync(path, { recursive: true }),
+  remove: unlinkSync,
 };

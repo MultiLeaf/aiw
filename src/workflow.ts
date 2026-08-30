@@ -186,6 +186,36 @@ export async function runCommand(
       }
       return { exitCode: 0, output: "AI Workflow health check passed." };
     }
+    if (command === "repair") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "AI Workflow is not installed." };
+      BASE_DIRECTORIES.forEach((dir) => fs.mkdir(join(aiw, dir)));
+      if (!fs.exists(join(root, ".context/adrs/INDEX.md")))
+        fs.write(join(root, ".context/adrs/INDEX.md"), "# Architecture Decision Records\n\n");
+      return { exitCode: 0, output: "AI Workflow state repaired." };
+    }
+    if (command === "uninstall") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "AI Workflow is not installed." };
+      const files = [
+        "manifest.yml",
+        "profile.yml",
+        "lock.yml",
+        "overrides.yml",
+        "recommendations.yml",
+      ];
+      const dryRun = args.includes("--dry-run");
+      if (!dryRun && !fs.remove)
+        return { exitCode: 1, error: "Filesystem cannot remove AIW-owned files." };
+      if (!dryRun)
+        files
+          .filter((file) => fs.exists(join(aiw, file)))
+          .forEach((file) => fs.remove?.(join(aiw, file)));
+      return {
+        exitCode: 0,
+        output: dryRun ? `Would remove: ${files.join(", ")}` : "AI Workflow-owned files removed.",
+      };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -209,7 +239,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | recommend [--select=id,id] | status | doctor | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
