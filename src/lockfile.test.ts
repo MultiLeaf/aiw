@@ -1,0 +1,37 @@
+import { describe, expect, it } from "vitest";
+import { resolvePackage, serializeLock } from "./lockfile.js";
+import type { PackageContract } from "./package-contract.js";
+
+const pkg: PackageContract = {
+  schema: 1,
+  id: "demo/package",
+  version: "1.0.0",
+  provider: "local",
+  source: "./resources",
+  resources: {
+    skills: [],
+    rules: [],
+    agents: [],
+    hooks: [],
+    templates: [{ id: "spec", version: "1.0.0", path: "spec.md" }],
+  },
+  dependencies: [],
+  permissions: [],
+  provenance: { source: "./resources" },
+};
+
+describe("lockfile resolution", () => {
+  it("resolves exact package metadata with integrity", () => {
+    expect(resolvePackage(pkg)).toMatchObject({
+      id: "demo/package",
+      version: "1.0.0",
+      integrity: "sha256-demo/package@1.0.0",
+    });
+  });
+
+  it("serializes packages deterministically regardless of input order", () => {
+    const first = resolvePackage(pkg);
+    const second = { ...first, id: "another/package" };
+    expect(serializeLock([first, second])).toBe(serializeLock([second, first]));
+  });
+});
