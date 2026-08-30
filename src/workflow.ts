@@ -216,6 +216,18 @@ export async function runCommand(
         output: dryRun ? `Would remove: ${files.join(", ")}` : "AI Workflow-owned files removed.",
       };
     }
+    if (command === "brainstorm") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const title =
+        args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Brainstorm";
+      const path = join(aiw, "generated/specs/brainstorm.md");
+      fs.write(
+        path,
+        `# ${title}\n\n## Goal\n\n## Users\n\n## Facts\n\n## Hypotheses\n\n## Constraints\n\n## Non-goals\n\n## Open Questions\n\n`,
+      );
+      return { exitCode: 0, output: `Brainstorm artifact created: ${path}` };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -239,7 +251,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

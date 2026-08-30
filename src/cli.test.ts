@@ -164,6 +164,17 @@ describe("AI Workflow CLI", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("creates an English brainstorming artifact with required sections", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["brainstorm", "--title=Portable Workflow"], cwd);
+    expect(result.exitCode).toBe(0);
+    const artifact = await readFile(join(cwd, ".aiw/generated/specs/brainstorm.md"), "utf8");
+    expect(artifact).toContain("# Portable Workflow");
+    for (const section of ["Goal", "Users", "Hypotheses", "Constraints", "Open Questions"])
+      expect(artifact).toContain(`## ${section}`);
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
