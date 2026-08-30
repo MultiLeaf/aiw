@@ -1,2 +1,7 @@
 schema: 1
-packages: []
+packages:
+  - id: multileaf/aiw-self-hosting
+    version: 0.1.0
+    provider: local
+    source: ./resources
+    integrity: sha256-multileaf/aiw-self-hosting@0.1.0
