@@ -1,0 +1,7 @@
+schema: 1
+project:
+  name: ai-workflow
+target:
+  active: codex
+policies:
+  artifact_language: en

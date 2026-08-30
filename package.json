@@ -1,0 +1,32 @@
+{
+  "name": "@multileaf/ai-workflow",
+  "version": "0.1.0",
+  "description": "Portable spec-driven development workflow for AI coding agents",
+  "type": "module",
+  "bin": {
+    "aiw": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
+    "check": "npm run format:check && npm run lint && npm run build && npm test",
+    "start": "node dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^3.0.0"
+  }
+}

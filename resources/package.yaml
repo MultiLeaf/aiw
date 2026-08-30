@@ -1,0 +1,29 @@
+schema: 1
+id: multileaf/aiw-self-hosting
+version: 0.1.0
+description: Resources for developing AI Workflow with AI Workflow.
+language: en
+provider: local
+source: ./resources
+engines:
+  ai_workflow: ">=0.1.0"
+resources:
+  skills:
+    - { id: project-init, version: 0.1.0, path: skills/project-init.md }
+    - { id: brainstorming, version: 0.1.0, path: skills/brainstorming.md }
+    - { id: requirements-specification, version: 0.1.0, path: skills/requirements-specification.md }
+  rules:
+    - { id: language-policy, version: 0.1.0, path: rules/language-policy.md }
+    - { id: tdd-policy, version: 0.1.0, path: rules/tdd-policy.md }
+  agents:
+    - { id: requirements-analyst, version: 0.1.0, path: agents/requirements-analyst.md }
+  hooks:
+    - { id: pre-implementation, version: 0.1.0, path: hooks/pre-implementation.md }
+  templates:
+    - { id: specification, version: 0.1.0, path: templates/specification.md }
+provides:
+  skills: [project-init, brainstorming, requirements-specification, technical-design, implementation-planning, tdd-development, verification, code-review, security-review, documentation-maintenance, adapter-development, skill-authoring]
+  rules: [language-policy, tdd-policy, architecture-policy, quality-gates, security-policy, dependency-policy, generated-files, documentation-policy, self-validation, completion-validation]
+  agents: [requirements-analyst, technical-architect, typescript-engineer, test-engineer, quality-reviewer, security-reviewer, adapter-engineer, documentation-writer]
+  hooks: [pre-implementation, post-implementation, pre-commit, post-change, pre-release]
+  templates: [brainstorm, specification, technical-design, decision-record, implementation-plan, task, test-plan, verification-report, security-review, migration-report]

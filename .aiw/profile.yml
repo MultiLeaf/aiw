@@ -1,0 +1,51 @@
+schema: 1
+status: scanned
+facts:
+  - key: runtime.language
+    value: javascript
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: ["eslint.config.js"]
+  - key: runtime.language
+    value: typescript
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: ["src/adapter.ts", "src/cli.test.ts", "src/cli.ts", "src/confirmation.test.ts", "src/confirmation.ts", "src/constants.ts", "src/evidence.test.ts", "src/evidence.ts", "src/files.ts", "src/intelligence.test.ts", "src/intelligence.ts", "src/interpreter.test.ts", "src/interpreter.ts", "src/profile.test.ts", "src/profile.ts", "src/scanner.test.ts", "src/scanner.ts", "src/types.ts", "src/workflow.ts"]
+  - key: package-manager
+    value: npm
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: ["package.json"]
+  - key: tool.linter
+    value: eslint
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: ["eslint.config.js"]
+  - key: tool.formatter
+    value: prettier
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: []
+  - key: tool.testing
+    value: vitest
+    state: detected
+    method: deterministic
+    confidence: 1
+    evidence: []
+runtime:
+  languages: [javascript, typescript]
+frameworks: []
+package_manager: npm
+quality:
+  linter: eslint
+  formatter: prettier
+testing: vitest
+ci: []
+workspaces: []
+policies:
+  artifact_language: en

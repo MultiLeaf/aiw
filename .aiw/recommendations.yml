@@ -1,0 +1,20 @@
+schema: 1
+recommendations:
+  - id: tdd-development
+    provider: multileaf
+    confidence: 1
+    selected: false
+    evidence: ["testing:vitest"]
+    rationale: The project uses automated tests and should preserve test-first development.
+  - id: typescript-quality
+    provider: multileaf
+    confidence: 1
+    selected: true
+    evidence: ["language:typescript"]
+    rationale: TypeScript is present and benefits from strict, maintainable code-quality rules.
+  - id: vitest-testing
+    provider: multileaf
+    confidence: 1
+    selected: false
+    evidence: ["testing:vitest"]
+    rationale: Vitest is configured and can be integrated into the verification workflow.
