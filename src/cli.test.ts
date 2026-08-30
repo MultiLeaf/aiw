@@ -23,6 +23,51 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("detects an existing target when no target override is provided", async () => {
+    const cwd = await project();
+    await mkdir(join(cwd, ".claude"));
+    const result = await run(["install"], cwd);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("claude");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: claude",
+    );
+  });
+
+  it.each([
+    ["codex", ".agents/skills/ai-init/SKILL.md"],
+    ["claude", ".claude/skills/ai-init/SKILL.md"],
+    ["cursor", ".cursor/skills/ai-init/SKILL.md"],
+    ["universal", ".aiw/resources/skills/ai-init.md"],
+  ])("installs the base ai-init skill for %s", async (target, path) => {
+    const cwd = await project();
+    const result = await run(["install", "--target", target], cwd);
+
+    expect(result.exitCode).toBe(0);
+    const skill = await readFile(join(cwd, path), "utf8");
+    expect(skill).toContain("name: ai-init");
+    expect(skill).toContain("Analyze the repository safely");
+    expect(skill).toContain("All generated AI Workflow artifacts must be written in English");
+  });
+
+  it("makes repeated installation idempotent and preserves existing state", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await run(["confirm", "--edit", "package-manager=pnpm"], cwd);
+    const manifestBefore = await readFile(join(cwd, ".aiw/manifest.yml"), "utf8");
+    const result = await run(["install", "--target", "claude"], cwd);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Existing state preserved");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toBe(manifestBefore);
+    await expect(readFile(join(cwd, ".aiw/overrides.yml"), "utf8")).resolves.toContain(
+      "value: pnpm",
+    );
+    await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".claude/skills/ai-init/SKILL.md"))).rejects.toThrow();
+  });
+
   it("scans a JavaScript project and writes its profile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
