@@ -173,6 +173,18 @@ export async function runCommand(
           ? fs.read(join(aiw, "manifest.yml"))
           : "AI Workflow is not installed.",
       };
+    if (command === "doctor") {
+      const required = ["manifest.yml", "profile.yml", "lock.yml"];
+      const missing = required.filter((file) => !fs.exists(join(aiw, file)));
+      if (missing.length)
+        return { exitCode: 1, error: `Missing AI Workflow files: ${missing.join(", ")}` };
+      try {
+        parseManifest(fs.read(join(aiw, "manifest.yml")));
+      } catch (error) {
+        return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+      }
+      return { exitCode: 0, output: "AI Workflow health check passed." };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -187,7 +199,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | recommend [--select=id,id] | status | target <target> | confirm | validate [--package=path]",
+        "aiw install [--target target] | scan | recommend [--select=id,id] | status | doctor | target <target> | confirm | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

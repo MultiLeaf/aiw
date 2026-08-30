@@ -164,6 +164,13 @@ describe("AI Workflow CLI", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("reports actionable diagnostics with doctor", async () => {
+    const cwd = await project();
+    expect((await run(["doctor"], cwd)).error).toContain("Missing AI Workflow files");
+    await run(["install"], cwd);
+    expect((await run(["doctor"], cwd)).output).toContain("health check passed");
+  });
+
   it("persists an accepted fact override", async () => {
     const cwd = await project();
     await run(["install"], cwd);
