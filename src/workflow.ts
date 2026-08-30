@@ -16,6 +16,7 @@ import { detectDrift } from "./drift.js";
 import { parseManifest } from "./manifest.js";
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
+import { resolvePackage, serializeLock } from "./lockfile.js";
 import { scanProject } from "./scanner.js";
 
 export type WorkflowServices = WorkflowDependencies;
@@ -196,10 +197,19 @@ export async function runCommand(
         output: "Configuration is valid.",
       };
     }
+    if (command === "resolve") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const packageArg = args.find((arg) => arg.startsWith("--package="));
+      if (!packageArg) return { exitCode: 1, error: "Usage: aiw resolve --package=path" };
+      const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(pkg)]));
+      return { exitCode: 0, output: `Package resolved: ${pkg.id}@${pkg.version}` };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | recommend [--select=id,id] | status | doctor | target <target> | confirm | validate [--package=path]",
+        "aiw install [--target target] | scan | recommend [--select=id,id] | status | doctor | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

@@ -164,6 +164,19 @@ describe("AI Workflow CLI", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("resolves a package and generates an exact lockfile", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { copyFile } = await import("node:fs/promises");
+    await copyFile(join(process.cwd(), "resources/package.yaml"), join(cwd, "package.yaml"));
+    const result = await run(["resolve", "--package=package.yaml"], cwd);
+
+    expect(result.exitCode).toBe(0);
+    const lock = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
+    expect(lock).toContain("id: multileaf/aiw-self-hosting");
+    expect(lock).toContain("integrity: sha256-multileaf/aiw-self-hosting@0.1.0");
+  });
+
   it("reports actionable diagnostics with doctor", async () => {
     const cwd = await project();
     expect((await run(["doctor"], cwd)).error).toContain("Missing AI Workflow files");
