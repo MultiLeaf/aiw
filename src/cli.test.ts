@@ -240,6 +240,15 @@ describe("AI Workflow CLI", () => {
     expect(trace).toContain("npm run check");
   });
 
+  it("blocks SDD progression until the previous artifact exists", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    expect((await run(["gate", "plan"], cwd)).error).toContain("Quality gate blocked");
+    await run(["spec"], cwd);
+    expect((await run(["gate", "plan"], cwd)).output).toContain("Quality gate passed");
+    expect((await run(["gate", "unknown"], cwd)).error).toContain("Usage");
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);

@@ -313,6 +313,22 @@ export async function runCommand(
       fs.write(path, `schema: 1\nlinks:\n${links}\n`);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
+    if (command === "gate") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const stage = args[1];
+      const requirements: Record<string, string[]> = {
+        specification: ["generated/specs/brainstorm.md"],
+        plan: ["generated/specs/specification.md"],
+        verification: ["generated/plans/implementation-plan.md"],
+      };
+      if (!stage || !requirements[stage])
+        return { exitCode: 1, error: "Usage: aiw gate <specification|plan|verification>" };
+      const missing = requirements[stage].filter((file) => !fs.exists(join(aiw, file)));
+      return missing.length
+        ? { exitCode: 1, error: `Quality gate blocked: missing ${missing.join(", ")}` }
+        : { exitCode: 0, output: `Quality gate passed for ${stage}.` };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -336,7 +352,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
