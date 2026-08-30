@@ -30,14 +30,14 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
 }
 
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
-  if (target !== "codex")
+  if (target !== "codex" && target !== "claude")
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
   const roots: Record<ResourceType, string> = {
-    skills: ".agents/skills",
-    rules: ".agents/rules",
-    agents: ".agents/agents",
-    hooks: ".agents/hooks",
-    templates: ".agents/templates",
+    skills: target === "codex" ? ".agents/skills" : ".claude/skills",
+    rules: target === "codex" ? ".agents/rules" : ".claude/rules",
+    agents: target === "codex" ? ".agents/agents" : ".claude/agents",
+    hooks: target === "codex" ? ".agents/hooks" : ".claude/hooks",
+    templates: target === "codex" ? ".agents/templates" : ".claude/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }
