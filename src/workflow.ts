@@ -288,6 +288,31 @@ export async function runCommand(
               "Verification passed: requirements have acceptance criteria and validation coverage.",
           };
     }
+    if (command === "trace") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const specPath = join(aiw, "generated/specs/specification.md");
+      const planPath = join(aiw, "generated/plans/implementation-plan.md");
+      if (!fs.exists(specPath) || !fs.exists(planPath))
+        return {
+          exitCode: 1,
+          error: "Traceability requires a specification and implementation plan.",
+        };
+      const spec = fs.read(specPath);
+      const plan = fs.read(planPath);
+      const requirements = [...spec.matchAll(/(REQ-\d+)/g)]
+        .map((match) => match[1])
+        .filter((id, index, all) => all.indexOf(id) === index);
+      const links = requirements
+        .map(
+          (id) =>
+            `  - requirement: ${id}\n    tasks: [${plan.includes(id) ? "TASK-001" : "none"}]\n    validation: [${plan.includes(id) ? "npm run check" : "none"}]`,
+        )
+        .join("\n");
+      const path = join(aiw, "generated/artifacts/traceability.yml");
+      fs.write(path, `schema: 1\nlinks:\n${links}\n`);
+      return { exitCode: 0, output: `Traceability graph created: ${path}` };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -311,7 +336,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

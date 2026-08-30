@@ -227,6 +227,19 @@ describe("AI Workflow CLI", () => {
     expect(result.output).toContain("Verification passed");
   });
 
+  it("creates a queryable requirement traceability artifact", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["spec"], cwd);
+    await run(["plan"], cwd);
+    const result = await run(["trace"], cwd);
+    expect(result.exitCode).toBe(0);
+    const trace = await readFile(join(cwd, ".aiw/generated/artifacts/traceability.yml"), "utf8");
+    expect(trace).toContain("requirement: REQ-001");
+    expect(trace).toContain("tasks: [TASK-001]");
+    expect(trace).toContain("npm run check");
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
