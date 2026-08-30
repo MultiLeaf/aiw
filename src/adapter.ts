@@ -4,6 +4,15 @@ import { getAdapterCapabilities } from "./adapter-contract.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
+
+export function detectTarget(root: string, fs: FileSystem): Target | undefined {
+  const markers: Array<[Target, string]> = [
+    ["codex", ".agents"],
+    ["claude", ".claude"],
+    ["cursor", ".cursor"],
+  ];
+  return markers.find(([, marker]) => fs.exists(join(root, marker)))?.[0];
+}
 export function generateAiInit(root: string, target: string, fs: FileSystem): void {
   if (!isTarget(target)) throw new Error(`Unsupported target: ${target}`);
   getAdapterCapabilities(target);

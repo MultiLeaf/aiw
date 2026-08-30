@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
-import { generateAiInit, isTarget } from "./adapter.js";
+import { detectTarget, generateAiInit, isTarget } from "./adapter.js";
 import { profileProject } from "./profile.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
@@ -31,10 +31,17 @@ export async function runCommand(
     const command = args[0] ?? "help";
     if (command === "install") {
       const flag = args.indexOf("--target");
-      const target = (flag >= 0 ? args[flag + 1] : undefined) || "codex";
+      const requestedTarget = flag >= 0 ? args[flag + 1] : undefined;
+      const target = requestedTarget || detectTarget(root, fs) || "codex";
       if (!isTarget(target)) throw new Error(`Unsupported target: ${target}`);
-      if (fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 0, output: "AI Workflow is already installed." };
+      if (fs.exists(join(aiw, "manifest.yml"))) {
+        const manifest = fs.read(join(aiw, "manifest.yml"));
+        const active = manifest.match(/^\s*active:\s*(.+)$/m)?.[1]?.trim() ?? "unknown";
+        return {
+          exitCode: 0,
+          output: `AI Workflow is already installed for target: ${active}. Existing state preserved.`,
+        };
+      }
       fs.mkdir(aiw);
       BASE_DIRECTORIES.forEach((dir) => fs.mkdir(join(aiw, dir)));
       fs.mkdir(join(root, ".context/adrs"));
