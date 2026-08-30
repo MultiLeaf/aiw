@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { TARGETS, type Target, type FileSystem } from "./types.js";
 import { getAdapterCapabilities } from "./adapter-contract.js";
+import type { ResourceType } from "./package-contract.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
@@ -26,4 +27,29 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
     join(root, paths[target]),
     `---\nname: ai-init\ndescription: Analyze the project and configure AI Workflow.\n---\n\n# AI Init\n\nAnalyze the repository safely and recommend project-specific capabilities.\n\n## Language Policy\n\nAll generated AI Workflow artifacts must be written in English unless the user explicitly requests another language.\n`,
   );
+}
+
+export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
+  if (target !== "codex")
+    throw new Error(`Adapter rendering is not implemented for target: ${target}`);
+  const roots: Record<ResourceType, string> = {
+    skills: ".agents/skills",
+    rules: ".agents/rules",
+    agents: ".agents/agents",
+    hooks: ".agents/hooks",
+    templates: ".agents/templates",
+  };
+  return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
+}
+
+export function renderCodexResource(
+  type: ResourceType,
+  id: string,
+  content: string,
+  root: string,
+  fs: FileSystem,
+): string {
+  const path = renderResourcePath("codex", type, id);
+  fs.write(join(root, path), content);
+  return path;
 }
