@@ -256,6 +256,18 @@ export async function runCommand(
       );
       return { exitCode: 0, output: `Architecture decision record created: ${path}` };
     }
+    if (command === "plan") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const title =
+        args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Implementation Plan";
+      const path = join(aiw, "generated/plans/implementation-plan.md");
+      fs.write(
+        path,
+        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Validation: npm test\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n`,
+      );
+      return { exitCode: 0, output: `Implementation plan created: ${path}` };
+    }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "AI Workflow is not installed." };
@@ -279,7 +291,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

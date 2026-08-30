@@ -202,6 +202,20 @@ describe("AI Workflow CLI", () => {
     expect(artifact).toContain(".aiw/generated/specs/");
   });
 
+  it("creates an implementation plan linked to requirements and validation commands", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["plan", "--title=First Increment"], cwd);
+    expect(result.exitCode).toBe(0);
+    const artifact = await readFile(
+      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+      "utf8",
+    );
+    expect(artifact).toContain("REQ-001");
+    expect(artifact).toContain("TASK-001");
+    expect(artifact).toContain("npm run check");
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
