@@ -175,6 +175,20 @@ describe("AI Workflow CLI", () => {
       expect(artifact).toContain(`## ${section}`);
   });
 
+  it("creates a specification with stable requirement IDs and acceptance criteria", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["spec", "--title=Workflow Specification"], cwd);
+    expect(result.exitCode).toBe(0);
+    const artifact = await readFile(join(cwd, ".aiw/generated/specs/specification.md"), "utf8");
+    expect(artifact).toContain("# Workflow Specification");
+    expect(artifact).toContain("REQ-001");
+    expect(artifact).toContain("Acceptance criteria");
+    expect(artifact).toContain("Given");
+    expect(artifact).toContain("When");
+    expect(artifact).toContain("Then");
+  });
+
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
