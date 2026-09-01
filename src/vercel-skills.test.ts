@@ -17,7 +17,7 @@ describe("Vercel Skills provider", () => {
       buildVercelSkillsCommand({
         command: "add",
         source: "vercel-labs/agent-skills",
-        skill: "react",
+        skill: "vercel-react-best-practices",
         agent: "codex",
       }),
     ).toEqual([
@@ -26,7 +26,7 @@ describe("Vercel Skills provider", () => {
       "add",
       "vercel-labs/agent-skills",
       "--skill",
-      "react",
+      "vercel-react-best-practices",
       "--agent",
       "codex",
       "--yes",
@@ -44,7 +44,7 @@ describe("Vercel Skills provider", () => {
         },
       },
       "vercel-labs/agent-skills",
-      "react",
+      "vercel-react-best-practices",
       "codex",
     );
     expect(calls[0]).toEqual([
@@ -53,7 +53,7 @@ describe("Vercel Skills provider", () => {
       "add",
       "vercel-labs/agent-skills",
       "--skill",
-      "react",
+      "vercel-react-best-practices",
       "--agent",
       "codex",
       "--yes",
