@@ -158,6 +158,22 @@ describe("AI Workflow CLI", () => {
     expect(result.error).toContain("Migration conflict");
   });
 
+  it("restores a target resource from a migration backup", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    const neutral = join(cwd, ".aiw/resources/skills/ai-init.md");
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(neutral, "# Original\n");
+    await mkdir(join(cwd, ".cursor/skills/ai-init"), { recursive: true });
+    await writeFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "# Original\n");
+    await run(["target", "cursor"], cwd);
+    await writeFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "# Changed\n");
+    expect((await run(["rollback"], cwd)).exitCode).toBe(0);
+    await expect(readFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "utf8")).resolves.toBe(
+      "# Original\n",
+    );
+  });
+
   it("rejects unsupported targets without changing the manifest", async () => {
     const cwd = await project();
     await run(["install"], cwd);

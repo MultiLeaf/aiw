@@ -106,7 +106,7 @@ export async function runCommand(
       if (fs.exists(targetPath))
         fs.write(
           join(aiw, "checkpoints/migration-backup.yml"),
-          `target: ${target}\npath: ${targetPath}\ncontent: preserved\n`,
+          `path: ${targetPath}\ncontent_base64: ${Buffer.from(fs.read(targetPath)).toString("base64")}\n`,
         );
       generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit))
@@ -117,6 +117,16 @@ export async function runCommand(
       const path = join(aiw, "manifest.yml");
       fs.write(path, fs.read(path).replace(/active: .*\n/, `active: ${target}\n`));
       return { exitCode: 0, output: `Target changed to ${target}` };
+    }
+    if (command === "rollback") {
+      const backup = join(aiw, "checkpoints/migration-backup.yml");
+      if (!fs.exists(backup)) return { exitCode: 1, error: "No migration backup is available." };
+      const content = fs.read(backup);
+      const path = content.match(/^path: (.+)$/m)?.[1];
+      const encoded = content.match(/^content_base64: (.+)$/m)?.[1];
+      if (!path || !encoded) return { exitCode: 1, error: "Migration backup is invalid." };
+      fs.write(path, Buffer.from(encoded, "base64").toString("utf8"));
+      return { exitCode: 0, output: `Migration rolled back: ${path}` };
     }
     if (command === "confirm") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -376,7 +386,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
