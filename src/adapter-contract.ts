@@ -36,6 +36,12 @@ export const ADAPTER_CAPABILITIES: Readonly<Record<Target, AdapterCapabilities>>
     events: [...LIFECYCLE_EVENTS],
     fallback: false,
   },
+  copilot: {
+    target: "copilot",
+    resources: ["skills", "rules", "agents", "hooks", "templates"],
+    events: [...LIFECYCLE_EVENTS],
+    fallback: false,
+  },
   universal: {
     target: "universal",
     resources: [...RESOURCE_TYPES],

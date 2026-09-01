@@ -12,6 +12,7 @@ export function detectTarget(root: string, fs: FileSystem): Target | undefined {
     ["claude", ".claude"],
     ["cursor", ".cursor"],
     ["gemini", ".gemini"],
+    ["copilot", ".github/copilot-instructions.md"],
   ];
   return markers.find(([, marker]) => fs.exists(join(root, marker)))?.[0];
 }
@@ -23,6 +24,7 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
     claude: ".claude/skills/ai-init/SKILL.md",
     cursor: ".cursor/skills/ai-init/SKILL.md",
     gemini: ".gemini/skills/ai-init/SKILL.md",
+    copilot: ".github/copilot-instructions.md",
     universal: ".aiw/resources/skills/ai-init.md",
   };
   fs.write(
@@ -32,7 +34,7 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
 }
 
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
-  if (target !== "codex" && target !== "claude" && target !== "cursor" && target !== "gemini")
+  if (!["codex", "claude", "cursor", "gemini", "copilot"].includes(target))
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
   const roots: Record<ResourceType, string> = {
     skills:
@@ -42,7 +44,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
           ? ".claude/skills"
           : target === "cursor"
             ? ".cursor/skills"
-            : ".gemini/skills",
+            : target === "gemini"
+              ? ".gemini/skills"
+              : ".github/copilot",
     rules:
       target === "codex"
         ? ".agents/rules"
@@ -50,7 +54,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
           ? ".claude/rules"
           : target === "cursor"
             ? ".cursor/rules"
-            : ".gemini/rules",
+            : target === "gemini"
+              ? ".gemini/rules"
+              : ".github/copilot/rules",
     agents:
       target === "codex"
         ? ".agents/agents"
@@ -58,7 +64,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
           ? ".claude/agents"
           : target === "cursor"
             ? ".cursor/agents"
-            : ".gemini/agents",
+            : target === "gemini"
+              ? ".gemini/agents"
+              : ".github/copilot/agents",
     hooks:
       target === "codex"
         ? ".agents/hooks"
@@ -66,7 +74,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
           ? ".claude/hooks"
           : target === "cursor"
             ? ".cursor/hooks"
-            : ".gemini/hooks",
+            : target === "gemini"
+              ? ".gemini/hooks"
+              : ".github/copilot/hooks",
     templates:
       target === "codex"
         ? ".agents/templates"
@@ -74,7 +84,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
           ? ".claude/templates"
           : target === "cursor"
             ? ".cursor/templates"
-            : ".gemini/templates",
+            : target === "gemini"
+              ? ".gemini/templates"
+              : ".github/copilot/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }
