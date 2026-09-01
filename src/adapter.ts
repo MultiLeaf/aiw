@@ -11,6 +11,7 @@ export function detectTarget(root: string, fs: FileSystem): Target | undefined {
     ["codex", ".agents"],
     ["claude", ".claude"],
     ["cursor", ".cursor"],
+    ["gemini", ".gemini"],
   ];
   return markers.find(([, marker]) => fs.exists(join(root, marker)))?.[0];
 }
@@ -21,6 +22,7 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
     codex: ".agents/skills/ai-init/SKILL.md",
     claude: ".claude/skills/ai-init/SKILL.md",
     cursor: ".cursor/skills/ai-init/SKILL.md",
+    gemini: ".gemini/skills/ai-init/SKILL.md",
     universal: ".aiw/resources/skills/ai-init.md",
   };
   fs.write(
@@ -30,7 +32,7 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
 }
 
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
-  if (target !== "codex" && target !== "claude" && target !== "cursor")
+  if (target !== "codex" && target !== "claude" && target !== "cursor" && target !== "gemini")
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
   const roots: Record<ResourceType, string> = {
     skills:
@@ -38,31 +40,41 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
         ? ".agents/skills"
         : target === "claude"
           ? ".claude/skills"
-          : ".cursor/skills",
+          : target === "cursor"
+            ? ".cursor/skills"
+            : ".gemini/skills",
     rules:
       target === "codex"
         ? ".agents/rules"
         : target === "claude"
           ? ".claude/rules"
-          : ".cursor/rules",
+          : target === "cursor"
+            ? ".cursor/rules"
+            : ".gemini/rules",
     agents:
       target === "codex"
         ? ".agents/agents"
         : target === "claude"
           ? ".claude/agents"
-          : ".cursor/agents",
+          : target === "cursor"
+            ? ".cursor/agents"
+            : ".gemini/agents",
     hooks:
       target === "codex"
         ? ".agents/hooks"
         : target === "claude"
           ? ".claude/hooks"
-          : ".cursor/hooks",
+          : target === "cursor"
+            ? ".cursor/hooks"
+            : ".gemini/hooks",
     templates:
       target === "codex"
         ? ".agents/templates"
         : target === "claude"
           ? ".claude/templates"
-          : ".cursor/templates",
+          : target === "cursor"
+            ? ".cursor/templates"
+            : ".gemini/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }

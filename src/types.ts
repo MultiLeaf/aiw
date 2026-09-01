@@ -1,4 +1,4 @@
-export const TARGETS = ["codex", "claude", "cursor", "universal"] as const;
+export const TARGETS = ["codex", "claude", "cursor", "gemini", "universal"] as const;
 export type Target = (typeof TARGETS)[number];
 export type CommandResult = { exitCode: number; output?: string; error?: string };
 export type FileSystem = {
