@@ -303,6 +303,30 @@ describe("AI Workflow CLI", () => {
     expect(lock).toContain("integrity: sha256-multileaf/aiw-self-hosting@0.1.0");
   });
 
+  it("records an externally installed Vercel skill in the AIW lockfile", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(cwd, "skills-lock.json"),
+      '{"skills":{"vercel-react-best-practices":{"computedHash":"hash-123"}}}',
+    );
+    const calls: string[][] = [];
+    const result = await run(["generate", "--select=react-best-practices"], cwd, {
+      externalSkills: {
+        execute: async (command) => {
+          calls.push(command);
+          return { stdout: "installed", exitCode: 0 };
+        },
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(calls[0]).toContain("vercel-labs/agent-skills@vercel-react-best-practices");
+    await expect(readFile(join(cwd, ".aiw/lock.yml"), "utf8")).resolves.toContain(
+      "integrity: hash-123",
+    );
+  });
+
   it("reports actionable diagnostics with doctor", async () => {
     const cwd = await project();
     expect((await run(["doctor"], cwd)).error).toContain("Missing AI Workflow files");
