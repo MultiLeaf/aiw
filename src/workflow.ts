@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
-import { detectTarget, generateAiInit, isTarget } from "./adapter.js";
+import { detectTarget, generateAiInit, isTarget, renderResourcePath } from "./adapter.js";
 import { profileProject } from "./profile.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
@@ -90,6 +90,12 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       generateAiInit(root, target, fs);
+      const neutralAiInit = join(aiw, "resources/skills/ai-init.md");
+      if (fs.exists(neutralAiInit))
+        fs.write(
+          join(root, renderResourcePath(target, "skills", "ai-init")),
+          fs.read(neutralAiInit),
+        );
       const path = join(aiw, "manifest.yml");
       fs.write(path, fs.read(path).replace(/active: .*\n/, `active: ${target}\n`));
       return { exitCode: 0, output: `Target changed to ${target}` };

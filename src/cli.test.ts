@@ -133,6 +133,18 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("migrates a neutral ai-init resource to the selected target", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    const neutral = join(cwd, ".aiw/resources/skills/ai-init.md");
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(neutral, "# Neutral AI Init\n");
+    expect((await run(["target", "cursor"], cwd)).exitCode).toBe(0);
+    await expect(readFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "utf8")).resolves.toBe(
+      "# Neutral AI Init\n",
+    );
+  });
+
   it("rejects unsupported targets without changing the manifest", async () => {
     const cwd = await project();
     await run(["install"], cwd);
