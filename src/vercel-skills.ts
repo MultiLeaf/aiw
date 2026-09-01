@@ -35,8 +35,7 @@ export function buildVercelSkillsCommand(request: VercelSkillsRequest): string[]
       "npx",
       "skills",
       "add",
-      request.source,
-      ...(request.skill ? ["--skill", request.skill] : []),
+      request.skill ? `${request.source}@${request.skill}` : request.source,
       ...(request.agent ? ["--agent", request.agent] : []),
       "--yes",
     ];

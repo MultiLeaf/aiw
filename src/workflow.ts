@@ -195,13 +195,13 @@ export async function runCommand(
         await installVercelSkill(
           services.externalSkills ?? nodeCommandExecutor,
           "vercel-labs/agent-skills",
-          "react",
+          "vercel-react-best-practices",
           target,
         );
         const lockPath = join(aiw, "lock.yml");
         fs.write(
           lockPath,
-          `${fs.exists(lockPath) ? fs.read(lockPath).replace(/\n*$/, "\n") : "schema: 1\npackages:\n"}  - id: vercel-labs/agent-skills/react\n    provider: vercel-skills\n    source: vercel-labs/agent-skills\n    target: ${target}\n`,
+          `${fs.exists(lockPath) ? fs.read(lockPath).replace(/\n*$/, "\n") : "schema: 1\npackages:\n"}  - id: vercel-labs/agent-skills/vercel-react-best-practices\n    provider: vercel-skills\n    source: vercel-labs/agent-skills\n    target: ${target}\n    integrity: ${fs.exists(join(root, "skills-lock.json")) ? (fs.read(join(root, "skills-lock.json")).match(/"computedHash":\s*"([^"]+)"/)?.[1] ?? "unknown") : "unknown"}\n`,
         );
       }
       const conflicts: string[] = [];
