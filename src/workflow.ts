@@ -89,8 +89,26 @@ export async function runCommand(
       if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
-      generateAiInit(root, target, fs);
+      const dryRun = args.includes("--dry-run");
+      const targetPath = join(root, renderResourcePath(target, "skills", "ai-init"));
       const neutralAiInit = join(aiw, "resources/skills/ai-init.md");
+      if (
+        fs.exists(neutralAiInit) &&
+        fs.exists(targetPath) &&
+        fs.read(neutralAiInit) !== fs.read(targetPath)
+      )
+        return {
+          exitCode: 1,
+          error: `Migration conflict at ${targetPath}. Use --dry-run to inspect.`,
+        };
+      if (dryRun)
+        return { exitCode: 0, output: `Migration preview: target would change to ${target}.` };
+      if (fs.exists(targetPath))
+        fs.write(
+          join(aiw, "checkpoints/migration-backup.yml"),
+          `target: ${target}\npath: ${targetPath}\ncontent: preserved\n`,
+        );
+      generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit))
         fs.write(
           join(root, renderResourcePath(target, "skills", "ai-init")),

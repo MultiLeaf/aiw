@@ -145,6 +145,19 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("supports migration preview and blocks conflicting target content", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    const preview = await run(["target", "cursor", "--dry-run"], cwd);
+    expect(preview.exitCode).toBe(0);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, ".cursor/skills/ai-init"), { recursive: true });
+    await writeFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "# Manual content\n");
+    const result = await run(["target", "cursor"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Migration conflict");
+  });
+
   it("rejects unsupported targets without changing the manifest", async () => {
     const cwd = await project();
     await run(["install"], cwd);
