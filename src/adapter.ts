@@ -34,7 +34,7 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
 }
 
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
-  if (!["codex", "claude", "cursor", "gemini", "copilot"].includes(target))
+  if (!isTarget(target))
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
   const roots: Record<ResourceType, string> = {
     skills:
@@ -46,7 +46,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
             ? ".cursor/skills"
             : target === "gemini"
               ? ".gemini/skills"
-              : ".github/copilot",
+              : target === "copilot"
+                ? ".github/copilot"
+                : ".aiw/resources/skills",
     rules:
       target === "codex"
         ? ".agents/rules"
@@ -56,7 +58,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
             ? ".cursor/rules"
             : target === "gemini"
               ? ".gemini/rules"
-              : ".github/copilot/rules",
+              : target === "copilot"
+                ? ".github/copilot/rules"
+                : ".aiw/resources/rules",
     agents:
       target === "codex"
         ? ".agents/agents"
@@ -66,7 +70,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
             ? ".cursor/agents"
             : target === "gemini"
               ? ".gemini/agents"
-              : ".github/copilot/agents",
+              : target === "copilot"
+                ? ".github/copilot/agents"
+                : ".aiw/resources/agents",
     hooks:
       target === "codex"
         ? ".agents/hooks"
@@ -76,7 +82,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
             ? ".cursor/hooks"
             : target === "gemini"
               ? ".gemini/hooks"
-              : ".github/copilot/hooks",
+              : target === "copilot"
+                ? ".github/copilot/hooks"
+                : ".aiw/resources/hooks",
     templates:
       target === "codex"
         ? ".agents/templates"
@@ -86,7 +94,9 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
             ? ".cursor/templates"
             : target === "gemini"
               ? ".gemini/templates"
-              : ".github/copilot/templates",
+              : target === "copilot"
+                ? ".github/copilot/templates"
+                : ".aiw/resources/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }
