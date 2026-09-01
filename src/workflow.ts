@@ -17,7 +17,7 @@ import { parseManifest } from "./manifest.js";
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
 import { resolvePackage, serializeLock } from "./lockfile.js";
-import { installVercelSkill } from "./vercel-skills.js";
+import { installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 
 export type WorkflowServices = WorkflowDependencies;
@@ -186,17 +186,22 @@ export async function runCommand(
       const selectedArg = args.find((arg) => arg.startsWith("--select="))?.split("=", 2)[1];
       const selected =
         selectedArg?.split(",") ?? (command === "sync" ? readSelectedRecommendations(fs, aiw) : []);
-      if (services.externalSkills && selected.includes("react-best-practices")) {
+      if (selected.includes("react-best-practices")) {
         const target =
           fs
             .read(join(aiw, "manifest.yml"))
             .match(/^\s*active:\s*(.+)$/m)?.[1]
             ?.trim() ?? "universal";
         await installVercelSkill(
-          services.externalSkills,
+          services.externalSkills ?? nodeCommandExecutor,
           "vercel-labs/agent-skills",
           "react",
           target,
+        );
+        const lockPath = join(aiw, "lock.yml");
+        fs.write(
+          lockPath,
+          `${fs.exists(lockPath) ? fs.read(lockPath).replace(/\n*$/, "\n") : "schema: 1\npackages:\n"}  - id: vercel-labs/agent-skills/react\n    provider: vercel-skills\n    source: vercel-labs/agent-skills\n    target: ${target}\n`,
         );
       }
       const conflicts: string[] = [];

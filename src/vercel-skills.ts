@@ -1,3 +1,8 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const executeFile = promisify(execFile);
+
 export type VercelSkillsCommand = "find" | "add" | "check" | "update";
 export type VercelSkillsRequest = {
   command: VercelSkillsCommand;
@@ -8,6 +13,19 @@ export type VercelSkillsRequest = {
 export interface CommandExecutor {
   execute(command: string[]): Promise<{ stdout: string; exitCode: number }>;
 }
+
+export const nodeCommandExecutor: CommandExecutor = {
+  async execute(command) {
+    const [program, ...args] = command;
+    try {
+      const result = await executeFile(program, args, { maxBuffer: 1024 * 1024 });
+      return { stdout: result.stdout, exitCode: 0 };
+    } catch (error) {
+      const failure = error as { stdout?: string; status?: number };
+      return { stdout: failure.stdout ?? String(error), exitCode: failure.status ?? 1 };
+    }
+  },
+};
 
 export function buildVercelSkillsCommand(request: VercelSkillsRequest): string[] {
   if (request.command === "find") return ["npx", "skills", "find", request.skill ?? ""];
