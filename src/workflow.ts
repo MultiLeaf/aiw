@@ -17,6 +17,7 @@ import { parseManifest } from "./manifest.js";
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
 import { resolvePackage, serializeLock } from "./lockfile.js";
+import { installVercelSkill } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 
 export type WorkflowServices = WorkflowDependencies;
@@ -185,6 +186,19 @@ export async function runCommand(
       const selectedArg = args.find((arg) => arg.startsWith("--select="))?.split("=", 2)[1];
       const selected =
         selectedArg?.split(",") ?? (command === "sync" ? readSelectedRecommendations(fs, aiw) : []);
+      if (services.externalSkills && selected.includes("react-best-practices")) {
+        const target =
+          fs
+            .read(join(aiw, "manifest.yml"))
+            .match(/^\s*active:\s*(.+)$/m)?.[1]
+            ?.trim() ?? "universal";
+        await installVercelSkill(
+          services.externalSkills,
+          "vercel-labs/agent-skills",
+          "react",
+          target,
+        );
+      }
       const conflicts: string[] = [];
       generateProjectResources(profile, selected, (path, content) => {
         const destination = join(aiw, path);

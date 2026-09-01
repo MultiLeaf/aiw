@@ -2,6 +2,7 @@ import type { ProjectProfile } from "./profile.js";
 import type { ProjectScan } from "./scanner.js";
 import type { CapabilityRecommendation } from "./recommendations.js";
 import type { Interpreter } from "./interpreter.js";
+import type { CommandExecutor } from "./vercel-skills.js";
 
 export interface ProjectScanner {
   scan(root: string): Promise<ProjectScan>;
@@ -20,6 +21,7 @@ export interface WorkflowDependencies {
   profiler?: ProfileService;
   recommender?: RecommendationService;
   interpreter?: Interpreter;
+  externalSkills?: CommandExecutor;
 }
 
 export type ServiceFactory<T> = (dependencies: WorkflowDependencies) => T;

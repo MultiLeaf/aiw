@@ -5,6 +5,9 @@ export type VercelSkillsRequest = {
   skill?: string;
   agent?: string;
 };
+export interface CommandExecutor {
+  execute(command: string[]): Promise<{ stdout: string; exitCode: number }>;
+}
 
 export function buildVercelSkillsCommand(request: VercelSkillsRequest): string[] {
   if (request.command === "find") return ["npx", "skills", "find", request.skill ?? ""];
@@ -21,4 +24,17 @@ export function buildVercelSkillsCommand(request: VercelSkillsRequest): string[]
     ];
   }
   return ["npx", "skills", request.command];
+}
+
+export async function installVercelSkill(
+  executor: CommandExecutor,
+  source: string,
+  skill: string,
+  agent: string,
+): Promise<string> {
+  const result = await executor.execute(
+    buildVercelSkillsCommand({ command: "add", source, skill, agent }),
+  );
+  if (result.exitCode !== 0) throw new Error(`Vercel Skills installation failed: ${result.stdout}`);
+  return result.stdout;
 }
