@@ -30,14 +30,39 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
 }
 
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
-  if (target !== "codex" && target !== "claude")
+  if (target !== "codex" && target !== "claude" && target !== "cursor")
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
   const roots: Record<ResourceType, string> = {
-    skills: target === "codex" ? ".agents/skills" : ".claude/skills",
-    rules: target === "codex" ? ".agents/rules" : ".claude/rules",
-    agents: target === "codex" ? ".agents/agents" : ".claude/agents",
-    hooks: target === "codex" ? ".agents/hooks" : ".claude/hooks",
-    templates: target === "codex" ? ".agents/templates" : ".claude/templates",
+    skills:
+      target === "codex"
+        ? ".agents/skills"
+        : target === "claude"
+          ? ".claude/skills"
+          : ".cursor/skills",
+    rules:
+      target === "codex"
+        ? ".agents/rules"
+        : target === "claude"
+          ? ".claude/rules"
+          : ".cursor/rules",
+    agents:
+      target === "codex"
+        ? ".agents/agents"
+        : target === "claude"
+          ? ".claude/agents"
+          : ".cursor/agents",
+    hooks:
+      target === "codex"
+        ? ".agents/hooks"
+        : target === "claude"
+          ? ".claude/hooks"
+          : ".cursor/hooks",
+    templates:
+      target === "codex"
+        ? ".agents/templates"
+        : target === "claude"
+          ? ".claude/templates"
+          : ".cursor/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }
