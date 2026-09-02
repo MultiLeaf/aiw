@@ -23,6 +23,13 @@ import { assertPackagePermissions } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
+import {
+  composeContext,
+  CONTEXT_LAYERS,
+  readContextStore,
+  writeContextLayer,
+  type ContextLayer,
+} from "./context-store.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -465,10 +472,22 @@ export async function runCommand(
       verifyPackageProvenance(content, { checksum: checksumArg.slice(11) });
       return { exitCode: 0, output: `Package provenance verified: ${checksumPackage(content)}` };
     }
+    if (command === "context") {
+      const layer = args.find((arg) => arg.startsWith("--layer="))?.slice(8) as
+        ContextLayer | undefined;
+      const content = args.find((arg) => arg.startsWith("--content="))?.slice(10);
+      if (layer && CONTEXT_LAYERS.includes(layer) && content !== undefined) {
+        writeContextLayer(root, fs, layer, content);
+        return { exitCode: 0, output: `Context layer written: ${layer}` };
+      }
+      if (!layer && content === undefined)
+        return { exitCode: 0, output: composeContext(readContextStore(root, fs)) };
+      return { exitCode: 1, error: "Usage: aiw context [--layer=project --content=text]" };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | context [--layer=project --content=text] | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

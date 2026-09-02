@@ -232,6 +232,21 @@ describe("AI Workflow CLI", () => {
     expect(rejected.error).toContain("checksum mismatch");
   });
 
+  it("stores and composes layered project context", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    expect(
+      (await run(["context", "--layer=project", "--content=Project conventions"], cwd)).exitCode,
+    ).toBe(0);
+    expect((await run(["context", "--layer=task", "--content=Current task"], cwd)).exitCode).toBe(
+      0,
+    );
+    const result = await run(["context"], cwd);
+    expect(result.output).toContain("# project context");
+    expect(result.output).toContain("Project conventions");
+    expect(result.output).toContain("# task context");
+  });
+
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);
