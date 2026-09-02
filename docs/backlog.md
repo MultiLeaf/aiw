@@ -70,7 +70,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **CTX-001** Build layered project context store.
 - [x] **CTX-002** Add task-scoped context retrieval and delta loading.
 - [x] **CTX-003** Add summary cache and freshness invalidation.
-- [ ] **CTX-004** Add per-stage token budgets and usage reporting.
+- [x] **CTX-004** Add per-stage token budgets and usage reporting.
 - [ ] **CTX-005** Add context quality metrics and regression tests.
 
 ## Enterprise and ecosystem — P3

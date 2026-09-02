@@ -37,6 +37,7 @@ import {
   parseSummaryCache,
   serializeSummaryCache,
 } from "./context-cache.js";
+import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "./token-usage.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -520,10 +521,32 @@ export async function runCommand(
       fs.write(cachePath, serializeSummaryCache(createSummaryCache(context, summaryArg)));
       return { exitCode: 0, output: summaryArg };
     }
+    if (command === "token-usage") {
+      const usagePath = join(aiw, "usage.yml");
+      const entries = fs.exists(usagePath) ? parseTokenUsage(fs.read(usagePath)) : [];
+      const stage = args.find((arg) => arg.startsWith("--stage="))?.slice(8);
+      const budget = args.find((arg) => arg.startsWith("--budget="))?.slice(9);
+      const used = args.find((arg) => arg.startsWith("--used="))?.slice(7);
+      if (stage !== undefined || budget !== undefined || used !== undefined) {
+        if (stage === undefined || budget === undefined || used === undefined)
+          return {
+            exitCode: 1,
+            error: "Usage: aiw token-usage --stage=name --budget=number --used=number",
+          };
+        const next = recordTokenUsage(entries, {
+          stage,
+          budget: Number(budget),
+          used: Number(used),
+        });
+        fs.write(usagePath, serializeTokenUsage(next));
+        return { exitCode: 0, output: `Token usage recorded: ${stage} (${used}/${budget})` };
+      }
+      return { exitCode: 0, output: serializeTokenUsage(entries) };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | context [--layer=project --content=text] | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | context | context-summary | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

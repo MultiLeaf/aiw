@@ -271,6 +271,18 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("records and reports per-stage token usage", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const recorded = await run(["token-usage", "--stage=scan", "--budget=100", "--used=75"], cwd);
+    expect(recorded).toEqual({ exitCode: 0, output: "Token usage recorded: scan (75/100)" });
+    const report = await run(["token-usage"], cwd);
+    expect(report.output).toContain("scan|100|75");
+    expect(
+      (await run(["token-usage", "--stage=scan", "--budget=10", "--used=11"], cwd)).error,
+    ).toContain("Token budget exceeded");
+  });
+
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);
