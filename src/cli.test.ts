@@ -541,6 +541,15 @@ resources:
     await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
   });
 
+  it("does not remove unrelated project files during uninstall", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const userFile = join(cwd, ".aiw", "generated", "docs", "user.md");
+    await writeFile(userFile, "user content\n");
+    await run(["uninstall"], cwd);
+    await expect(readFile(userFile, "utf8")).resolves.toBe("user content\n");
+  });
+
   it("persists an accepted fact override", async () => {
     const cwd = await project();
     await run(["install"], cwd);
