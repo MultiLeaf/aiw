@@ -13,3 +13,5 @@ Required validation levels, when applicable:
 7. Formatting, linting, type checking, tests, and security checks.
 
 Passing domain tests alone is not sufficient for a feature that affects the CLI, filesystem, providers, adapters, generated artifacts, or project configuration.
+
+For every externally visible task, run an isolated integration validation with an AI subagent in a separate worktree. The subagent must exercise the packaged or executable workflow, report the commands and outcomes, and confirm that its worktree is clean. The main worktree must not be used as a substitute for this validation.

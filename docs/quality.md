@@ -23,6 +23,8 @@ No feature is complete without tests for its happy path, invalid input, conflict
 
 A feature is complete only when all affected layers are validated: domain, module integration, CLI or adapter integration, generated artifacts, end-to-end behavior, documentation, traceability, and security. Domain tests alone are insufficient for changes that affect external behavior or generated project state.
 
+Externally visible tasks also require an isolated integration run by an AI subagent in a separate worktree. That run must use the packaged or executable workflow, record its outcomes, and leave the validation worktree clean.
+
 ## Self-validation
 
 AI Workflow must use itself to validate changes whenever the current capabilities support the task. Changes affecting installation, scanning, generation, migration, adapters, or project configuration must be executed against this repository and their generated output must be inspected. Unit tests alone are not sufficient for these changes.
