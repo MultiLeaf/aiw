@@ -24,7 +24,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 - [x] **SCAN-001** Build ignore-aware repository scanner. _Acceptance:_ respects `.gitignore`, excludes secrets, and has deterministic output.
 - [x] **SCAN-002** Detect languages, frameworks, package managers, scripts, tests, linters, formatters, CI, and workspace structure. _Acceptance:_ fixtures cover common project types.
-- [ ] **SCAN-003** Store confidence and evidence for detected facts. _Acceptance:_ each inferred fact points to a source and confidence score.
+- [x] **SCAN-003** Store confidence and evidence for detected facts. _Acceptance:_ each inferred fact points to a source and confidence score.
 - [ ] **SCAN-005** Define the hybrid intelligence contract. _Acceptance:_ detected, inferred, and confirmed states are represented and AI inference cannot silently replace deterministic facts.
 - [x] **SCAN-006** Implement scoped AI project interpreter. _Acceptance:_ interpreter receives filtered context and produces structured insights requiring confirmation when uncertain.
 - [ ] **SCAN-007** Add interpreter privacy and token guardrails. _Acceptance:_ secrets, dependencies, generated files, Git internals, and checkpoints are excluded and token usage is measured.
