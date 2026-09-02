@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { EvidenceFact } from "./evidence.js";
 import type { ProjectProfile } from "./profile.js";
@@ -50,6 +50,19 @@ function redactSecrets(content: string): string {
       /\b(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password)\b(\s*[=:]\s*)["']?[^\s,"'}]+/gi,
       "$1$2[REDACTED]",
     );
+}
+
+function isBinary(content: string): boolean {
+  return [...content].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return (
+      code === 0 ||
+      (code >= 1 && code <= 8) ||
+      code === 11 ||
+      code === 12 ||
+      (code >= 14 && code <= 31)
+    );
+  });
 }
 
 export function createInterpretationRequest(
@@ -132,7 +145,14 @@ export function createProjectInterpreter(
       for (const file of scoped.files) {
         const absolute = resolve(projectRoot, file);
         if (relative(projectRoot, absolute).startsWith("..")) continue;
-        sections.push(`## ${file}\n${redactSecrets(await contextReader(absolute))}`);
+        try {
+          if ((await lstat(absolute)).isSymbolicLink()) continue;
+        } catch {
+          // Injected context readers may provide virtual files in tests or adapters.
+        }
+        const content = await contextReader(absolute);
+        if (isBinary(content)) continue;
+        sections.push(`## ${file}\n${redactSecrets(content)}`);
       }
       if (sections.length === 0) return [];
       const output = await provider.generate({

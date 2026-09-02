@@ -114,6 +114,19 @@ describe("scoped AI interpreter", () => {
     ).rejects.toThrow("outside the scoped context");
   });
 
+  it("does not send binary-like context to the provider", async () => {
+    const provider: AiProvider = {
+      generate: async (request) => {
+        expect(request.prompt).not.toContain("binary-content");
+        return JSON.stringify({ facts: [] });
+      },
+    };
+    const interpreter = createProjectInterpreter("/project", provider, async (path) =>
+      path.endsWith("binary.txt") ? "binary-content\0payload" : "safe text",
+    );
+    await interpreter.interpret(createInterpretationRequest(profile, ["binary.txt"]));
+  });
+
   it("defines a structured interpreter contract with inferred output", async () => {
     const interpreter: Interpreter = {
       interpret: async () => [
