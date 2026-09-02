@@ -104,6 +104,30 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("serializes detected quality and test commands in the profile", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        scripts: {
+          lint: "eslint .",
+          format: "prettier .",
+          typecheck: "tsc --noEmit",
+          test: "vitest",
+        },
+        devDependencies: { eslint: "1", prettier: "1", typescript: "1", vitest: "1" },
+      }),
+    );
+    const result = await run(["scan"], cwd);
+    expect(result.exitCode).toBe(0);
+    const profile = await readFile(join(cwd, ".aiw/profile.yml"), "utf8");
+    expect(profile).toContain("linter_command: eslint .");
+    expect(profile).toContain("formatter_command: prettier .");
+    expect(profile).toContain("typecheck_command: tsc --noEmit");
+    expect(profile).toContain("testing_command: vitest");
+  });
+
   it("persists scoped inferred facts produced during the scan", async () => {
     const cwd = await project();
     await run(["install"], cwd);
