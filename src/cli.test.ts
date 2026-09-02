@@ -40,6 +40,8 @@ describe("AI Workflow CLI", () => {
     ["codex", ".agents/skills/ai-init/SKILL.md"],
     ["claude", ".claude/skills/ai-init/SKILL.md"],
     ["cursor", ".cursor/skills/ai-init/SKILL.md"],
+    ["gemini", ".gemini/skills/ai-init/SKILL.md"],
+    ["copilot", ".github/copilot-instructions.md"],
     ["universal", ".aiw/resources/skills/ai-init.md"],
   ])("installs the base ai-init skill for %s", async (target, path) => {
     const cwd = await project();
@@ -47,7 +49,7 @@ describe("AI Workflow CLI", () => {
 
     expect(result.exitCode).toBe(0);
     const skill = await readFile(join(cwd, path), "utf8");
-    expect(skill).toContain("name: ai-init");
+    expect(skill).toContain(target === "copilot" ? "# AI Init" : "name: ai-init");
     expect(skill).toContain("Analyze the repository safely");
     expect(skill).toContain("All generated AI Workflow artifacts must be written in English");
   });
