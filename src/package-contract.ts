@@ -2,6 +2,7 @@ export const RESOURCE_TYPES = ["skills", "rules", "agents", "hooks", "templates"
 export type ResourceType = (typeof RESOURCE_TYPES)[number];
 
 export type PackageResource = { id: string; version: string; path: string };
+export type PackagePolicy = { id: string; value: string };
 export type PackageContract = {
   schema: number;
   id: string;
@@ -12,6 +13,9 @@ export type PackageContract = {
   dependencies: string[];
   permissions: string[];
   provenance: { source: string; checksum?: string };
+  policies?: PackagePolicy[];
+  engines?: Record<string, string>;
+  provides?: Record<ResourceType, string[]>;
   targets?: string[];
 };
 
@@ -53,15 +57,39 @@ export function validatePackageContract(content: string): PackageContract {
     resources,
     dependencies: list(content, "dependencies"),
     permissions: list(content, "permissions"),
-    provenance: { source: scalar(content, "source") },
+    provenance: {
+      source: scalar(content, "source"),
+      ...(nestedScalar(content, "checksum") ? { checksum: nestedScalar(content, "checksum") } : {}),
+    },
+    policies: parsePolicies(content),
+    ...(scalar(content, "ai_workflow")
+      ? { engines: { ai_workflow: scalar(content, "ai_workflow") } }
+      : {}),
     ...(list(content, "targets").length ? { targets: list(content, "targets") } : {}),
   };
+}
+
+function parsePolicies(content: string): PackagePolicy[] {
+  const section = content.match(/policies:\n((?:\s{2}- .*\n?)+)/)?.[1] ?? "";
+  return [...section.matchAll(/id:\s*([^,]+),\s*value:\s*([^ }]+)/g)].map((match) => ({
+    id: match[1].trim(),
+    value: match[2].trim(),
+  }));
 }
 
 function scalar(content: string, key: string): string {
   return (
     content
       .match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1]
+      ?.replaceAll('"', "")
+      .trim() ?? ""
+  );
+}
+
+function nestedScalar(content: string, key: string): string {
+  return (
+    content
+      .match(new RegExp(`^\\s{2,}${key}:\\s*(.+)$`, "m"))?.[1]
       ?.replaceAll('"', "")
       .trim() ?? ""
   );
