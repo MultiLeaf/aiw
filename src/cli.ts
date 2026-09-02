@@ -10,7 +10,7 @@ export function run(
 ): Promise<CommandResult> {
   return runCommand(args, root, nodeFileSystem, services);
 }
-if (process.argv[1]?.endsWith("cli.js")) {
+if (process.argv[1]?.endsWith("cli.js") || process.argv[1]?.endsWith("/aiw")) {
   const result = await run(process.argv.slice(2));
   if (result.output) console.log(result.output);
   if (result.error) console.error(result.error);

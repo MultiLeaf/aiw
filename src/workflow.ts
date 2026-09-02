@@ -53,7 +53,7 @@ export async function runCommand(
         `schema: 1\nproject:\n  name: ${root.split("/").pop()}\ntarget:\n  active: ${target}\npolicies:\n  artifact_language: en\n`,
       );
       fs.write(join(aiw, "profile.yml"), "schema: 1\nstatus: pending-scan\n");
-      fs.write(join(aiw, "lock.yml"), "schema: 1\npackages: []\n");
+      fs.write(join(aiw, "lock.yml"), "schema: 1\npackages:\n");
       generateAiInit(root, target, fs);
       return { exitCode: 0, output: `AI Workflow installed for target: ${target}` };
     }
