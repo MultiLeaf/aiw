@@ -250,6 +250,9 @@ describe("AI Workflow CLI", () => {
     expect(task.output).not.toContain("# session context");
     const delta = await run(["context", "--delta-from=global"], cwd);
     expect(delta.output).toContain("Project conventions");
+    expect(delta.output).toContain("Current task");
+    expect(delta.output).not.toContain("session");
+    expect(delta.output).not.toContain("# global context");
   });
 
   it("creates an English brainstorming artifact with required sections", async () => {

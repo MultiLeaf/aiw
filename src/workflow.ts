@@ -483,13 +483,20 @@ export async function runCommand(
         return { exitCode: 0, output: `Context layer written: ${layer}` };
       }
       if (!layer && content === undefined) {
-        const output = args.includes("--task") ? retrieveTaskContext(store) : composeContext(store);
         const delta = args.find((arg) => arg.startsWith("--delta-from="));
-        if (delta)
+        if (delta) {
+          const reusableLayers = [store.layers.project, store.layers.task]
+            .filter(Boolean)
+            .join("\n\n");
           return {
             exitCode: 0,
-            output: loadContextDelta(store.layers[delta.slice(13) as ContextLayer] ?? "", output),
+            output: loadContextDelta(
+              store.layers[delta.slice(13) as ContextLayer] ?? "",
+              reusableLayers,
+            ),
           };
+        }
+        const output = args.includes("--task") ? retrieveTaskContext(store) : composeContext(store);
         return { exitCode: 0, output };
       }
       return { exitCode: 1, error: "Usage: aiw context [--layer=project --content=text]" };
