@@ -507,6 +507,18 @@ resources:
     expect((await run(["doctor"], cwd)).output).toContain("health check passed");
   });
 
+  it("reports an unsupported manifest target through doctor", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/manifest.yml"),
+      "schema: 1\nproject:\n  name: demo\ntarget:\n  active: unknown\npolicies:\n  artifact_language: en\n",
+    );
+    const result = await run(["doctor"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("unsupported");
+  });
+
   it("repairs missing structure and uninstalls only owned files", async () => {
     const cwd = await project();
     await run(["install"], cwd);
