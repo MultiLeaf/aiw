@@ -30,6 +30,7 @@ import {
   writeContextLayer,
   type ContextLayer,
 } from "./context-store.js";
+import { loadContextDelta, retrieveTaskContext } from "./context-retrieval.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -476,12 +477,21 @@ export async function runCommand(
       const layer = args.find((arg) => arg.startsWith("--layer="))?.slice(8) as
         ContextLayer | undefined;
       const content = args.find((arg) => arg.startsWith("--content="))?.slice(10);
+      const store = readContextStore(root, fs);
       if (layer && CONTEXT_LAYERS.includes(layer) && content !== undefined) {
         writeContextLayer(root, fs, layer, content);
         return { exitCode: 0, output: `Context layer written: ${layer}` };
       }
-      if (!layer && content === undefined)
-        return { exitCode: 0, output: composeContext(readContextStore(root, fs)) };
+      if (!layer && content === undefined) {
+        const output = args.includes("--task") ? retrieveTaskContext(store) : composeContext(store);
+        const delta = args.find((arg) => arg.startsWith("--delta-from="));
+        if (delta)
+          return {
+            exitCode: 0,
+            output: loadContextDelta(store.layers[delta.slice(13) as ContextLayer] ?? "", output),
+          };
+        return { exitCode: 0, output };
+      }
       return { exitCode: 1, error: "Usage: aiw context [--layer=project --content=text]" };
     }
     return {
