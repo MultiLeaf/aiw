@@ -19,6 +19,7 @@ import { validatePackageContract } from "./package-contract.js";
 import { resolvePackage, serializeLock } from "./lockfile.js";
 import { installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
+import { assertPackagePermissions } from "./package-audit.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -187,6 +188,9 @@ export async function runCommand(
       const selected =
         selectedArg?.split(",") ?? (command === "sync" ? readSelectedRecommendations(fs, aiw) : []);
       if (selected.includes("react-best-practices")) {
+        const approvedPermissions = parseApprovedPermissions(args);
+        if (!approvedPermissions.includes("network:external"))
+          return { exitCode: 1, error: "Package permissions require approval: network:external" };
         const target =
           fs
             .read(join(aiw, "manifest.yml"))
@@ -399,6 +403,7 @@ export async function runCommand(
       const packageArg = args.find((arg) => arg.startsWith("--package="));
       if (!packageArg) return { exitCode: 1, error: "Usage: aiw resolve --package=path" };
       const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      assertPackagePermissions(pkg, parseApprovedPermissions(args));
       fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(pkg)]));
       return { exitCode: 0, output: `Package resolved: ${pkg.id}@${pkg.version}` };
     }
@@ -420,4 +425,12 @@ function readSelectedRecommendations(fs: FileSystem, aiw: string): string[] {
     .slice(1)
     .filter((block) => block.includes("selected: true"))
     .map((block) => block.split("\n", 1)[0].trim());
+}
+
+function parseApprovedPermissions(args: string[]): string[] {
+  return args
+    .filter((arg) => arg.startsWith("--allow="))
+    .flatMap((arg) => arg.slice("--allow=".length).split(","))
+    .map((permission) => permission.trim())
+    .filter(Boolean);
 }

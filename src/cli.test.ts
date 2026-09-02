@@ -312,14 +312,25 @@ describe("AI Workflow CLI", () => {
       '{"skills":{"vercel-react-best-practices":{"computedHash":"hash-123"}}}',
     );
     const calls: string[][] = [];
-    const result = await run(["generate", "--select=react-best-practices"], cwd, {
+    const blocked = await run(["generate", "--select=react-best-practices"], cwd, {
       externalSkills: {
-        execute: async (command) => {
-          calls.push(command);
-          return { stdout: "installed", exitCode: 0 };
-        },
+        execute: async () => ({ stdout: "installed", exitCode: 0 }),
       },
     });
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.error).toContain("network:external");
+    const result = await run(
+      ["generate", "--select=react-best-practices", "--allow=network:external"],
+      cwd,
+      {
+        externalSkills: {
+          execute: async (command) => {
+            calls.push(command);
+            return { stdout: "installed", exitCode: 0 };
+          },
+        },
+      },
+    );
     expect(result.exitCode).toBe(0);
     expect(calls[0]).toContain("vercel-labs/agent-skills@vercel-react-best-practices");
     await expect(readFile(join(cwd, ".aiw/lock.yml"), "utf8")).resolves.toContain(
