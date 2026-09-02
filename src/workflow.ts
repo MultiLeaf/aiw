@@ -99,6 +99,7 @@ export async function runCommand(
       );
       profile.facts = profile.facts.filter((fact) => !rejectedKeys.has(fact.key));
       profile.facts = mergeFacts(profile.facts, applyOverrides(profile.facts, overrides));
+      profile.facts = profile.facts.filter((fact) => !rejectedKeys.has(fact.key));
       const evidence = profile.facts
         .map(
           (fact) =>
