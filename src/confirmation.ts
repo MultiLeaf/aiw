@@ -8,7 +8,7 @@ export function serializeOverrides(overrides: FactOverride[]): string {
 
 export function parseOverrides(content: string): FactOverride[] {
   const overrides: FactOverride[] = [];
-  const blocks = content.split(/\n(?=\s{2}- key:)/).slice(1);
+  const blocks = content.split(/(?=\s{2}- key:)/).slice(1);
   for (const block of blocks) {
     const key = block.match(/key: (.+)/)?.[1]?.trim();
     const action = block.match(/action: (accept|reject|edit)/)?.[1] as

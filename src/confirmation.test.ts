@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyOverrides, type FactOverride } from "./confirmation.js";
+import {
+  applyOverrides,
+  parseOverrides,
+  serializeOverrides,
+  type FactOverride,
+} from "./confirmation.js";
 import type { EvidenceFact } from "./evidence.js";
 
 const detected: EvidenceFact[] = [
@@ -14,6 +19,11 @@ const detected: EvidenceFact[] = [
 ];
 
 describe("fact confirmation", () => {
+  it("round-trips the first persisted override", () => {
+    expect(
+      parseOverrides(serializeOverrides([{ key: "package-manager", action: "reject" }])),
+    ).toEqual([{ key: "package-manager", action: "reject" }]);
+  });
   it("confirms an accepted fact while preserving its evidence", () => {
     const result = applyOverrides(detected, [{ key: "package-manager", action: "accept" }]);
     expect(result[0]).toMatchObject({ state: "confirmed", method: "user-confirmed", value: "npm" });

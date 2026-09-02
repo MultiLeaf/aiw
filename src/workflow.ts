@@ -163,7 +163,7 @@ export async function runCommand(
       const edit = args.indexOf("--edit");
       if (edit >= 0 && args[edit + 1]?.includes("=")) {
         const [key, value] = args[edit + 1].split("=", 2);
-        overrides.push({ key, action: "edit", value });
+        if (key && value) overrides.push({ key, action: "edit", value });
       }
       if (overrides.length === 0)
         return {
