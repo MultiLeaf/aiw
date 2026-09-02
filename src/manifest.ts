@@ -8,6 +8,16 @@ export type Manifest = {
   policies: { artifactLanguage: string };
 };
 
+export function serializeManifest(manifest: Manifest): string {
+  if (manifest.schema !== 1) throw new Error("Manifest schema must be version 1.");
+  if (!manifest.project.name.trim()) throw new Error("Manifest project.name is required.");
+  if (!TARGETS.includes(manifest.target.active))
+    throw new Error(`Manifest target.active is unsupported: ${manifest.target.active}.`);
+  if (manifest.policies.artifactLanguage !== "en")
+    throw new Error("Manifest policies.artifact_language must be en.");
+  return `schema: 1\nproject:\n  name: ${manifest.project.name}\ntarget:\n  active: ${manifest.target.active}\npolicies:\n  artifact_language: en\n`;
+}
+
 export function parseManifest(content: string): Manifest {
   const schema = valueOf(content, "schema");
   const name = valueOf(content, "name");
