@@ -63,7 +63,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [ ] **PKG-003** Add package audit and permission review before installation.
 - [x] **PKG-004** Add update, compatibility, and dependency conflict workflows.
 - [x] **PKG-005** Create a curated Multileaf package registry.
-- [ ] **PKG-006** Add package signing, checksums, and provenance verification.
+- [x] **PKG-006** Add package signing, checksums, and provenance verification.
 
 ## Context and cost — P2
 

@@ -22,6 +22,7 @@ import { scanProject } from "./scanner.js";
 import { assertPackagePermissions } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
+import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -455,10 +456,19 @@ export async function runCommand(
       const query = args.find((arg) => arg.startsWith("--search="))?.slice(9) ?? "";
       return { exitCode: 0, output: serializeRegistry(searchRegistry(query)) };
     }
+    if (command === "verify-package") {
+      const packageArg = args.find((arg) => arg.startsWith("--package="));
+      const checksumArg = args.find((arg) => arg.startsWith("--checksum="));
+      if (!packageArg || !checksumArg)
+        return { exitCode: 1, error: "Usage: aiw verify-package --package=path --checksum=sha256" };
+      const content = fs.read(join(root, packageArg.slice(10)));
+      verifyPackageProvenance(content, { checksum: checksumArg.slice(11) });
+      return { exitCode: 0, output: `Package provenance verified: ${checksumPackage(content)}` };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | registry [--search=query] | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

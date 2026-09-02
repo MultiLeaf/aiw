@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./cli.js";
 import type { Interpreter } from "./interpreter.js";
+import { checksumPackage } from "./package-integrity.js";
 
 async function project(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aiw-test-"));
@@ -214,6 +215,21 @@ describe("AI Workflow CLI", () => {
     expect(result.output).toContain("vercel/react-best-practices@latest");
     expect(result.output).toContain("permissions: network:external");
     expect(result.output).not.toContain("multileaf/aiw-self-hosting");
+  });
+
+  it("verifies a package checksum through the CLI", async () => {
+    const cwd = await project();
+    const packagePath = join(cwd, "package.yaml");
+    const content = "schema: 1\ntrusted: package\n";
+    await writeFile(packagePath, content);
+    const verified = await run(
+      ["verify-package", "--package=package.yaml", `--checksum=${checksumPackage(content)}`],
+      cwd,
+    );
+    expect(verified.exitCode).toBe(0);
+    const rejected = await run(["verify-package", "--package=package.yaml", "--checksum=bad"], cwd);
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.error).toContain("checksum mismatch");
   });
 
   it("creates an English brainstorming artifact with required sections", async () => {
