@@ -212,6 +212,7 @@ describe("AI Workflow CLI", () => {
     const result = await run(["registry", "--search=react"], await project());
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("vercel/react-best-practices@latest");
+    expect(result.output).toContain("permissions: network:external");
     expect(result.output).not.toContain("multileaf/aiw-self-hosting");
   });
 

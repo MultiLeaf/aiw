@@ -37,6 +37,9 @@ export function searchRegistry(query = ""): RegistryPackage[] {
 
 export function serializeRegistry(packages: readonly RegistryPackage[]): string {
   return packages
-    .map((pkg) => `${pkg.id}@${pkg.version} [${pkg.provider}] - ${pkg.description}`)
+    .map(
+      (pkg) =>
+        `${pkg.id}@${pkg.version} [${pkg.provider}] permissions: ${pkg.permissions.join(",") || "none"} - ${pkg.description}`,
+    )
     .join("\n");
 }

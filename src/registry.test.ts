@@ -9,6 +9,8 @@ describe("curated package registry", () => {
 
   it("searches deterministically and serializes readable results", () => {
     expect(searchRegistry("react").map((pkg) => pkg.id)).toEqual(["vercel/react-best-practices"]);
-    expect(serializeRegistry(searchRegistry("core"))).toContain("multileaf/aiw-self-hosting@0.1.0");
+    expect(serializeRegistry(searchRegistry("core"))).toContain(
+      "multileaf/aiw-self-hosting@0.1.0 [local] permissions: none",
+    );
   });
 });
