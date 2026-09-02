@@ -31,7 +31,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **SCAN-004** Add interactive confirmation and overrides. _Acceptance:_ users can accept, reject, or edit inferred facts.
 - [x] **REC-001** Build capability recommendation engine. _Acceptance:_ recommendations include rationale, evidence, permissions, conflicts, and confidence.
 - [x] **REC-002** Add interactive capability selection. _Acceptance:_ users select packages and individual resources before installation.
-- [ ] **GEN-001** Generate project-specific rules, agents, hooks, and context. _Acceptance:_ generated content uses confirmed profile data and English artifacts.
+- [x] **GEN-001** Generate project-specific rules, agents, hooks, and context. _Acceptance:_ generated content uses confirmed profile data and English artifacts.
 - [ ] **GEN-002** Preserve manual overrides and detect drift. _Acceptance:_ regeneration never silently overwrites user changes.
 
 ## SDD workflow — P1
