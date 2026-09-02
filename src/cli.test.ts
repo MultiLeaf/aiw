@@ -283,6 +283,18 @@ describe("AI Workflow CLI", () => {
     ).toContain("Token budget exceeded");
   });
 
+  it("reports deterministic context quality metrics", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["context", "--layer=project", "--content=Shared line\nProject line"], cwd);
+    await run(["context", "--layer=task", "--content=Shared line"], cwd);
+    const result = await run(["context-quality"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("non_empty_layers: 2");
+    expect(result.output).toContain("duplicate_lines: 1");
+    expect(result.output).toBe((await run(["context-quality"], cwd)).output);
+  });
+
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);
