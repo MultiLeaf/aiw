@@ -8,6 +8,7 @@ describe("quality pipeline", () => {
     };
     expect(packageJson.scripts.check).toContain("format:check");
     expect(packageJson.scripts.check).toContain("lint");
+    expect(packageJson.scripts.check).toContain("typecheck");
     expect(packageJson.scripts.check).toContain("build");
     expect(packageJson.scripts.check).toContain("test");
     expect(packageJson.scripts.check).toContain("security:check");
