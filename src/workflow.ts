@@ -92,6 +92,12 @@ export async function runCommand(
       const overrides = fs.exists(join(aiw, "overrides.yml"))
         ? parseOverrides(fs.read(join(aiw, "overrides.yml")))
         : [];
+      const rejectedKeys = new Set(
+        overrides
+          .filter((override) => override.action === "reject")
+          .map((override) => override.key),
+      );
+      profile.facts = profile.facts.filter((fact) => !rejectedKeys.has(fact.key));
       profile.facts = mergeFacts(profile.facts, applyOverrides(profile.facts, overrides));
       const evidence = profile.facts
         .map(

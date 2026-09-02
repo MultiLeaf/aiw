@@ -605,6 +605,18 @@ resources:
     expect(profile).toContain("state: confirmed");
   });
 
+  it("removes rejected facts from persisted scan output", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(join(cwd, "package.json"), "{}");
+    await run(["confirm", "--reject", "package-manager"], cwd);
+
+    const result = await run(["scan"], cwd);
+    expect(result.exitCode).toBe(0);
+    const profile = await readFile(join(cwd, ".aiw/profile.yml"), "utf8");
+    expect(profile).not.toContain("key: package-manager");
+  });
+
   it("generates and selects recommendations through the CLI", async () => {
     const cwd = await project();
     await run(["install"], cwd);
