@@ -21,6 +21,7 @@ import { installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import { assertPackagePermissions } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
+import { searchRegistry, serializeRegistry } from "./registry.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -450,10 +451,14 @@ export async function runCommand(
       fs.write(join(aiw, "lock.yml"), serializeLock([...existingPackages, resolvePackage(pkg)]));
       return { exitCode: 0, output: `Package updated: ${pkg.id}@${pkg.version}` };
     }
+    if (command === "registry") {
+      const query = args.find((arg) => arg.startsWith("--search="))?.slice(9) ?? "";
+      return { exitCode: 0, output: serializeRegistry(searchRegistry(query)) };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | registry [--search=query] | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

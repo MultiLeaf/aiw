@@ -205,6 +205,16 @@ describe("AI Workflow CLI", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("lists and searches the curated package registry", async () => {
+    const all = await run(["registry"], await project());
+    expect(all.exitCode).toBe(0);
+    expect(all.output).toContain("multileaf/aiw-self-hosting@0.1.0");
+    const result = await run(["registry", "--search=react"], await project());
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("vercel/react-best-practices@latest");
+    expect(result.output).not.toContain("multileaf/aiw-self-hosting");
+  });
+
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);
