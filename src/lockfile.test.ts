@@ -34,4 +34,10 @@ describe("lockfile resolution", () => {
     const second = { ...first, id: "another/package" };
     expect(serializeLock([first, second])).toBe(serializeLock([second, first]));
   });
+
+  it("produces the same lockfile for the same resolved package set", () => {
+    const first = serializeLock([resolvePackage(pkg)]);
+    const second = serializeLock([resolvePackage({ ...pkg })]);
+    expect(first).toBe(second);
+  });
 });

@@ -17,7 +17,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **INS-002** Implement target selection and detection. _Acceptance:_ supported installed agents are detected and user can override detection.
 - [x] **INS-003** Install and register the base `ai-init` skill. _Acceptance:_ generated artifact is valid for every supported target.
 - [x] **INS-004** Implement `status`, `doctor`, and actionable diagnostics. _Acceptance:_ missing, stale, conflicting, and unsupported state is explained.
-- [ ] **INS-005** Implement package resolution and lockfile generation. _Acceptance:_ same lockfile produces the same resources.
+- [x] **INS-005** Implement package resolution and lockfile generation. _Acceptance:_ same lockfile produces the same resources.
 - [ ] **INS-006** Implement uninstall and repair safely. _Acceptance:_ only AIW-owned generated files are removed or restored.
 
 ## Project intelligence — P1
