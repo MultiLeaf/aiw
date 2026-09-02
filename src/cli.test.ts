@@ -255,6 +255,22 @@ describe("AI Workflow CLI", () => {
     expect(delta.output).not.toContain("# global context");
   });
 
+  it("invalidates stale context summaries", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await run(["context", "--layer=project", "--content=Original context"], cwd);
+    expect((await run(["context-summary", "--summary=Original summary"], cwd)).output).toBe(
+      "Original summary",
+    );
+    expect((await run(["context-summary", "--summary=Ignored while fresh"], cwd)).output).toBe(
+      "Original summary",
+    );
+    await run(["context", "--layer=project", "--content=Changed context"], cwd);
+    expect((await run(["context-summary", "--summary=Updated summary"], cwd)).output).toBe(
+      "Updated summary",
+    );
+  });
+
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);

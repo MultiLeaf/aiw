@@ -31,6 +31,12 @@ import {
   type ContextLayer,
 } from "./context-store.js";
 import { loadContextDelta, retrieveTaskContext } from "./context-retrieval.js";
+import {
+  createSummaryCache,
+  isSummaryFresh,
+  parseSummaryCache,
+  serializeSummaryCache,
+} from "./context-cache.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -500,6 +506,19 @@ export async function runCommand(
         return { exitCode: 0, output };
       }
       return { exitCode: 1, error: "Usage: aiw context [--layer=project --content=text]" };
+    }
+    if (command === "context-summary") {
+      const summaryArg = args.find((arg) => arg.startsWith("--summary="))?.slice(10);
+      if (summaryArg === undefined)
+        return { exitCode: 1, error: "Usage: aiw context-summary --summary=text" };
+      const context = composeContext(readContextStore(root, fs));
+      const cachePath = join(aiw, "context/summary.yml");
+      if (fs.exists(cachePath)) {
+        const cache = parseSummaryCache(fs.read(cachePath));
+        if (isSummaryFresh(context, cache)) return { exitCode: 0, output: cache.summary };
+      }
+      fs.write(cachePath, serializeSummaryCache(createSummaryCache(context, summaryArg)));
+      return { exitCode: 0, output: summaryArg };
     }
     return {
       exitCode: 0,
