@@ -54,3 +54,8 @@ export function getAdapterCapabilities(target: string): AdapterCapabilities {
   if (!TARGETS.includes(target as Target)) throw new Error(`Unsupported adapter target: ${target}`);
   return ADAPTER_CAPABILITIES[target as Target];
 }
+
+export function serializeAdapterCapabilities(target: string): string {
+  const capabilities = getAdapterCapabilities(target);
+  return `target: ${capabilities.target}\nresources: [${capabilities.resources.join(", ")}]\nevents: [${capabilities.events.join(", ")}]\nfallback: ${capabilities.fallback}\n`;
+}

@@ -39,6 +39,7 @@ import {
 } from "./context-cache.js";
 import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "./token-usage.js";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
+import { serializeAdapterCapabilities } from "./adapter-contract.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -557,10 +558,14 @@ export async function runCommand(
       fs.write(join(aiw, "context/quality.yml"), output);
       return { exitCode: 0, output };
     }
+    if (command === "capabilities") {
+      const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
+      return { exitCode: 0, output: serializeAdapterCapabilities(target) };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | context | context-summary | context-quality | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

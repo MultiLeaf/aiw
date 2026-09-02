@@ -3,6 +3,7 @@ import {
   getAdapterCapabilities,
   ADAPTER_CAPABILITIES,
   LIFECYCLE_EVENTS,
+  serializeAdapterCapabilities,
 } from "./adapter-contract.js";
 import { TARGETS } from "./types.js";
 
@@ -19,5 +20,11 @@ describe("adapter capability contract", () => {
   it("rejects unsupported targets and exposes fallback behavior", () => {
     expect(getAdapterCapabilities("universal").fallback).toBe(true);
     expect(() => getAdapterCapabilities("unknown")).toThrow("Unsupported adapter target");
+  });
+
+  it("reports a deterministic capability matrix entry", () => {
+    expect(serializeAdapterCapabilities("codex")).toContain(
+      "events: [install, update, remove, validate]",
+    );
   });
 });

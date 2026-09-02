@@ -295,6 +295,13 @@ describe("AI Workflow CLI", () => {
     expect(result.output).toBe((await run(["context-quality"], cwd)).output);
   });
 
+  it("reports adapter capabilities through the CLI", async () => {
+    const result = await run(["capabilities", "--target=codex"], await project());
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("resources: [skills, rules, agents, hooks, templates]");
+    expect(result.output).toContain("events: [install, update, remove, validate]");
+  });
+
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);
