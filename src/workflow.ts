@@ -244,13 +244,17 @@ export async function runCommand(
           : "Project-specific resources generated.",
       };
     }
-    if (command === "status")
-      return {
-        exitCode: 0,
-        output: fs.exists(join(aiw, "manifest.yml"))
-          ? fs.read(join(aiw, "manifest.yml"))
-          : "AI Workflow is not installed.",
-      };
+    if (command === "status") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 0, output: "AI Workflow is not installed." };
+      try {
+        const manifest = fs.read(join(aiw, "manifest.yml"));
+        parseManifest(manifest);
+        return { exitCode: 0, output: manifest };
+      } catch (error) {
+        return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
     if (command === "doctor") {
       const required = ["manifest.yml", "profile.yml", "lock.yml"];
       const missing = required.filter((file) => !fs.exists(join(aiw, file)));

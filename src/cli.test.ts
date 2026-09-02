@@ -519,6 +519,15 @@ resources:
     expect(result.error).toContain("unsupported");
   });
 
+  it("reports invalid manifest state through status", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(join(cwd, ".aiw/manifest.yml"), "schema: 2\n");
+    const result = await run(["status"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("schema");
+  });
+
   it("repairs missing structure and uninstalls only owned files", async () => {
     const cwd = await project();
     await run(["install"], cwd);
