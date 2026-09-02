@@ -9,7 +9,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **FND-003** Define adapter contract and capability matrix. _Acceptance:_ adapters report supported resources and lifecycle events.
 - [x] **FND-004** Introduce structured domain types and service interfaces. _Acceptance:_ CLI contains no business logic; services are dependency-injected and unit-testable.
 - [x] **FND-005** Add complete TDD quality pipeline. _Acceptance:_ `check` runs format, lint, typecheck, tests, and security checks.
-- [ ] **FND-006** Add CI workflow. _Acceptance:_ every pull request runs all required checks.
+- [x] **FND-006** Add CI workflow. _Acceptance:_ every pull request runs all required checks.
 
 ## Installation and lifecycle — P0/P1
 
