@@ -20,6 +20,7 @@ import { resolvePackage, serializeLock } from "./lockfile.js";
 import { installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import { assertPackagePermissions } from "./package-audit.js";
+import { planPackageUpdate } from "./package-updates.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -407,10 +408,33 @@ export async function runCommand(
       fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(pkg)]));
       return { exitCode: 0, output: `Package resolved: ${pkg.id}@${pkg.version}` };
     }
+    if (command === "update") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const packageArg = args.find((arg) => arg.startsWith("--package="));
+      if (!packageArg)
+        return { exitCode: 1, error: "Usage: aiw update --package=path --target=target" };
+      const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      assertPackagePermissions(pkg, parseApprovedPermissions(args));
+      const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
+      const lock = fs.exists(join(aiw, "lock.yml")) ? fs.read(join(aiw, "lock.yml")) : "";
+      const current = lock.match(
+        new RegExp(`id: ${escapeRegExp(pkg.id)}\\n\\s+version: ([^\\n]+)`),
+      );
+      const plan = planPackageUpdate(
+        current ? { id: pkg.id, version: current[1].trim() } : undefined,
+        pkg,
+        target,
+      );
+      if (plan.status !== "update")
+        return { exitCode: 1, error: plan.reason ?? `Update blocked: ${plan.status}.` };
+      fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(pkg)]));
+      return { exitCode: 0, output: `Package updated: ${pkg.id}@${pkg.version}` };
+    }
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | validate [--package=path]",
+        "aiw install [--target target] | scan | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
@@ -433,4 +457,8 @@ function parseApprovedPermissions(args: string[]): string[] {
     .flatMap((arg) => arg.slice("--allow=".length).split(","))
     .map((permission) => permission.trim())
     .filter(Boolean);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./cli.js";
@@ -301,6 +301,39 @@ describe("AI Workflow CLI", () => {
     const lock = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
     expect(lock).toContain("id: multileaf/aiw-self-hosting");
     expect(lock).toContain("integrity: sha256-multileaf/aiw-self-hosting@0.1.0");
+  });
+
+  it("updates a package only when the candidate is newer and compatible", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const packagePath = join(cwd, "package.yaml");
+    const packageContent = (version: string): string => `schema: 1
+id: demo/package
+version: ${version}
+provider: local
+source: ./package
+dependencies: []
+permissions: []
+provenance:
+  source: ./package
+resources:
+  skills:
+    - { id: demo-skill, version: ${version}, path: skill.md }
+  rules: []
+  agents: []
+  hooks: []
+  templates: []
+`;
+    await writeFile(packagePath, packageContent("1.0.0"));
+    await run(["resolve", "--package=package.yaml"], cwd);
+    await writeFile(packagePath, packageContent("2.0.0"));
+    const updated = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
+    expect(updated.exitCode).toBe(0);
+    expect(updated.output).toContain("demo/package@2.0.0");
+    await expect(readFile(join(cwd, ".aiw/lock.yml"), "utf8")).resolves.toContain("version: 2.0.0");
+    const current = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
+    expect(current.exitCode).toBe(1);
+    expect(current.error).toContain("already at 2.0.0");
   });
 
   it("records an externally installed Vercel skill in the AIW lockfile", async () => {
