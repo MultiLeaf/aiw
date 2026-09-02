@@ -47,6 +47,8 @@ Only detected and confirmed data may drive automatic generation. Inferred data r
 
 The interpreter excludes secrets, binaries, generated output, dependencies, Git internals, and checkpoints by default. It receives only files relevant to the active analysis task.
 
+The request contract also carries a positive `maxTokens` ceiling and a deterministic `estimatedTokens` measurement capped at that ceiling. Provider calls receive the same ceiling, while token usage can be recorded through the per-stage usage ledger.
+
 Before a provider call, the interpreter:
 
 - normalizes and filters relative paths;
