@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WorkflowDependencies } from "./services.js";
+import type { WorkflowDependencies, WorkflowService } from "./services.js";
 
 describe("domain service contracts", () => {
   it("allows independent services to be injected", async () => {
@@ -19,5 +19,15 @@ describe("domain service contracts", () => {
     };
     await expect(dependencies.scanner?.scan(".")).resolves.toEqual({ files: [], evidence: [] });
     expect(dependencies.profiler).toBeDefined();
+  });
+
+  it("defines a dependency-injectable workflow boundary", async () => {
+    const service: WorkflowService = {
+      execute: async () => ({ exitCode: 0, output: "ok" }),
+    };
+    await expect(service.execute([], ".", {} as never)).resolves.toEqual({
+      exitCode: 0,
+      output: "ok",
+    });
   });
 });
