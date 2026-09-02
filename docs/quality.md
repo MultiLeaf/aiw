@@ -25,7 +25,7 @@ A feature is complete only when all affected layers are validated: domain, modul
 
 Externally visible tasks also require an isolated integration run by an AI subagent in a separate worktree. That run must use the packaged or executable workflow, record its outcomes, and leave the validation worktree clean.
 
-Every launched subagent must be instructed to notify the coordinator through Orca when it finishes, including its status, validation summary, failures, and worktree cleanliness.
+Every launched subagent must be instructed to send a direct Orca orchestration message to the coordinator terminal when it finishes; a mailbox-only notification is insufficient. The message must include its status, validation summary, failures, and worktree cleanliness.
 
 ## Self-validation
 

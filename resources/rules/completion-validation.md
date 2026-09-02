@@ -16,4 +16,4 @@ Passing domain tests alone is not sufficient for a feature that affects the CLI,
 
 For every externally visible task, run an isolated integration validation with an AI subagent in a separate worktree. The subagent must exercise the packaged or executable workflow, report the commands and outcomes, and confirm that its worktree is clean. The main worktree must not be used as a substitute for this validation.
 
-When launching a subagent, explicitly instruct it to notify the coordinator through Orca when it finishes. The notification must include the final status, validation summary, failures if any, and worktree cleanliness.
+When launching a subagent, explicitly instruct it to send a direct Orca orchestration message to the coordinator terminal when it finishes; a mailbox-only notification is insufficient. The direct notification must include the final status, validation summary, failures if any, and worktree cleanliness.
