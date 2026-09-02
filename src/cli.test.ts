@@ -69,6 +69,16 @@ describe("AI Workflow CLI", () => {
     await expect(stat(join(cwd, ".claude/skills/ai-init/SKILL.md"))).rejects.toThrow();
   });
 
+  it("does not overwrite a user-edited target skill on reinstall", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const skillPath = join(cwd, ".agents/skills/ai-init/SKILL.md");
+    await writeFile(skillPath, "user override\n");
+    const result = await run(["install", "--target", "codex"], cwd);
+    expect(result.output).toContain("Existing state preserved");
+    await expect(readFile(skillPath, "utf8")).resolves.toBe("user override\n");
+  });
+
   it("scans a JavaScript project and writes its profile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
