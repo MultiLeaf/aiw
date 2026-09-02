@@ -40,6 +40,20 @@ resources:
     expect(contract.resources.rules).toEqual([]);
   });
 
+  it.each(["id", "version", "path"])("rejects a resource without %s", (missing) => {
+    const resource = { id: "skill", version: "1.0.0", path: "skills/skill.md" };
+    delete resource[missing as keyof typeof resource];
+    expect(() =>
+      validatePackageContract(
+        `schema: 1\nid: demo\nversion: 1.0.0\nprovider: local\nsource: .\ndependencies: []\npermissions: []\nprovenance:\n  source: .\nresources:\n  skills:\n    - { ${Object.entries(
+          resource,
+        )
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(", ")} }\n`,
+      ),
+    ).toThrow("require id, version, and path");
+  });
+
   it("rejects packages without provenance and permissions", () => {
     expect(() =>
       validatePackageContract(

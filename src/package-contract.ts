@@ -44,8 +44,9 @@ export function validatePackageContract(
     RESOURCE_TYPES.map((type) => [type, parseResources(content, type)]),
   ) as Record<ResourceType, PackageResource[]>;
   for (const type of RESOURCE_TYPES) {
-    const section = content.match(new RegExp(`  ${type}:\\n((?:\\s{4}- .*\\n?)+)`))?.[1] ?? "";
-    if (section && resources[type].length === 0)
+    const section = resourceSection(content, type);
+    const entries = section.match(/-\s*\{[^}]*\}/g) ?? [];
+    if (entries.length !== resources[type].length)
       throw new Error(`Package resource entries in '${type}' require id, version, and path.`);
     for (const resource of resources[type]) {
       if (!resourceExists(resource.path))
@@ -79,6 +80,10 @@ export function validatePackageContract(
       : {}),
     ...(list(content, "targets").length ? { targets: list(content, "targets") } : {}),
   };
+}
+
+function resourceSection(content: string, type: ResourceType): string {
+  return content.match(new RegExp(`^  ${type}:\\n([\\s\\S]*?)(?=^\\w|\\s*$)`, "m"))?.[1] ?? "";
 }
 
 function parsePolicies(content: string): PackagePolicy[] {
@@ -119,7 +124,7 @@ function list(content: string, key: string): string[] {
 }
 
 function parseResources(content: string, type: ResourceType): PackageResource[] {
-  const section = content.match(new RegExp(`  ${type}:\\n((?:    - \\{.*\\}\\n?)+)`))?.[1] ?? "";
+  const section = resourceSection(content, type);
   return [...section.matchAll(/id:\s*([\w-]+), version:\s*([\d.]+), path:\s*([^ }]+)/g)].map(
     (match) => ({ id: match[1], version: match[2], path: match[3] }),
   );

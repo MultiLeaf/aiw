@@ -9,6 +9,7 @@ engines:
   ai_workflow: ">=0.1.0"
 dependencies: []
 permissions: []
+policies: []
 provenance:
   source: ./resources
   checksum: sha256:pending
