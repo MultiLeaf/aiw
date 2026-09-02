@@ -19,7 +19,7 @@ export function planPackageUpdate(
   target: string,
   lockedVersions: Map<string, string> = new Map(),
 ): UpdatePlan {
-  const supportedTargets = (candidate as PackageContract & { targets?: string[] }).targets;
+  const supportedTargets = candidate.targets;
   if (
     supportedTargets &&
     !supportedTargets.includes(target) &&

@@ -334,6 +334,26 @@ resources:
     const current = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
     expect(current.exitCode).toBe(1);
     expect(current.error).toContain("already at 2.0.0");
+
+    await writeFile(packagePath, packageContent("3.0.0"));
+    const unsupported = await run(
+      ["update", "--package=package.yaml", "--target=unsupported"],
+      cwd,
+    );
+    expect(unsupported.exitCode).toBe(1);
+    expect(unsupported.error).toContain("Unsupported target");
+
+    await writeFile(
+      packagePath,
+      packageContent("3.0.0").replace("dependencies: []", "dependencies: [demo/base]"),
+    );
+    await writeFile(
+      join(cwd, ".aiw/lock.yml"),
+      `${await readFile(join(cwd, ".aiw/lock.yml"), "utf8")}  - id: demo/base\n    version: 1.0.0\n    provider: local\n    source: ./base\n    integrity: sha256-demo/base@1.0.0\n`,
+    );
+    const conflict = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
+    expect(conflict.exitCode).toBe(1);
+    expect(conflict.error).toContain("incompatible");
   });
 
   it("records an externally installed Vercel skill in the AIW lockfile", async () => {

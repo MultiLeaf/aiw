@@ -12,6 +12,7 @@ export type PackageContract = {
   dependencies: string[];
   permissions: string[];
   provenance: { source: string; checksum?: string };
+  targets?: string[];
 };
 
 export function validatePackageContract(content: string): PackageContract {
@@ -53,6 +54,7 @@ export function validatePackageContract(content: string): PackageContract {
     dependencies: list(content, "dependencies"),
     permissions: list(content, "permissions"),
     provenance: { source: scalar(content, "source") },
+    ...(list(content, "targets").length ? { targets: list(content, "targets") } : {}),
   };
 }
 

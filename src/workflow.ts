@@ -417,6 +417,7 @@ export async function runCommand(
       const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
       assertPackagePermissions(pkg, parseApprovedPermissions(args));
       const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
+      if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
       const lock = fs.exists(join(aiw, "lock.yml")) ? fs.read(join(aiw, "lock.yml")) : "";
       const current = lock.match(
         new RegExp(`id: ${escapeRegExp(pkg.id)}\\n\\s+version: ([^\\n]+)`),
@@ -425,10 +426,28 @@ export async function runCommand(
         current ? { id: pkg.id, version: current[1].trim() } : undefined,
         pkg,
         target,
+        new Map(
+          [...lock.matchAll(/- id: ([^\n]+)\n\s+version: ([^\n]+)/g)]
+            .filter((match) => match[1].trim() !== pkg.id)
+            .map((match) => [match[1].trim(), match[2].trim()]),
+        ),
       );
       if (plan.status !== "update")
         return { exitCode: 1, error: plan.reason ?? `Update blocked: ${plan.status}.` };
-      fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(pkg)]));
+      const existingPackages = [
+        ...lock.matchAll(
+          /- id: ([^\n]+)\n\s+version: ([^\n]+)\n\s+provider: ([^\n]+)\n\s+source: ([^\n]+)\n\s+integrity: ([^\n]+)/g,
+        ),
+      ]
+        .filter((match) => match[1].trim() !== pkg.id)
+        .map((match) => ({
+          id: match[1].trim(),
+          version: match[2].trim(),
+          provider: match[3].trim(),
+          source: match[4].trim(),
+          integrity: match[5].trim(),
+        }));
+      fs.write(join(aiw, "lock.yml"), serializeLock([...existingPackages, resolvePackage(pkg)]));
       return { exitCode: 0, output: `Package updated: ${pkg.id}@${pkg.version}` };
     }
     return {
