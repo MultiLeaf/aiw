@@ -8,7 +8,7 @@ describe("package contract", () => {
     expect(contract.version).toBe("0.1.0");
     expect(contract.resources.skills.length).toBeGreaterThan(0);
     expect(contract.policies).toEqual([]);
-    expect(contract.engines?.ai_workflow).toBeUndefined();
+    expect(contract.engines?.ai_workflow).toBe(">=0.1.0");
   });
 
   it("represents policies, engines, provenance, and every resource collection", () => {
@@ -36,7 +36,7 @@ resources:
 `);
     expect(contract.policies).toEqual([{ id: "safety", value: "required" }]);
     expect(contract.provenance.checksum).toBe("abc");
-    expect(contract.engines?.ai_workflow).toBeUndefined();
+    expect(contract.engines?.ai_workflow).toBe(">=0.1.0");
     expect(contract.resources.rules).toEqual([]);
   });
 

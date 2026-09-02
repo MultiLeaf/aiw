@@ -19,7 +19,10 @@ export type PackageContract = {
   targets?: string[];
 };
 
-export function validatePackageContract(content: string): PackageContract {
+export function validatePackageContract(
+  content: string,
+  resourceExists: (path: string) => boolean = () => true,
+): PackageContract {
   const required = [
     "schema",
     "id",
@@ -40,6 +43,15 @@ export function validatePackageContract(content: string): PackageContract {
   const resources = Object.fromEntries(
     RESOURCE_TYPES.map((type) => [type, parseResources(content, type)]),
   ) as Record<ResourceType, PackageResource[]>;
+  for (const type of RESOURCE_TYPES) {
+    const section = content.match(new RegExp(`  ${type}:\\n((?:\\s{4}- .*\\n?)+)`))?.[1] ?? "";
+    if (section && resources[type].length === 0)
+      throw new Error(`Package resource entries in '${type}' require id, version, and path.`);
+    for (const resource of resources[type]) {
+      if (!resourceExists(resource.path))
+        throw new Error(`Package resource path does not exist: ${resource.path}`);
+    }
+  }
   if (
     !resources.skills.length &&
     !resources.rules.length &&
@@ -58,12 +70,12 @@ export function validatePackageContract(content: string): PackageContract {
     dependencies: list(content, "dependencies"),
     permissions: list(content, "permissions"),
     provenance: {
-      source: scalar(content, "source"),
+      source: nestedScalar(content, "source") || scalar(content, "source"),
       ...(nestedScalar(content, "checksum") ? { checksum: nestedScalar(content, "checksum") } : {}),
     },
     policies: parsePolicies(content),
-    ...(scalar(content, "ai_workflow")
-      ? { engines: { ai_workflow: scalar(content, "ai_workflow") } }
+    ...(nestedScalar(content, "ai_workflow")
+      ? { engines: { ai_workflow: nestedScalar(content, "ai_workflow") } }
       : {}),
     ...(list(content, "targets").length ? { targets: list(content, "targets") } : {}),
   };

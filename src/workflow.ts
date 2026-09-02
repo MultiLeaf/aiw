@@ -410,7 +410,14 @@ export async function runCommand(
         return { exitCode: 1, error: "AI Workflow is not installed." };
       parseManifest(fs.read(join(aiw, "manifest.yml")));
       const packageArg = args.find((arg) => arg.startsWith("--package="));
-      if (packageArg) validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      if (packageArg)
+        validatePackageContract(
+          fs.read(join(root, packageArg.slice(10))),
+          (path) =>
+            !fs.exists(join(root, "resources")) ||
+            fs.exists(join(root, path)) ||
+            fs.exists(join(root, "resources", path)),
+        );
       return {
         exitCode: 0,
         output: "Configuration is valid.",

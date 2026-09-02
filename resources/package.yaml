@@ -11,6 +11,8 @@ dependencies: []
 permissions: []
 provenance:
   source: ./resources
+  checksum: sha256:pending
+targets: [codex, claude, cursor, gemini, copilot, universal]
 resources:
   skills:
     - { id: project-init, version: 0.1.0, path: skills/project-init.md }
