@@ -47,7 +47,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 ## Adapters and migration — P1/P2
 
 - [x] **ADP-001** Complete Codex adapter. _Acceptance:_ skills, rules, agents, hooks, and context render correctly where supported.
-- [ ] **ADP-002** Implement Claude Code adapter.
+- [x] **ADP-002** Implement Claude Code adapter.
 - [ ] **ADP-003** Implement Cursor adapter.
 - [ ] **ADP-004** Implement Gemini CLI adapter.
 - [ ] **ADP-005** Implement GitHub Copilot adapter.
