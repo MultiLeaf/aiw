@@ -134,10 +134,16 @@ export async function runCommand(
         };
       if (dryRun)
         return { exitCode: 0, output: `Migration preview: target would change to ${target}.` };
+      const manifestPath = join(aiw, "manifest.yml");
+      const previousTarget =
+        fs
+          .read(manifestPath)
+          .match(/^\s*active:\s*(.+)$/m)?.[1]
+          ?.trim() ?? "universal";
       if (fs.exists(targetPath))
         fs.write(
           join(aiw, "checkpoints/migration-backup.yml"),
-          `path: ${targetPath}\ncontent_base64: ${Buffer.from(fs.read(targetPath)).toString("base64")}\n`,
+          `previous_target: ${previousTarget}\npath: ${targetPath}\ncontent_base64: ${Buffer.from(fs.read(targetPath)).toString("base64")}\n`,
         );
       generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit))
@@ -145,8 +151,7 @@ export async function runCommand(
           join(root, renderResourcePath(target, "skills", "ai-init")),
           fs.read(neutralAiInit),
         );
-      const path = join(aiw, "manifest.yml");
-      fs.write(path, fs.read(path).replace(/active: .*\n/, `active: ${target}\n`));
+      fs.write(manifestPath, fs.read(manifestPath).replace(/active: .*\n/, `active: ${target}\n`));
       return { exitCode: 0, output: `Target changed to ${target}` };
     }
     if (command === "rollback") {
@@ -155,8 +160,15 @@ export async function runCommand(
       const content = fs.read(backup);
       const path = content.match(/^path: (.+)$/m)?.[1];
       const encoded = content.match(/^content_base64: (.+)$/m)?.[1];
+      const previousTarget = content.match(/^previous_target: (.+)$/m)?.[1];
       if (!path || !encoded) return { exitCode: 1, error: "Migration backup is invalid." };
       fs.write(path, Buffer.from(encoded, "base64").toString("utf8"));
+      const manifestPath = join(aiw, "manifest.yml");
+      if (previousTarget && fs.exists(manifestPath))
+        fs.write(
+          manifestPath,
+          fs.read(manifestPath).replace(/active: .*\n/, `active: ${previousTarget}\n`),
+        );
       return { exitCode: 0, output: `Migration rolled back: ${path}` };
     }
     if (command === "confirm") {

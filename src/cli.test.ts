@@ -209,6 +209,9 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "utf8")).resolves.toBe(
       "# Original\n",
     );
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: universal",
+    );
   });
 
   it("rejects unsupported targets without changing the manifest", async () => {
