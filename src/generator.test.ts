@@ -36,6 +36,21 @@ describe("project resource generator", () => {
   it("generates only selected capability resources", () => {
     const paths: string[] = [];
     generateProjectResources(profile, ["typescript-quality"], (path) => paths.push(path));
-    expect(paths).toEqual(["generated/rules/project-quality.md"]);
+    expect(paths).toEqual([
+      "generated/rules/project-quality.md",
+      "generated/context/project-profile.md",
+      "generated/hooks/quality-check.md",
+    ]);
+  });
+
+  it("does not invent unavailable commands", () => {
+    const contents: string[] = [];
+    generateProjectResources(
+      { ...profile, quality: {}, testing: undefined },
+      ["typescript-quality"],
+      (_path, content) => contents.push(content),
+    );
+    expect(contents.join("\n")).not.toContain("npm run lint");
+    expect(contents.join("\n")).not.toContain("npm test");
   });
 });
