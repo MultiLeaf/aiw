@@ -182,6 +182,17 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("uses the same Copilot ai-init path for installation and migration", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    await writeFile(join(cwd, ".aiw/resources/skills/ai-init.md"), "# Copilot AI Init\n");
+    expect((await run(["target", "copilot"], cwd)).exitCode).toBe(0);
+    await expect(readFile(join(cwd, ".github/copilot-instructions.md"), "utf8")).resolves.toBe(
+      "# Copilot AI Init\n",
+    );
+    await expect(stat(join(cwd, ".github/skills/ai-init/SKILL.md"))).rejects.toThrow();
+  });
+
   it("supports migration preview and blocks conflicting target content", async () => {
     const cwd = await project();
     await run(["install", "--target", "universal"], cwd);
