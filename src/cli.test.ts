@@ -369,6 +369,8 @@ describe("AI Workflow CLI", () => {
     expect(artifact).toContain("Given");
     expect(artifact).toContain("When");
     expect(artifact).toContain("Then");
+    expect(artifact).toContain("## Constraints");
+    expect(artifact).toContain("## Open Questions");
   });
 
   it("creates an ADR with alternatives, decision, rationale, and links", async () => {

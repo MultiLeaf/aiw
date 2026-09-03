@@ -328,7 +328,7 @@ export async function runCommand(
       const path = join(aiw, "generated/specs/specification.md");
       fs.write(
         path,
-        `# ${title}\n\n## Context\n\n## Requirements\n\n### REQ-001: Requirement title\n\n- **Description:**\n- **Acceptance criteria:**\n  - Given\n  - When\n  - Then\n\n## Non-functional Requirements\n\n## Open Questions\n\n`,
+        `# ${title}\n\n## Context\n\n## Requirements\n\n### REQ-001: Requirement title\n\n- **Description:**\n- **Acceptance criteria:**\n  - Given\n  - When\n  - Then\n\n## Non-functional Requirements\n\n## Constraints\n\n## Open Questions\n\n`,
       );
       return { exitCode: 0, output: `Specification artifact created: ${path}` };
     }
