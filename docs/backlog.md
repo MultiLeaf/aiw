@@ -50,7 +50,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **ADP-002** Implement Claude Code adapter.
 - [x] **ADP-003** Implement Cursor adapter.
 - [x] **ADP-004** Implement Gemini CLI adapter.
-- [ ] **ADP-005** Implement GitHub Copilot adapter.
+- [x] **ADP-005** Implement GitHub Copilot adapter.
 - [ ] **ADP-006** Implement universal fallback adapter.
 - [ ] **MIG-001** Implement `aiw target <target>` migration. _Acceptance:_ neutral resources are rendered to the new target and manifest is updated.
 - [ ] **MIG-002** Add migration dry-run, conflict report, backup, and rollback. _Acceptance:_ failed migration leaves the previous target intact.
