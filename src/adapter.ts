@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { TARGETS, type Target, type FileSystem } from "./types.js";
 import { getAdapterCapabilities } from "./adapter-contract.js";
 import type { ResourceType } from "./package-contract.js";
+import { describeCodexResource } from "./codex-layout.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
@@ -36,67 +37,58 @@ export function generateAiInit(root: string, target: string, fs: FileSystem): vo
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
   if (!isTarget(target))
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
+  if (target === "codex") return describeCodexResource(type, id).path;
   const roots: Record<ResourceType, string> = {
     skills:
-      target === "codex"
-        ? ".agents/skills"
-        : target === "claude"
-          ? ".claude/skills"
-          : target === "cursor"
-            ? ".cursor/skills"
-            : target === "gemini"
-              ? ".gemini/skills"
-              : target === "copilot"
-                ? ".github/copilot"
-                : ".aiw/resources/skills",
+      target === "claude"
+        ? ".claude/skills"
+        : target === "cursor"
+          ? ".cursor/skills"
+          : target === "gemini"
+            ? ".gemini/skills"
+            : target === "copilot"
+              ? ".github/copilot"
+              : ".aiw/resources/skills",
     rules:
-      target === "codex"
-        ? ".agents/rules"
-        : target === "claude"
-          ? ".claude/rules"
-          : target === "cursor"
-            ? ".cursor/rules"
-            : target === "gemini"
-              ? ".gemini/rules"
-              : target === "copilot"
-                ? ".github/copilot/rules"
-                : ".aiw/resources/rules",
+      target === "claude"
+        ? ".claude/rules"
+        : target === "cursor"
+          ? ".cursor/rules"
+          : target === "gemini"
+            ? ".gemini/rules"
+            : target === "copilot"
+              ? ".github/copilot/rules"
+              : ".aiw/resources/rules",
     agents:
-      target === "codex"
-        ? ".agents/agents"
-        : target === "claude"
-          ? ".claude/agents"
-          : target === "cursor"
-            ? ".cursor/agents"
-            : target === "gemini"
-              ? ".gemini/agents"
-              : target === "copilot"
-                ? ".github/copilot/agents"
-                : ".aiw/resources/agents",
+      target === "claude"
+        ? ".claude/agents"
+        : target === "cursor"
+          ? ".cursor/agents"
+          : target === "gemini"
+            ? ".gemini/agents"
+            : target === "copilot"
+              ? ".github/copilot/agents"
+              : ".aiw/resources/agents",
     hooks:
-      target === "codex"
-        ? ".agents/hooks"
-        : target === "claude"
-          ? ".claude/hooks"
-          : target === "cursor"
-            ? ".cursor/hooks"
-            : target === "gemini"
-              ? ".gemini/hooks"
-              : target === "copilot"
-                ? ".github/copilot/hooks"
-                : ".aiw/resources/hooks",
+      target === "claude"
+        ? ".claude/hooks"
+        : target === "cursor"
+          ? ".cursor/hooks"
+          : target === "gemini"
+            ? ".gemini/hooks"
+            : target === "copilot"
+              ? ".github/copilot/hooks"
+              : ".aiw/resources/hooks",
     templates:
-      target === "codex"
-        ? ".agents/templates"
-        : target === "claude"
-          ? ".claude/templates"
-          : target === "cursor"
-            ? ".cursor/templates"
-            : target === "gemini"
-              ? ".gemini/templates"
-              : target === "copilot"
-                ? ".github/copilot/templates"
-                : ".aiw/resources/templates",
+      target === "claude"
+        ? ".claude/templates"
+        : target === "cursor"
+          ? ".cursor/templates"
+          : target === "gemini"
+            ? ".gemini/templates"
+            : target === "copilot"
+              ? ".github/copilot/templates"
+              : ".aiw/resources/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }
