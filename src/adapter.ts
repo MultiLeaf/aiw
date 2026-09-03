@@ -4,6 +4,7 @@ import { getAdapterCapabilities } from "./adapter-contract.js";
 import type { ResourceType } from "./package-contract.js";
 import { describeCodexResource } from "./codex-layout.js";
 import { describeClaudeResource } from "./claude-layout.js";
+import { describeCursorResource } from "./cursor-layout.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
@@ -40,47 +41,38 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
   if (target === "codex") return describeCodexResource(type, id).path;
   if (target === "claude") return describeClaudeResource(type, id).path;
+  if (target === "cursor") return describeCursorResource(type, id).path;
   const roots: Record<ResourceType, string> = {
     skills:
-      target === "cursor"
-        ? ".cursor/skills"
-        : target === "gemini"
-          ? ".gemini/skills"
-          : target === "copilot"
-            ? ".github/copilot"
-            : ".aiw/resources/skills",
+      target === "gemini"
+        ? ".gemini/skills"
+        : target === "copilot"
+          ? ".github/copilot"
+          : ".aiw/resources/skills",
     rules:
-      target === "cursor"
-        ? ".cursor/rules"
-        : target === "gemini"
-          ? ".gemini/rules"
-          : target === "copilot"
-            ? ".github/copilot/rules"
-            : ".aiw/resources/rules",
+      target === "gemini"
+        ? ".gemini/rules"
+        : target === "copilot"
+          ? ".github/copilot/rules"
+          : ".aiw/resources/rules",
     agents:
-      target === "cursor"
-        ? ".cursor/agents"
-        : target === "gemini"
-          ? ".gemini/agents"
-          : target === "copilot"
-            ? ".github/copilot/agents"
-            : ".aiw/resources/agents",
+      target === "gemini"
+        ? ".gemini/agents"
+        : target === "copilot"
+          ? ".github/copilot/agents"
+          : ".aiw/resources/agents",
     hooks:
-      target === "cursor"
-        ? ".cursor/hooks"
-        : target === "gemini"
-          ? ".gemini/hooks"
-          : target === "copilot"
-            ? ".github/copilot/hooks"
-            : ".aiw/resources/hooks",
+      target === "gemini"
+        ? ".gemini/hooks"
+        : target === "copilot"
+          ? ".github/copilot/hooks"
+          : ".aiw/resources/hooks",
     templates:
-      target === "cursor"
-        ? ".cursor/templates"
-        : target === "gemini"
-          ? ".gemini/templates"
-          : target === "copilot"
-            ? ".github/copilot/templates"
-            : ".aiw/resources/templates",
+      target === "gemini"
+        ? ".gemini/templates"
+        : target === "copilot"
+          ? ".github/copilot/templates"
+          : ".aiw/resources/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }
