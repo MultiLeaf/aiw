@@ -232,6 +232,12 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: claude",
     );
+    expect((await run(["rollback"], cwd)).exitCode).toBe(0);
+    for (const [, destination] of fixtures)
+      await expect(stat(join(cwd, destination))).rejects.toThrow();
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: universal",
+    );
   });
 
   it("supports migration preview and blocks conflicting target content", async () => {
@@ -239,6 +245,8 @@ describe("AI Workflow CLI", () => {
     await run(["install", "--target", "universal"], cwd);
     const preview = await run(["target", "cursor", "--dry-run"], cwd);
     expect(preview.exitCode).toBe(0);
+    expect(preview.output).toContain("Migration preview for cursor");
+    expect(preview.output).toContain("remove: previous target ai-init");
     const { writeFile } = await import("node:fs/promises");
     await mkdir(join(cwd, ".cursor/skills/ai-init"), { recursive: true });
     await writeFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "# Manual content\n");

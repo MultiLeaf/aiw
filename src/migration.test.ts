@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { planNeutralResourceMigration } from "./migration.js";
+import {
+  parseMigrationSnapshots,
+  planNeutralResourceMigration,
+  serializeMigrationPreview,
+  serializeMigrationSnapshots,
+} from "./migration.js";
 
 describe("neutral resource migration", () => {
   it("maps every neutral resource category through the target adapter", () => {
@@ -25,5 +30,20 @@ describe("neutral resource migration", () => {
     expect(
       planNeutralResourceMigration("/resources", ["README.md", "skills/x/notes.md"], "codex"),
     ).toEqual([]);
+  });
+
+  it("serializes deterministic previews and reversible snapshots", () => {
+    const migrations = [
+      { source: "/neutral/a", destination: ".target/a" },
+      { source: "/neutral/b", destination: ".target/b" },
+    ];
+    expect(serializeMigrationPreview("claude", migrations, [".target/b"])).toBe(
+      "Migration preview for claude:\nadd: .target/a\nupdate: .target/b\nremove: previous target ai-init\n",
+    );
+    const snapshots = [
+      { path: "/target/a", existed: false, content: "" },
+      { path: "/target/b", existed: true, content: "binary\u0000content" },
+    ];
+    expect(parseMigrationSnapshots(serializeMigrationSnapshots(snapshots))).toEqual(snapshots);
   });
 });

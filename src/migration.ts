@@ -4,6 +4,7 @@ import { RESOURCE_TYPES, type ResourceType } from "./package-contract.js";
 import type { Target } from "./types.js";
 
 export type ResourceMigration = { source: string; destination: string };
+export type MigrationSnapshot = { path: string; existed: boolean; content: string };
 
 export function planNeutralResourceMigration(
   neutralRoot: string,
@@ -23,4 +24,36 @@ export function planNeutralResourceMigration(
       ];
     })
     .sort((left, right) => left.destination.localeCompare(right.destination));
+}
+
+export function serializeMigrationPreview(
+  target: Target,
+  migrations: ResourceMigration[],
+  existingDestinations: string[],
+): string {
+  const existing = new Set(existingDestinations);
+  const changes = migrations.map(({ destination }) =>
+    existing.has(destination) ? `update: ${destination}` : `add: ${destination}`,
+  );
+  return `Migration preview for ${target}:\n${changes.join("\n")}${changes.length ? "\n" : ""}remove: previous target ai-init\n`;
+}
+
+export function serializeMigrationSnapshots(snapshots: MigrationSnapshot[]): string {
+  return Buffer.from(JSON.stringify(snapshots), "utf8").toString("base64");
+}
+
+export function parseMigrationSnapshots(encoded: string): MigrationSnapshot[] {
+  const value: unknown = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+  if (!Array.isArray(value)) throw new Error("Migration resource snapshots are invalid.");
+  return value.map((snapshot) => {
+    if (
+      typeof snapshot !== "object" ||
+      snapshot === null ||
+      typeof (snapshot as MigrationSnapshot).path !== "string" ||
+      typeof (snapshot as MigrationSnapshot).existed !== "boolean" ||
+      typeof (snapshot as MigrationSnapshot).content !== "string"
+    )
+      throw new Error("Migration resource snapshots are invalid.");
+    return snapshot as MigrationSnapshot;
+  });
 }

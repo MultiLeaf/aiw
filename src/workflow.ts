@@ -42,7 +42,12 @@ import { measureContextQuality, serializeContextQuality } from "./context-qualit
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
-import { planNeutralResourceMigration } from "./migration.js";
+import {
+  parseMigrationSnapshots,
+  planNeutralResourceMigration,
+  serializeMigrationPreview,
+  serializeMigrationSnapshots,
+} from "./migration.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -152,6 +157,17 @@ export async function runCommand(
           fs.read(source) !== fs.read(absoluteDestination)
         );
       });
+      if (dryRun) {
+        const existing = resourceMigrations
+          .filter(({ destination }) => fs.exists(join(root, destination)))
+          .map(({ destination }) => destination);
+        const conflictPaths = resourceConflicts.map(({ destination }) => destination);
+        if (universalConflict) conflictPaths.push(renderAiInitPath(target));
+        return {
+          exitCode: 0,
+          output: `${serializeMigrationPreview(target, resourceMigrations, existing)}${conflictPaths.map((path) => `conflict: ${path}\n`).join("")}`,
+        };
+      }
       if (
         universalConflict ||
         (target !== "universal" &&
@@ -164,8 +180,6 @@ export async function runCommand(
           exitCode: 1,
           error: `Migration conflict at ${resourceConflicts[0] ? join(root, resourceConflicts[0].destination) : targetPath}. Use --dry-run to inspect.`,
         };
-      if (dryRun)
-        return { exitCode: 0, output: `Migration preview: target would change to ${target}.` };
       const removePrevious =
         previousTarget !== "universal" &&
         previousTargetPath !== undefined &&
@@ -174,9 +188,15 @@ export async function runCommand(
       if (removePrevious && !fs.remove)
         return { exitCode: 1, error: "Filesystem cannot remove the previous target resource." };
       const destinationExisted = fs.exists(targetPath);
+      const resourceSnapshots = resourceMigrations
+        .filter(({ source, destination }) => source !== join(root, destination))
+        .map(({ destination }) => {
+          const path = join(root, destination);
+          return { path, existed: fs.exists(path), content: fs.exists(path) ? fs.read(path) : "" };
+        });
       fs.write(
         join(aiw, "checkpoints/migration-backup.yml"),
-        `previous_target: ${previousTarget}\nprevious_path: ${previousTargetPath ?? "none"}\nprevious_content_base64: ${previousTargetPath && fs.exists(previousTargetPath) ? Buffer.from(fs.read(previousTargetPath)).toString("base64") : ""}\npath: ${targetPath}\ndestination_existed: ${destinationExisted}\ncontent_base64: ${destinationExisted ? Buffer.from(fs.read(targetPath)).toString("base64") : ""}\n`,
+        `previous_target: ${previousTarget}\nprevious_path: ${previousTargetPath ?? "none"}\nprevious_content_base64: ${previousTargetPath && fs.exists(previousTargetPath) ? Buffer.from(fs.read(previousTargetPath)).toString("base64") : ""}\npath: ${targetPath}\ndestination_existed: ${destinationExisted}\ncontent_base64: ${destinationExisted ? Buffer.from(fs.read(targetPath)).toString("base64") : ""}\nresources_base64: ${serializeMigrationSnapshots(resourceSnapshots)}\n`,
       );
       if (target !== "universal" || !fs.exists(neutralAiInit)) generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit)) fs.write(targetPath, fs.read(neutralAiInit));
@@ -201,6 +221,7 @@ export async function runCommand(
       const previousPath = content.match(/^previous_path: (.+)$/m)?.[1];
       const previousEncoded = content.match(/^previous_content_base64: (.*)$/m)?.[1];
       const destinationExisted = content.match(/^destination_existed: (true|false)$/m)?.[1];
+      const resourcesEncoded = content.match(/^resources_base64: (.+)$/m)?.[1];
       if (!path || encoded === undefined)
         return { exitCode: 1, error: "Migration backup is invalid." };
       if (destinationExisted === "false") {
@@ -210,6 +231,14 @@ export async function runCommand(
       } else fs.write(path, Buffer.from(encoded, "base64").toString("utf8"));
       if (previousPath && previousPath !== "none" && previousEncoded)
         fs.write(previousPath, Buffer.from(previousEncoded, "base64").toString("utf8"));
+      for (const snapshot of resourcesEncoded ? parseMigrationSnapshots(resourcesEncoded) : []) {
+        if (snapshot.existed) fs.write(snapshot.path, snapshot.content);
+        else {
+          if (fs.exists(snapshot.path) && !fs.remove)
+            return { exitCode: 1, error: "Filesystem cannot remove migrated resources." };
+          if (fs.exists(snapshot.path)) fs.remove?.(snapshot.path);
+        }
+      }
       const manifestPath = join(aiw, "manifest.yml");
       if (previousTarget && fs.exists(manifestPath))
         fs.write(
