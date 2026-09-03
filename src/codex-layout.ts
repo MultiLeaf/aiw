@@ -19,6 +19,7 @@ export function describeCodexResource(
 ): CodexResourceDescriptor {
   if (type === "skills") return { path: `.agents/skills/${id}/SKILL.md`, support: "native" };
   if (type === "context") return { path: "AGENTS.md", support: "native" };
+  if (!(type in COMPATIBILITY_ROOTS)) throw new Error(`Unsupported Codex resource type: ${type}`);
   return {
     path: `${COMPATIBILITY_ROOTS[type]}/${id}/${id}.md`,
     support: "compatibility",

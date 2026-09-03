@@ -28,4 +28,10 @@ describe("Codex layout", () => {
     expect(renderCodexContext("/project", "# Project rules\n", fs)).toBe("AGENTS.md");
     expect(files.get("/project/AGENTS.md")).toBe("# Project rules\n");
   });
+
+  it("rejects unsupported resource types at the runtime boundary", () => {
+    expect(() =>
+      describeCodexResource("bogus" as unknown as Parameters<typeof describeCodexResource>[0], "x"),
+    ).toThrow("Unsupported Codex resource type: bogus");
+  });
 });
