@@ -7,6 +7,7 @@ import { describeClaudeResource } from "./claude-layout.js";
 import { describeCursorResource } from "./cursor-layout.js";
 import { describeGeminiResource } from "./gemini-layout.js";
 import { describeCopilotResource } from "./copilot-layout.js";
+import { describeUniversalResource } from "./universal-layout.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
@@ -50,14 +51,7 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
   if (target === "cursor") return describeCursorResource(type, id).path;
   if (target === "gemini") return describeGeminiResource(type, id).path;
   if (target === "copilot") return describeCopilotResource(type, id).path;
-  const roots: Record<ResourceType, string> = {
-    skills: ".aiw/resources/skills",
-    rules: ".aiw/resources/rules",
-    agents: ".aiw/resources/agents",
-    hooks: ".aiw/resources/hooks",
-    templates: ".aiw/resources/templates",
-  };
-  return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
+  return describeUniversalResource(type, id).path;
 }
 
 export function renderCodexResource(
