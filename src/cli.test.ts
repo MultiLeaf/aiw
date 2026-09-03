@@ -165,6 +165,7 @@ describe("AI Workflow CLI", () => {
 
     expect((await run(["target", "claude"], cwd)).exitCode).toBe(0);
     await expect(stat(join(cwd, ".claude/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).rejects.toThrow();
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: claude",
     );
@@ -262,6 +263,21 @@ describe("AI Workflow CLI", () => {
     );
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: universal",
+    );
+  });
+
+  it("rollback restores a removed previous target and removes a newly created destination", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const previous = join(cwd, ".agents/skills/ai-init/SKILL.md");
+    const original = await readFile(previous, "utf8");
+    await run(["target", "claude"], cwd);
+    await expect(stat(previous)).rejects.toThrow();
+    expect((await run(["rollback"], cwd)).exitCode).toBe(0);
+    await expect(readFile(previous, "utf8")).resolves.toBe(original);
+    await expect(stat(join(cwd, ".claude/skills/ai-init/SKILL.md"))).rejects.toThrow();
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: codex",
     );
   });
 

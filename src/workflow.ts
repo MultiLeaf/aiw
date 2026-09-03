@@ -166,17 +166,25 @@ export async function runCommand(
         };
       if (dryRun)
         return { exitCode: 0, output: `Migration preview: target would change to ${target}.` };
-      if (fs.exists(targetPath))
-        fs.write(
-          join(aiw, "checkpoints/migration-backup.yml"),
-          `previous_target: ${previousTarget}\npath: ${targetPath}\ncontent_base64: ${Buffer.from(fs.read(targetPath)).toString("base64")}\n`,
-        );
+      const removePrevious =
+        previousTarget !== "universal" &&
+        previousTargetPath !== undefined &&
+        previousTargetPath !== targetPath &&
+        fs.exists(previousTargetPath);
+      if (removePrevious && !fs.remove)
+        return { exitCode: 1, error: "Filesystem cannot remove the previous target resource." };
+      const destinationExisted = fs.exists(targetPath);
+      fs.write(
+        join(aiw, "checkpoints/migration-backup.yml"),
+        `previous_target: ${previousTarget}\nprevious_path: ${previousTargetPath ?? "none"}\nprevious_content_base64: ${previousTargetPath && fs.exists(previousTargetPath) ? Buffer.from(fs.read(previousTargetPath)).toString("base64") : ""}\npath: ${targetPath}\ndestination_existed: ${destinationExisted}\ncontent_base64: ${destinationExisted ? Buffer.from(fs.read(targetPath)).toString("base64") : ""}\n`,
+      );
       if (target !== "universal" || !fs.exists(neutralAiInit)) generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit)) fs.write(targetPath, fs.read(neutralAiInit));
       for (const migration of resourceMigrations) {
         const destination = join(root, migration.destination);
         if (migration.source !== destination) fs.write(destination, fs.read(migration.source));
       }
+      if (removePrevious && previousTargetPath) fs.remove?.(previousTargetPath);
       fs.write(manifestPath, fs.read(manifestPath).replace(/active: .*\n/, `active: ${target}\n`));
       return {
         exitCode: 0,
@@ -188,10 +196,20 @@ export async function runCommand(
       if (!fs.exists(backup)) return { exitCode: 1, error: "No migration backup is available." };
       const content = fs.read(backup);
       const path = content.match(/^path: (.+)$/m)?.[1];
-      const encoded = content.match(/^content_base64: (.+)$/m)?.[1];
+      const encoded = content.match(/^content_base64: (.*)$/m)?.[1];
       const previousTarget = content.match(/^previous_target: (.+)$/m)?.[1];
-      if (!path || !encoded) return { exitCode: 1, error: "Migration backup is invalid." };
-      fs.write(path, Buffer.from(encoded, "base64").toString("utf8"));
+      const previousPath = content.match(/^previous_path: (.+)$/m)?.[1];
+      const previousEncoded = content.match(/^previous_content_base64: (.*)$/m)?.[1];
+      const destinationExisted = content.match(/^destination_existed: (true|false)$/m)?.[1];
+      if (!path || encoded === undefined)
+        return { exitCode: 1, error: "Migration backup is invalid." };
+      if (destinationExisted === "false") {
+        if (fs.exists(path) && !fs.remove)
+          return { exitCode: 1, error: "Filesystem cannot remove the migrated target resource." };
+        if (fs.exists(path)) fs.remove?.(path);
+      } else fs.write(path, Buffer.from(encoded, "base64").toString("utf8"));
+      if (previousPath && previousPath !== "none" && previousEncoded)
+        fs.write(previousPath, Buffer.from(previousEncoded, "base64").toString("utf8"));
       const manifestPath = join(aiw, "manifest.yml");
       if (previousTarget && fs.exists(manifestPath))
         fs.write(
