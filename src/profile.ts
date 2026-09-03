@@ -15,6 +15,55 @@ export type ProjectProfile = {
   facts: EvidenceFact[];
 };
 
+function scalar(content: string, key: string): string | undefined {
+  const value = content.match(new RegExp(`^\\s*${key}:\\s*(.+)$`, "m"))?.[1]?.trim();
+  return value && value !== "unknown" ? value : undefined;
+}
+
+function list(content: string, key: string): string[] {
+  const value = content.match(new RegExp(`^${key}:\\s*\\[([^\\]]*)\\]$`, "m"))?.[1] ?? "";
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function parseProjectProfile(content: string): ProjectProfile {
+  if (!/^status:\s*scanned$/m.test(content))
+    throw new Error("Project profile has not been scanned.");
+  const languages = list(content, "  languages");
+  const frameworks = list(content, "frameworks");
+  let packageManager = scalar(content, "package_manager") ?? "unknown";
+  const confirmed = [
+    ...content.matchAll(/\s{2}- key: ([^\n]+)\n\s{4}value: ([^\n]+)\n\s{4}state: confirmed/g),
+  ];
+  for (const match of confirmed) {
+    const key = match[1].trim();
+    const value = match[2].trim();
+    if (key === "package-manager") packageManager = value;
+    if (key === "runtime.language" && !languages.includes(value)) languages.push(value);
+    if (key === "framework" && !frameworks.includes(value)) frameworks.push(value);
+  }
+  const tool = (name: string, command: string): Tool | undefined => {
+    const toolName = scalar(content, name);
+    return toolName ? { name: toolName, command: scalar(content, command) } : undefined;
+  };
+  return {
+    runtime: { languages },
+    frameworks,
+    packageManager,
+    quality: {
+      linter: tool("linter", "linter_command"),
+      formatter: tool("formatter", "formatter_command"),
+      typecheck: tool("typecheck", "typecheck_command"),
+    },
+    testing: tool("testing", "testing_command"),
+    ci: list(content, "ci"),
+    workspaces: list(content, "workspaces"),
+    facts: [],
+  };
+}
+
 type PackageManifest = {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;

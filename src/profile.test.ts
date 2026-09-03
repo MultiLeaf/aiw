@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { profileProject } from "./profile.js";
+import { parseProjectProfile, profileProject } from "./profile.js";
 
 async function fixture(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aiw-profile-"));
@@ -53,5 +53,13 @@ describe("project profile", () => {
     expect(profile.runtime.languages).toEqual([]);
     expect(profile.frameworks).toEqual([]);
     expect(profile.packageManager).toBe("unknown");
+  });
+
+  it("prioritizes confirmed facts in a persisted profile", () => {
+    const profile = parseProjectProfile(
+      "schema: 1\nstatus: scanned\nfacts:\n  - key: package-manager\n    value: pnpm\n    state: confirmed\n    method: user-confirmed\n    confidence: 1\n    evidence: []\nruntime:\n  languages: [typescript]\nframeworks: []\npackage_manager: npm\nquality:\n  linter: eslint\n  linter_command: pnpm lint\n  formatter: unknown\n  formatter_command: unknown\n  typecheck: unknown\n  typecheck_command: unknown\ntesting: unknown\ntesting_command: unknown\nci: []\nworkspaces: []\n",
+    );
+    expect(profile.packageManager).toBe("pnpm");
+    expect(profile.quality.linter?.command).toBe("pnpm lint");
   });
 });

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
 import { detectTarget, generateAiInit, isTarget, renderResourcePath } from "./adapter.js";
-import { profileProject } from "./profile.js";
+import { parseProjectProfile, profileProject } from "./profile.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
 import { applyOverrides, parseOverrides } from "./confirmation.js";
@@ -210,7 +210,11 @@ export async function runCommand(
     if (command === "generate" || command === "sync") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
-      const profile = await profileProject(root);
+      const profilePath = join(aiw, "profile.yml");
+      const persistedProfile = fs.exists(profilePath) ? fs.read(profilePath) : "";
+      const profile = /^status:\s*scanned$/m.test(persistedProfile)
+        ? parseProjectProfile(persistedProfile)
+        : await profileProject(root);
       const selectedArg = args.find((arg) => arg.startsWith("--select="))?.split("=", 2)[1];
       const selected =
         selectedArg?.split(",") ?? (command === "sync" ? readSelectedRecommendations(fs, aiw) : []);
