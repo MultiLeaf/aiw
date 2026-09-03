@@ -694,6 +694,59 @@ resources:
     );
   });
 
+  it("searches, inspects, installs, and updates Vercel skills through AIW", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const calls: string[][] = [];
+    const services = {
+      externalSkills: {
+        execute: async (command: string[]): Promise<{ stdout: string; exitCode: number }> => {
+          calls.push(command);
+          return { stdout: command.includes("find") ? "react result" : "completed", exitCode: 0 };
+        },
+      },
+    };
+    expect((await run(["skills", "search", "--query=react"], cwd, services)).output).toBe(
+      "react result",
+    );
+    expect(
+      (await run(["skills", "inspect", "--source=vercel-labs/agent-skills"], cwd, services))
+        .exitCode,
+    ).toBe(0);
+    await writeFile(
+      join(cwd, "skills-lock.json"),
+      '{"skills":{"react-best-practices":{"computedHash":"hash-v1"}}}',
+    );
+    const installed = await run(
+      [
+        "skills",
+        "install",
+        "--source=vercel-labs/agent-skills",
+        "--skill=react-best-practices",
+        "--allow=network:external",
+      ],
+      cwd,
+      services,
+    );
+    expect(installed.exitCode).toBe(0);
+    await expect(readFile(join(cwd, ".aiw/lock.yml"), "utf8")).resolves.toContain(
+      "integrity: hash-v1",
+    );
+    await writeFile(
+      join(cwd, "skills-lock.json"),
+      '{"skills":{"react-best-practices":{"computedHash":"hash-v2"}}}',
+    );
+    expect(
+      (await run(["skills", "update", "--allow=network:external"], cwd, services)).exitCode,
+    ).toBe(0);
+    const lock = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
+    expect(lock).toContain("provider: vercel-skills");
+    expect(lock).toContain("integrity: hash-v2");
+    expect(calls).toContainEqual(["npx", "skills", "find", "react"]);
+    expect(calls).toContainEqual(["npx", "skills", "add", "vercel-labs/agent-skills", "--list"]);
+    expect(calls).toContainEqual(["npx", "skills", "update"]);
+  });
+
   it("reports actionable diagnostics with doctor", async () => {
     const cwd = await project();
     expect((await run(["doctor"], cwd)).error).toContain("Missing AI Workflow files");

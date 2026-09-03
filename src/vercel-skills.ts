@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const executeFile = promisify(execFile);
 
-export type VercelSkillsCommand = "find" | "add" | "check" | "update";
+export type VercelSkillsCommand = "find" | "inspect" | "add" | "check" | "update";
 export type VercelSkillsRequest = {
   command: VercelSkillsCommand;
   source?: string;
@@ -29,6 +29,10 @@ export const nodeCommandExecutor: CommandExecutor = {
 
 export function buildVercelSkillsCommand(request: VercelSkillsRequest): string[] {
   if (request.command === "find") return ["npx", "skills", "find", request.skill ?? ""];
+  if (request.command === "inspect") {
+    if (!request.source) throw new Error("A source is required to inspect Vercel skills.");
+    return ["npx", "skills", "add", request.source, "--list"];
+  }
   if (request.command === "add") {
     if (!request.source) throw new Error("A source is required to add a Vercel skill.");
     return [
@@ -43,15 +47,23 @@ export function buildVercelSkillsCommand(request: VercelSkillsRequest): string[]
   return ["npx", "skills", request.command];
 }
 
+export async function executeVercelSkills(
+  executor: CommandExecutor,
+  request: VercelSkillsRequest,
+): Promise<string> {
+  const result = await executor.execute(buildVercelSkillsCommand(request));
+  if (result.exitCode !== 0)
+    throw new Error(`Vercel Skills ${request.command} failed: ${result.stdout}`);
+  if (/failed to (?:check|update)|failed to update/i.test(result.stdout))
+    throw new Error(`Vercel Skills ${request.command} failed: ${result.stdout}`);
+  return result.stdout;
+}
+
 export async function installVercelSkill(
   executor: CommandExecutor,
   source: string,
   skill: string,
   agent: string,
 ): Promise<string> {
-  const result = await executor.execute(
-    buildVercelSkillsCommand({ command: "add", source, skill, agent }),
-  );
-  if (result.exitCode !== 0) throw new Error(`Vercel Skills installation failed: ${result.stdout}`);
-  return result.stdout;
+  return executeVercelSkills(executor, { command: "add", source, skill, agent });
 }

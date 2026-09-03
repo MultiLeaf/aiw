@@ -28,6 +28,8 @@ Packages may come from local paths, Git repositories, npm-compatible providers, 
 
 Local directories and Git repositories are resolved with `aiw resolve --source=<source>`. A local source may be a package directory or its `package.yaml`; relative paths are resolved from the project. Git sources support `git+https`, HTTPS, SSH, and `file://` URLs. Git packages are cloned into an isolated temporary checkout, validated before the lockfile is changed, and removed after resolution. The lockfile records the selected provider and normalized source rather than trusting those fields from the fetched manifest. The legacy `--package=<path>` form remains available for direct manifest resolution.
 
+Vercel Skills is exposed through `aiw skills search`, `inspect`, `install`, `check`, and `update`. AIW delegates to the official `npx skills` CLI with argument arrays, requires explicit `network:external` permission for network-mutating/check operations, and records installed skills and upstream integrity in `.aiw/lock.yml`. Update output is inspected for upstream failure text because some CLI releases may report failures with a successful process exit code.
+
 Every package must declare an identifier, package version, provider, source, engine compatibility, resources, dependencies, supported targets, permissions, and provenance. Each resource has its own stable identifier, version, and path.
 
 The project manifest stores requested version ranges. The lockfile stores the exact resolved version, provider, source, integrity information, and resource versions used by the project. Updates compare the requested range with the resolved lockfile version and never rely on a filename or list position.

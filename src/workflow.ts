@@ -17,7 +17,7 @@ import { parseManifest } from "./manifest.js";
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
 import { resolvePackage, serializeLock } from "./lockfile.js";
-import { installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
+import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import { assertPackagePermissions } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
@@ -313,6 +313,54 @@ export async function runCommand(
         serializeRecommendations(recommendations, selection),
       );
       return { exitCode: 0, output: `${recommendations.length} recommendations generated.` };
+    }
+    if (command === "skills") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const action = args[1];
+      const executor = services.externalSkills ?? nodeCommandExecutor;
+      if (action === "search") {
+        const query = args.find((arg) => arg.startsWith("--query="))?.slice(8) ?? "";
+        return {
+          exitCode: 0,
+          output: await executeVercelSkills(executor, { command: "find", skill: query }),
+        };
+      }
+      const source = args.find((arg) => arg.startsWith("--source="))?.slice(9);
+      const skill = args.find((arg) => arg.startsWith("--skill="))?.slice(8);
+      if (action === "inspect") {
+        if (!source)
+          return { exitCode: 1, error: "Usage: aiw skills inspect --source=owner/repository" };
+        return {
+          exitCode: 0,
+          output: await executeVercelSkills(executor, { command: "inspect", source }),
+        };
+      }
+      if (action === "install") {
+        if (!source || !skill)
+          return {
+            exitCode: 1,
+            error:
+              "Usage: aiw skills install --source=owner/repository --skill=name --allow=network:external",
+          };
+        if (!parseApprovedPermissions(args).includes("network:external"))
+          return { exitCode: 1, error: "Package permissions require approval: network:external" };
+        const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
+        const output = await installVercelSkill(executor, source, skill, target);
+        writeVercelSkillLock(fs, root, aiw, source, skill);
+        return { exitCode: 0, output };
+      }
+      if (action === "check" || action === "update") {
+        if (!parseApprovedPermissions(args).includes("network:external"))
+          return { exitCode: 1, error: "Package permissions require approval: network:external" };
+        const output = await executeVercelSkills(executor, { command: action });
+        if (action === "update") refreshVercelSkillLocks(fs, root, aiw);
+        return { exitCode: 0, output };
+      }
+      return {
+        exitCode: 1,
+        error: "Usage: aiw skills <search|inspect|install|check|update> [options]",
+      };
     }
     if (command === "generate" || command === "sync") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -725,7 +773,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
@@ -752,4 +800,50 @@ function parseApprovedPermissions(args: string[]): string[] {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function skillIntegrity(fs: FileSystem, root: string, skill: string): string {
+  if (!fs.exists(join(root, "skills-lock.json"))) return "unknown";
+  const lock = fs.read(join(root, "skills-lock.json"));
+  const escaped = escapeRegExp(skill);
+  return (
+    lock.match(
+      new RegExp(
+        `"${escaped}"\\s*:\\s*\\{[\\s\\S]*?"(?:computedHash|skillFolderHash)"\\s*:\\s*"([^"]+)"`,
+      ),
+    )?.[1] ?? "unknown"
+  );
+}
+
+function writeVercelSkillLock(
+  fs: FileSystem,
+  root: string,
+  aiw: string,
+  source: string,
+  skill: string,
+): void {
+  const lockPath = join(aiw, "lock.yml");
+  const current = fs.exists(lockPath) ? fs.read(lockPath) : "schema: 1\npackages:\n";
+  const id = `${source}/${skill}`;
+  const withoutExisting = current.replace(
+    new RegExp(`  - id: ${escapeRegExp(id)}\\n(?:    [^\\n]+\\n){4}`, "g"),
+    "",
+  );
+  fs.write(
+    lockPath,
+    `${withoutExisting.replace(/\n*$/, "\n")}  - id: ${id}\n    version: latest\n    provider: vercel-skills\n    source: ${source}\n    integrity: ${skillIntegrity(fs, root, skill)}\n`,
+  );
+}
+
+function refreshVercelSkillLocks(fs: FileSystem, root: string, aiw: string): void {
+  const lockPath = join(aiw, "lock.yml");
+  if (!fs.exists(lockPath)) return;
+  const content = fs
+    .read(lockPath)
+    .replace(
+      /( {2}- id: ([^\n]+)\n {4}version: latest\n {4}provider: vercel-skills\n {4}source: ([^\n]+)\n {4}integrity: )([^\n]+)/g,
+      (_entry, prefix: string, id: string): string =>
+        `${prefix}${skillIntegrity(fs, root, id.split("/").at(-1) ?? id)}`,
+    );
+  fs.write(lockPath, content);
 }
