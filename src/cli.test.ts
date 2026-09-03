@@ -193,6 +193,21 @@ describe("AI Workflow CLI", () => {
     await expect(stat(join(cwd, ".github/skills/ai-init/SKILL.md"))).rejects.toThrow();
   });
 
+  it("blocks a conflicting universal resource without overwriting it", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const neutral = join(cwd, ".aiw/resources/skills/ai-init.md");
+    await mkdir(join(cwd, ".aiw/resources/skills"), { recursive: true });
+    await writeFile(neutral, "# Conflicting neutral content\n");
+    const result = await run(["target", "universal"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Migration conflict");
+    await expect(readFile(neutral, "utf8")).resolves.toBe("# Conflicting neutral content\n");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: codex",
+    );
+  });
+
   it("supports migration preview and blocks conflicting target content", async () => {
     const cwd = await project();
     await run(["install", "--target", "universal"], cwd);

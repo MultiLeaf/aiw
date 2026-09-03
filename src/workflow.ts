@@ -123,10 +123,27 @@ export async function runCommand(
       const dryRun = args.includes("--dry-run");
       const targetPath = join(root, renderAiInitPath(target));
       const neutralAiInit = join(aiw, "resources/skills/ai-init.md");
-      if (
+      const manifestPath = join(aiw, "manifest.yml");
+      const previousTarget =
+        fs
+          .read(manifestPath)
+          .match(/^\s*active:\s*(.+)$/m)?.[1]
+          ?.trim() ?? "universal";
+      const previousTargetPath = isTarget(previousTarget)
+        ? join(root, renderAiInitPath(previousTarget))
+        : undefined;
+      const universalConflict =
+        target === "universal" &&
+        previousTargetPath !== undefined &&
+        fs.exists(previousTargetPath) &&
         fs.exists(neutralAiInit) &&
-        fs.exists(targetPath) &&
-        fs.read(neutralAiInit) !== fs.read(targetPath)
+        fs.read(previousTargetPath) !== fs.read(neutralAiInit);
+      if (
+        universalConflict ||
+        (target !== "universal" &&
+          fs.exists(neutralAiInit) &&
+          fs.exists(targetPath) &&
+          fs.read(neutralAiInit) !== fs.read(targetPath))
       )
         return {
           exitCode: 1,
@@ -134,18 +151,12 @@ export async function runCommand(
         };
       if (dryRun)
         return { exitCode: 0, output: `Migration preview: target would change to ${target}.` };
-      const manifestPath = join(aiw, "manifest.yml");
-      const previousTarget =
-        fs
-          .read(manifestPath)
-          .match(/^\s*active:\s*(.+)$/m)?.[1]
-          ?.trim() ?? "universal";
       if (fs.exists(targetPath))
         fs.write(
           join(aiw, "checkpoints/migration-backup.yml"),
           `previous_target: ${previousTarget}\npath: ${targetPath}\ncontent_base64: ${Buffer.from(fs.read(targetPath)).toString("base64")}\n`,
         );
-      generateAiInit(root, target, fs);
+      if (target !== "universal" || !fs.exists(neutralAiInit)) generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit)) fs.write(targetPath, fs.read(neutralAiInit));
       fs.write(manifestPath, fs.read(manifestPath).replace(/active: .*\n/, `active: ${target}\n`));
       return { exitCode: 0, output: `Target changed to ${target}` };
