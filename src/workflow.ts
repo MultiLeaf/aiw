@@ -356,7 +356,7 @@ export async function runCommand(
       const path = join(aiw, "generated/plans/implementation-plan.md");
       fs.write(
         path,
-        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Validation: npm test\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n`,
+        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Validation: npm test\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
       );
       return { exitCode: 0, output: `Implementation plan created: ${path}` };
     }

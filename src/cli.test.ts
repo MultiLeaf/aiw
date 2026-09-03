@@ -398,6 +398,9 @@ describe("AI Workflow CLI", () => {
     expect(artifact).toContain("REQ-001");
     expect(artifact).toContain("TASK-001");
     expect(artifact).toContain("npm run check");
+    expect(artifact).toContain("## Risks and Dependencies");
+    expect(artifact).toContain("## Completion Evidence");
+    expect(artifact).toContain("Link code changes, test results, and validation output");
   });
 
   it("reports missing verification evidence and passes after required artifacts exist", async () => {
