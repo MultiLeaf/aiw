@@ -41,8 +41,8 @@ describe("neutral resource migration", () => {
       "Migration preview for claude:\nadd: .target/a\nupdate: .target/b\nremove: previous target ai-init\n",
     );
     const snapshots = [
-      { path: "/target/a", existed: false, content: "" },
-      { path: "/target/b", existed: true, content: "binary\u0000content" },
+      { path: "/target/a", existed: false, contentBase64: "" },
+      { path: "/target/b", existed: true, contentBase64: "YmluYXJ5AP9jb250ZW50" },
     ];
     expect(parseMigrationSnapshots(serializeMigrationSnapshots(snapshots))).toEqual(snapshots);
   });

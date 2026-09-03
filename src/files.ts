@@ -11,7 +11,12 @@ import type { FileSystem } from "./types.js";
 export const nodeFileSystem: FileSystem = {
   exists: existsSync,
   read: (path) => readFileSync(path, "utf8"),
+  readBytes: (path) => readFileSync(path),
   write: (path, content) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content);
+  },
+  writeBytes: (path, content) => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content);
   },

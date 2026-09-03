@@ -45,8 +45,10 @@ import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
 import {
   parseMigrationSnapshots,
   planNeutralResourceMigration,
+  readResourceBytes,
   serializeMigrationPreview,
   serializeMigrationSnapshots,
+  writeResourceBytes,
 } from "./migration.js";
 
 export type WorkflowServices = WorkflowDependencies;
@@ -154,7 +156,10 @@ export async function runCommand(
         return (
           source !== absoluteDestination &&
           fs.exists(absoluteDestination) &&
-          fs.read(source) !== fs.read(absoluteDestination)
+          Buffer.compare(
+            Buffer.from(readResourceBytes(fs, source)),
+            Buffer.from(readResourceBytes(fs, absoluteDestination)),
+          ) !== 0
         );
       });
       if (dryRun) {
@@ -192,7 +197,13 @@ export async function runCommand(
         .filter(({ source, destination }) => source !== join(root, destination))
         .map(({ destination }) => {
           const path = join(root, destination);
-          return { path, existed: fs.exists(path), content: fs.exists(path) ? fs.read(path) : "" };
+          return {
+            path,
+            existed: fs.exists(path),
+            contentBase64: fs.exists(path)
+              ? Buffer.from(readResourceBytes(fs, path)).toString("base64")
+              : "",
+          };
         });
       fs.write(
         join(aiw, "checkpoints/migration-backup.yml"),
@@ -202,7 +213,8 @@ export async function runCommand(
       if (fs.exists(neutralAiInit)) fs.write(targetPath, fs.read(neutralAiInit));
       for (const migration of resourceMigrations) {
         const destination = join(root, migration.destination);
-        if (migration.source !== destination) fs.write(destination, fs.read(migration.source));
+        if (migration.source !== destination)
+          writeResourceBytes(fs, destination, readResourceBytes(fs, migration.source));
       }
       if (removePrevious && previousTargetPath) fs.remove?.(previousTargetPath);
       fs.write(manifestPath, fs.read(manifestPath).replace(/active: .*\n/, `active: ${target}\n`));
@@ -224,6 +236,8 @@ export async function runCommand(
       const resourcesEncoded = content.match(/^resources_base64: (.+)$/m)?.[1];
       if (!path || encoded === undefined)
         return { exitCode: 1, error: "Migration backup is invalid." };
+      if (!fs.remove)
+        return { exitCode: 1, error: "Filesystem cannot consume the migration checkpoint." };
       if (destinationExisted === "false") {
         if (fs.exists(path) && !fs.remove)
           return { exitCode: 1, error: "Filesystem cannot remove the migrated target resource." };
@@ -232,7 +246,8 @@ export async function runCommand(
       if (previousPath && previousPath !== "none" && previousEncoded)
         fs.write(previousPath, Buffer.from(previousEncoded, "base64").toString("utf8"));
       for (const snapshot of resourcesEncoded ? parseMigrationSnapshots(resourcesEncoded) : []) {
-        if (snapshot.existed) fs.write(snapshot.path, snapshot.content);
+        if (snapshot.existed)
+          writeResourceBytes(fs, snapshot.path, Buffer.from(snapshot.contentBase64, "base64"));
         else {
           if (fs.exists(snapshot.path) && !fs.remove)
             return { exitCode: 1, error: "Filesystem cannot remove migrated resources." };
@@ -245,6 +260,7 @@ export async function runCommand(
           manifestPath,
           fs.read(manifestPath).replace(/active: .*\n/, `active: ${previousTarget}\n`),
         );
+      fs.remove(backup);
       return { exitCode: 0, output: `Migration rolled back: ${path}` };
     }
     if (command === "confirm") {

@@ -207,6 +207,7 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: codex",
     );
+    expect((await run(["rollback"], cwd)).error).toContain("No migration backup");
   });
 
   it("renders all neutral resource categories when changing target", async () => {
@@ -238,6 +239,22 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: universal",
     );
+  });
+
+  it("preserves resource bytes during migration and rollback", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    const source = join(cwd, ".aiw/resources/templates/binary/binary.md");
+    const destination = join(cwd, ".claude/aiw/templates/binary.md");
+    const bytes = Buffer.from([0x42, 0x00, 0xff, 0x43, 0x0a]);
+    await mkdir(join(source, ".."), { recursive: true });
+    await writeFile(source, bytes);
+    await mkdir(join(destination, ".."), { recursive: true });
+    await writeFile(destination, bytes);
+    expect((await run(["target", "claude"], cwd)).exitCode).toBe(0);
+    await expect(readFile(destination)).resolves.toEqual(bytes);
+    expect((await run(["rollback"], cwd)).exitCode).toBe(0);
+    await expect(readFile(destination)).resolves.toEqual(bytes);
   });
 
   it("supports migration preview and blocks conflicting target content", async () => {
@@ -287,6 +304,10 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: codex",
     );
+    const recreated = join(cwd, ".claude/skills/ai-init/SKILL.md");
+    await writeFile(recreated, "# User recreated\n");
+    expect((await run(["rollback"], cwd)).error).toContain("No migration backup");
+    await expect(readFile(recreated, "utf8")).resolves.toBe("# User recreated\n");
   });
 
   it("rejects unsupported targets without changing the manifest", async () => {

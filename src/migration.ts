@@ -4,7 +4,7 @@ import { RESOURCE_TYPES, type ResourceType } from "./package-contract.js";
 import type { Target } from "./types.js";
 
 export type ResourceMigration = { source: string; destination: string };
-export type MigrationSnapshot = { path: string; existed: boolean; content: string };
+export type MigrationSnapshot = { path: string; existed: boolean; contentBase64: string };
 
 export function planNeutralResourceMigration(
   neutralRoot: string,
@@ -51,9 +51,31 @@ export function parseMigrationSnapshots(encoded: string): MigrationSnapshot[] {
       snapshot === null ||
       typeof (snapshot as MigrationSnapshot).path !== "string" ||
       typeof (snapshot as MigrationSnapshot).existed !== "boolean" ||
-      typeof (snapshot as MigrationSnapshot).content !== "string"
+      typeof (snapshot as MigrationSnapshot).contentBase64 !== "string"
     )
       throw new Error("Migration resource snapshots are invalid.");
     return snapshot as MigrationSnapshot;
   });
+}
+
+export function readResourceBytes(
+  fs: {
+    read(path: string): string;
+    readBytes?(path: string): Uint8Array;
+  },
+  path: string,
+): Uint8Array {
+  return fs.readBytes?.(path) ?? Buffer.from(fs.read(path), "utf8");
+}
+
+export function writeResourceBytes(
+  fs: {
+    write(path: string, content: string): void;
+    writeBytes?(path: string, content: Uint8Array): void;
+  },
+  path: string,
+  content: Uint8Array,
+): void {
+  if (fs.writeBytes) fs.writeBytes(path, content);
+  else fs.write(path, Buffer.from(content).toString("utf8"));
 }
