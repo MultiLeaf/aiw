@@ -44,7 +44,7 @@ export function evaluateQualityGate(stage: QualityGateStage, content: string): s
     ? ["Implementation plan must define a TASK-### ID."]
     : [];
   for (const field of fields)
-    if (!new RegExp(`^\\s*-?\\s*${field}:\\s*\\S+`, "im").test(content))
+    if (!new RegExp(`^[ \\t]*-?[ \\t]*${field}:[ \\t]*\\S+`, "im").test(content))
       issues.push(`Implementation plan task must define ${field}.`);
   return issues;
 }

@@ -26,4 +26,17 @@ describe("quality gates", () => {
       ),
     ).toEqual([]);
   });
+
+  it.each(["Requirement", "Code", "Tests", "Validation", "Evidence"])(
+    "rejects an empty %s task field without consuming the following line",
+    (emptyField) => {
+      const fields = ["Requirement", "Code", "Tests", "Validation", "Evidence"]
+        .map((field) => `${field}:${field === emptyField ? "" : ` value-for-${field}`}`)
+        .join("\n");
+
+      expect(evaluateQualityGate("verification", `TASK-001\n${fields}`)).toContain(
+        `Implementation plan task must define ${emptyField}.`,
+      );
+    },
+  );
 });
