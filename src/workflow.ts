@@ -316,7 +316,7 @@ export async function runCommand(
       const path = join(aiw, "generated/specs/brainstorm.md");
       fs.write(
         path,
-        `# ${title}\n\n## Goal\n\n## Users\n\n## Facts\n\n## Hypotheses\n\n## Constraints\n\n## Non-goals\n\n## Open Questions\n\n`,
+        `# ${title}\n\n## Goal\n\n## Users\n\n## Facts\n\n## Assumptions\n\n## Hypotheses\n\n## Constraints\n\n## Risks\n\n## Non-goals\n\n## Open Questions\n\n`,
       );
       return { exitCode: 0, output: `Brainstorm artifact created: ${path}` };
     }
