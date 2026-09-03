@@ -37,7 +37,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 ## SDD workflow — P1
 
 - [x] **SDD-001** Implement brainstorming artifact and facilitator skill. _Acceptance:_ goals, users, assumptions, constraints, and open questions are captured.
-- [ ] **SDD-002** Implement specification skill and template. _Acceptance:_ requirements have stable IDs and acceptance criteria.
+- [x] **SDD-002** Implement specification skill and template. _Acceptance:_ requirements have stable IDs and acceptance criteria.
 - [ ] **SDD-003** Implement design and architecture decision records. _Acceptance:_ alternatives, decisions, and rationale are linked.
 - [ ] **SDD-004** Implement implementation planning. _Acceptance:_ tasks link to requirements and validation commands.
 - [ ] **SDD-005** Implement verification skill. _Acceptance:_ missing evidence and untested requirements are reported.
