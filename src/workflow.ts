@@ -19,7 +19,7 @@ import { validatePackageContract } from "./package-contract.js";
 import { resolvePackage, serializeLock } from "./lockfile.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
-import { assertPackagePermissions } from "./package-audit.js";
+import { assertPackagePermissions, serializePermissionReview } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
@@ -642,6 +642,12 @@ export async function runCommand(
         loaded?.release();
       }
     }
+    if (command === "audit-package") {
+      const packageArg = args.find((arg) => arg.startsWith("--package="));
+      if (!packageArg) return { exitCode: 1, error: "Usage: aiw audit-package --package=path" };
+      const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      return { exitCode: 0, output: serializePermissionReview(pkg) };
+    }
     if (command === "update") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -773,7 +779,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

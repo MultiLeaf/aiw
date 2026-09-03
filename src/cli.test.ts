@@ -606,6 +606,25 @@ describe("AI Workflow CLI", () => {
     expect(lock).toContain(`source: ${packageRoot}`);
   });
 
+  it("audits package permissions and rejects unknown permissions atomically", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const packagePath = join(cwd, "package.yaml");
+    const contract = (permissions: string): string =>
+      `schema: 1\nid: example/audited\nversion: 1.0.0\nprovider: local\nsource: .\ndependencies: []\npermissions: [${permissions}]\nprovenance:\n  source: .\nresources:\n  skills:\n    - { id: example, version: 1.0.0, path: skill.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n`;
+    await writeFile(packagePath, contract("filesystem:read, process:execute"));
+    const audit = await run(["audit-package", "--package=package.yaml"], cwd);
+    expect(audit.output).toContain("filesystem:read (low)");
+    expect(audit.output).toContain("process:execute (critical)");
+    const lockPath = join(cwd, ".aiw/lock.yml");
+    const before = await readFile(lockPath, "utf8");
+    await writeFile(packagePath, contract("system:root"));
+    const rejected = await run(["resolve", "--package=package.yaml", "--allow=system:root"], cwd);
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.error).toContain("Unknown package permissions: system:root");
+    await expect(readFile(lockPath, "utf8")).resolves.toBe(before);
+  });
+
   it("updates a package only when the candidate is newer and compatible", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);

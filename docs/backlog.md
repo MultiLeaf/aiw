@@ -60,7 +60,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 - [x] **PKG-001** Implement local and Git package providers.
 - [x] **PKG-002** Integrate Vercel Skills as an external provider. _Acceptance:_ search, inspect, install, lock, and update are represented in AIW state.
-- [ ] **PKG-003** Add package audit and permission review before installation.
+- [x] **PKG-003** Add package audit and permission review before installation.
 - [x] **PKG-004** Add update, compatibility, and dependency conflict workflows.
 - [x] **PKG-005** Create a curated Multileaf package registry.
 - [x] **PKG-006** Add package signing, checksums, and provenance verification.

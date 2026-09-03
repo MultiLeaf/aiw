@@ -30,6 +30,8 @@ Local directories and Git repositories are resolved with `aiw resolve --source=<
 
 Vercel Skills is exposed through `aiw skills search`, `inspect`, `install`, `check`, and `update`. AIW delegates to the official `npx skills` CLI with argument arrays, requires explicit `network:external` permission for network-mutating/check operations, and records installed skills and upstream integrity in `.aiw/lock.yml`. Update output is inspected for upstream failure text because some CLI releases may report failures with a successful process exit code.
 
+Use `aiw audit-package --package=<path>` before resolution or installation to review requested permissions and their risk levels. Every permission must belong to AIW's known permission catalog, and every requested permission requires an exact `--allow=<permission>` approval. Unknown permissions are rejected even when passed through `--allow`; denied audits and approvals must not modify package state.
+
 Every package must declare an identifier, package version, provider, source, engine compatibility, resources, dependencies, supported targets, permissions, and provenance. Each resource has its own stable identifier, version, and path.
 
 The project manifest stores requested version ranges. The lockfile stores the exact resolved version, provider, source, integrity information, and resource versions used by the project. Updates compare the requested range with the resolved lockfile version and never rely on a filename or list position.
