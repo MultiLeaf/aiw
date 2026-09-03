@@ -41,7 +41,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **SDD-003** Implement design and architecture decision records. _Acceptance:_ alternatives, decisions, and rationale are linked.
 - [x] **SDD-004** Implement implementation planning. _Acceptance:_ tasks link to requirements and validation commands.
 - [x] **SDD-005** Implement verification skill. _Acceptance:_ missing evidence and untested requirements are reported.
-- [ ] **SDD-006** Implement requirement-to-evidence traceability graph. _Acceptance:_ requirement → decision → task → code → test → evidence is queryable.
+- [x] **SDD-006** Implement requirement-to-evidence traceability graph. _Acceptance:_ requirement → decision → task → code → test → evidence is queryable.
 - [ ] **SDD-007** Add quality gates between workflow stages. _Acceptance:_ incomplete artifacts block progression with actionable feedback.
 
 ## Adapters and migration — P1/P2

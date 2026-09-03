@@ -40,6 +40,7 @@ import {
 import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "./token-usage.js";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
+import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -356,7 +357,7 @@ export async function runCommand(
       const path = join(aiw, "generated/plans/implementation-plan.md");
       fs.write(
         path,
-        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Validation: npm test\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
+        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
       );
       return { exitCode: 0, output: `Implementation plan created: ${path}` };
     }
@@ -400,19 +401,23 @@ export async function runCommand(
           exitCode: 1,
           error: "Traceability requires a specification and implementation plan.",
         };
-      const spec = fs.read(specPath);
-      const plan = fs.read(planPath);
-      const requirements = [...spec.matchAll(/(REQ-\d+)/g)]
-        .map((match) => match[1])
-        .filter((id, index, all) => all.indexOf(id) === index);
-      const links = requirements
-        .map(
-          (id) =>
-            `  - requirement: ${id}\n    tasks: [${plan.includes(id) ? "TASK-001" : "none"}]\n    validation: [${plan.includes(id) ? "npm run check" : "none"}]`,
-        )
-        .join("\n");
+      const adrDirectory = join(root, ".context/adrs");
+      const decisions = (fs.list?.(adrDirectory) ?? [])
+        .filter((file) => /^ADR-.+\.md$/.test(file))
+        .map((file) => ({
+          id: file.replace(/\.md$/, "").split("-").slice(0, 2).join("-"),
+          content: fs.read(join(adrDirectory, file)),
+        }));
+      const graph = buildTraceabilityGraph({
+        specification: fs.read(specPath),
+        plan: fs.read(planPath),
+        decisions,
+      });
+      const requirement = args.find((arg) => arg.startsWith("--requirement="))?.slice(14);
+      const serialized = serializeTraceabilityGraph(graph, requirement);
+      if (requirement) return { exitCode: 0, output: serialized };
       const path = join(aiw, "generated/artifacts/traceability.yml");
-      fs.write(path, `schema: 1\nlinks:\n${links}\n`);
+      fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
     if (command === "gate") {

@@ -400,6 +400,8 @@ describe("AI Workflow CLI", () => {
     expect(artifact).toContain("npm run check");
     expect(artifact).toContain("## Risks and Dependencies");
     expect(artifact).toContain("## Completion Evidence");
+    expect(artifact).toContain("Code: src/");
+    expect(artifact).toContain("Tests: src/**/*.test.ts");
     expect(artifact).toContain("Link code changes, test results, and validation output");
   });
 
@@ -440,7 +442,18 @@ describe("AI Workflow CLI", () => {
     const trace = await readFile(join(cwd, ".aiw/generated/artifacts/traceability.yml"), "utf8");
     expect(trace).toContain("requirement: REQ-001");
     expect(trace).toContain("tasks: [TASK-001]");
+    expect(trace).toContain("decisions:");
+    expect(trace).toContain("code:");
+    expect(trace).toContain("tests:");
+    expect(trace).toContain("evidence:");
     expect(trace).toContain("npm run check");
+
+    const query = await run(["trace", "--requirement=REQ-001"], cwd);
+    expect(query.exitCode).toBe(0);
+    expect(query.output).toContain("requirement: REQ-001");
+    expect((await run(["trace", "--requirement=REQ-999"], cwd)).error).toContain(
+      "Requirement not found: REQ-999",
+    );
   });
 
   it("blocks SDD progression until the previous artifact exists", async () => {
