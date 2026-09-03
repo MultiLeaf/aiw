@@ -208,6 +208,31 @@ describe("AI Workflow CLI", () => {
     );
   });
 
+  it("renders all neutral resource categories when changing target", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    const resources = join(cwd, ".aiw/resources");
+    const fixtures = [
+      ["skills/review/SKILL.md", ".claude/skills/review/SKILL.md"],
+      ["rules/quality/quality.md", ".claude/rules/quality.md"],
+      ["agents/reviewer/reviewer.md", ".claude/agents/reviewer.md"],
+      ["hooks/check/check.md", ".claude/aiw/hooks/check.md"],
+      ["templates/spec/spec.md", ".claude/aiw/templates/spec.md"],
+    ];
+    for (const [source] of fixtures) {
+      await mkdir(join(resources, source, ".."), { recursive: true });
+      await writeFile(join(resources, source), `content:${source}\n`);
+    }
+    const result = await run(["target", "claude"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("rendered 5 neutral resources");
+    for (const [source, destination] of fixtures)
+      await expect(readFile(join(cwd, destination), "utf8")).resolves.toBe(`content:${source}\n`);
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: claude",
+    );
+  });
+
   it("supports migration preview and blocks conflicting target content", async () => {
     const cwd = await project();
     await run(["install", "--target", "universal"], cwd);

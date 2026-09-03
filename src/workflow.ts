@@ -42,6 +42,7 @@ import { measureContextQuality, serializeContextQuality } from "./context-qualit
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
+import { planNeutralResourceMigration } from "./migration.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -138,16 +139,30 @@ export async function runCommand(
         fs.exists(previousTargetPath) &&
         fs.exists(neutralAiInit) &&
         fs.read(previousTargetPath) !== fs.read(neutralAiInit);
+      const resourceMigrations = planNeutralResourceMigration(
+        join(aiw, "resources"),
+        fs.exists(join(aiw, "resources")) ? (fs.listFiles?.(join(aiw, "resources")) ?? []) : [],
+        target,
+      );
+      const resourceConflicts = resourceMigrations.filter(({ source, destination }) => {
+        const absoluteDestination = join(root, destination);
+        return (
+          source !== absoluteDestination &&
+          fs.exists(absoluteDestination) &&
+          fs.read(source) !== fs.read(absoluteDestination)
+        );
+      });
       if (
         universalConflict ||
         (target !== "universal" &&
           fs.exists(neutralAiInit) &&
           fs.exists(targetPath) &&
-          fs.read(neutralAiInit) !== fs.read(targetPath))
+          fs.read(neutralAiInit) !== fs.read(targetPath)) ||
+        resourceConflicts.length > 0
       )
         return {
           exitCode: 1,
-          error: `Migration conflict at ${targetPath}. Use --dry-run to inspect.`,
+          error: `Migration conflict at ${resourceConflicts[0] ? join(root, resourceConflicts[0].destination) : targetPath}. Use --dry-run to inspect.`,
         };
       if (dryRun)
         return { exitCode: 0, output: `Migration preview: target would change to ${target}.` };
@@ -158,8 +173,15 @@ export async function runCommand(
         );
       if (target !== "universal" || !fs.exists(neutralAiInit)) generateAiInit(root, target, fs);
       if (fs.exists(neutralAiInit)) fs.write(targetPath, fs.read(neutralAiInit));
+      for (const migration of resourceMigrations) {
+        const destination = join(root, migration.destination);
+        if (migration.source !== destination) fs.write(destination, fs.read(migration.source));
+      }
       fs.write(manifestPath, fs.read(manifestPath).replace(/active: .*\n/, `active: ${target}\n`));
-      return { exitCode: 0, output: `Target changed to ${target}` };
+      return {
+        exitCode: 0,
+        output: `Target changed to ${target}; rendered ${resourceMigrations.length} neutral resources.`,
+      };
     }
     if (command === "rollback") {
       const backup = join(aiw, "checkpoints/migration-backup.yml");

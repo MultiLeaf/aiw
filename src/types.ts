@@ -7,5 +7,6 @@ export type FileSystem = {
   write(path: string, content: string): void;
   mkdir(path: string): void;
   list?(path: string): string[];
+  listFiles?(path: string): string[];
   remove?(path: string): void;
 };

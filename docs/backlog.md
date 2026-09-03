@@ -52,7 +52,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **ADP-004** Implement Gemini CLI adapter.
 - [x] **ADP-005** Implement GitHub Copilot adapter.
 - [x] **ADP-006** Implement universal fallback adapter.
-- [ ] **MIG-001** Implement `aiw target <target>` migration. _Acceptance:_ neutral resources are rendered to the new target and manifest is updated.
+- [x] **MIG-001** Implement `aiw target <target>` migration. _Acceptance:_ neutral resources are rendered to the new target and manifest is updated.
 - [ ] **MIG-002** Add migration dry-run, conflict report, backup, and rollback. _Acceptance:_ failed migration leaves the previous target intact.
 - [ ] **MIG-003** Add adapter contract and fixture tests. _Acceptance:_ each adapter passes common rendering and degradation scenarios.
 

@@ -6,7 +6,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { FileSystem } from "./types.js";
 export const nodeFileSystem: FileSystem = {
   exists: existsSync,
@@ -17,5 +17,10 @@ export const nodeFileSystem: FileSystem = {
   },
   mkdir: (path) => mkdirSync(path, { recursive: true }),
   list: (path) => readdirSync(path).sort(),
+  listFiles: (path) =>
+    readdirSync(path, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath.slice(path.length + 1), entry.name))
+      .sort(),
   remove: unlinkSync,
 };
