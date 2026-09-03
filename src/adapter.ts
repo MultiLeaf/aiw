@@ -44,14 +44,26 @@ export function renderAiInitPath(target: Target): string {
 }
 
 export function renderResourcePath(target: Target, type: ResourceType, id: string): string {
+  return describeResource(target, type, id).path;
+}
+
+export type AdapterResourceType = ResourceType | "context";
+export type AdapterSupport = "native" | "compatibility" | "fallback";
+export type AdapterResourceDescriptor = { path: string; support: AdapterSupport };
+
+export function describeResource(
+  target: Target,
+  type: AdapterResourceType,
+  id: string,
+): AdapterResourceDescriptor {
   if (!isTarget(target))
     throw new Error(`Adapter rendering is not implemented for target: ${target}`);
-  if (target === "codex") return describeCodexResource(type, id).path;
-  if (target === "claude") return describeClaudeResource(type, id).path;
-  if (target === "cursor") return describeCursorResource(type, id).path;
-  if (target === "gemini") return describeGeminiResource(type, id).path;
-  if (target === "copilot") return describeCopilotResource(type, id).path;
-  return describeUniversalResource(type, id).path;
+  if (target === "codex") return describeCodexResource(type, id);
+  if (target === "claude") return describeClaudeResource(type, id);
+  if (target === "cursor") return describeCursorResource(type, id);
+  if (target === "gemini") return describeGeminiResource(type, id);
+  if (target === "copilot") return describeCopilotResource(type, id);
+  return describeUniversalResource(type, id);
 }
 
 export function renderCodexResource(
