@@ -5,6 +5,7 @@ import type { ResourceType } from "./package-contract.js";
 import { describeCodexResource } from "./codex-layout.js";
 import { describeClaudeResource } from "./claude-layout.js";
 import { describeCursorResource } from "./cursor-layout.js";
+import { describeGeminiResource } from "./gemini-layout.js";
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
@@ -42,37 +43,13 @@ export function renderResourcePath(target: Target, type: ResourceType, id: strin
   if (target === "codex") return describeCodexResource(type, id).path;
   if (target === "claude") return describeClaudeResource(type, id).path;
   if (target === "cursor") return describeCursorResource(type, id).path;
+  if (target === "gemini") return describeGeminiResource(type, id).path;
   const roots: Record<ResourceType, string> = {
-    skills:
-      target === "gemini"
-        ? ".gemini/skills"
-        : target === "copilot"
-          ? ".github/copilot"
-          : ".aiw/resources/skills",
-    rules:
-      target === "gemini"
-        ? ".gemini/rules"
-        : target === "copilot"
-          ? ".github/copilot/rules"
-          : ".aiw/resources/rules",
-    agents:
-      target === "gemini"
-        ? ".gemini/agents"
-        : target === "copilot"
-          ? ".github/copilot/agents"
-          : ".aiw/resources/agents",
-    hooks:
-      target === "gemini"
-        ? ".gemini/hooks"
-        : target === "copilot"
-          ? ".github/copilot/hooks"
-          : ".aiw/resources/hooks",
-    templates:
-      target === "gemini"
-        ? ".gemini/templates"
-        : target === "copilot"
-          ? ".github/copilot/templates"
-          : ".aiw/resources/templates",
+    skills: target === "copilot" ? ".github/copilot" : ".aiw/resources/skills",
+    rules: target === "copilot" ? ".github/copilot/rules" : ".aiw/resources/rules",
+    agents: target === "copilot" ? ".github/copilot/agents" : ".aiw/resources/agents",
+    hooks: target === "copilot" ? ".github/copilot/hooks" : ".aiw/resources/hooks",
+    templates: target === "copilot" ? ".github/copilot/templates" : ".aiw/resources/templates",
   };
   return join(roots[type], id, type === "skills" ? "SKILL.md" : `${id}.md`);
 }

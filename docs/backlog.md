@@ -49,7 +49,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **ADP-001** Complete Codex adapter. _Acceptance:_ skills, rules, agents, hooks, and context render correctly where supported.
 - [x] **ADP-002** Implement Claude Code adapter.
 - [x] **ADP-003** Implement Cursor adapter.
-- [ ] **ADP-004** Implement Gemini CLI adapter.
+- [x] **ADP-004** Implement Gemini CLI adapter.
 - [ ] **ADP-005** Implement GitHub Copilot adapter.
 - [ ] **ADP-006** Implement universal fallback adapter.
 - [ ] **MIG-001** Implement `aiw target <target>` migration. _Acceptance:_ neutral resources are rendered to the new target and manifest is updated.
