@@ -460,9 +460,21 @@ describe("AI Workflow CLI", () => {
     const cwd = await project();
     await run(["install"], cwd);
     expect((await run(["gate", "plan"], cwd)).error).toContain("Quality gate blocked");
-    await run(["spec"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "REQ-001\nAcceptance criteria\nGiven a project\nWhen planned\nThen it is testable\n",
+    );
     expect((await run(["gate", "plan"], cwd)).output).toContain("Quality gate passed");
     expect((await run(["gate", "unknown"], cwd)).error).toContain("Usage");
+  });
+
+  it("blocks existing but incomplete SDD artifacts with actionable feedback", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["brainstorm"], cwd);
+    const result = await run(["gate", "specification"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Brainstorm section Goal must contain content");
   });
 
   it("resolves a package and generates an exact lockfile", async () => {

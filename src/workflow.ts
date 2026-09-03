@@ -41,6 +41,7 @@ import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "./token-
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
+import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -424,16 +425,20 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const stage = args[1];
-      const requirements: Record<string, string[]> = {
-        specification: ["generated/specs/brainstorm.md"],
-        plan: ["generated/specs/specification.md"],
-        verification: ["generated/plans/implementation-plan.md"],
+      const requirements: Record<QualityGateStage, string> = {
+        specification: "generated/specs/brainstorm.md",
+        plan: "generated/specs/specification.md",
+        verification: "generated/plans/implementation-plan.md",
       };
-      if (!stage || !requirements[stage])
+      if (!stage || !(stage in requirements))
         return { exitCode: 1, error: "Usage: aiw gate <specification|plan|verification>" };
-      const missing = requirements[stage].filter((file) => !fs.exists(join(aiw, file)));
-      return missing.length
-        ? { exitCode: 1, error: `Quality gate blocked: missing ${missing.join(", ")}` }
+      const gateStage = stage as QualityGateStage;
+      const artifact = requirements[gateStage];
+      if (!fs.exists(join(aiw, artifact)))
+        return { exitCode: 1, error: `Quality gate blocked: missing ${artifact}` };
+      const issues = evaluateQualityGate(gateStage, fs.read(join(aiw, artifact)));
+      return issues.length
+        ? { exitCode: 1, error: `Quality gate blocked: ${issues.join(" ")}` }
         : { exitCode: 0, output: `Quality gate passed for ${stage}.` };
     }
     if (command === "validate") {
