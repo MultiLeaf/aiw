@@ -4,6 +4,7 @@ import type { CapabilityRecommendation } from "./recommendations.js";
 import type { Interpreter } from "./interpreter.js";
 import type { CommandExecutor } from "./vercel-skills.js";
 import type { CommandResult, FileSystem } from "./types.js";
+import type { PackageSourceLoader } from "./providers.js";
 
 export interface ProjectScanner {
   scan(root: string): Promise<ProjectScan>;
@@ -23,6 +24,7 @@ export interface WorkflowDependencies {
   recommender?: RecommendationService;
   interpreter?: Interpreter;
   externalSkills?: CommandExecutor;
+  packageSources?: PackageSourceLoader;
 }
 
 export interface WorkflowService {

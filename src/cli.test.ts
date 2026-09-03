@@ -589,6 +589,23 @@ describe("AI Workflow CLI", () => {
     expect(lock).toContain("integrity: sha256-multileaf/aiw-self-hosting@0.1.0");
   });
 
+  it("resolves a package from a local provider source", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const packageRoot = join(cwd, "local-package");
+    await mkdir(join(packageRoot, "skills/example"), { recursive: true });
+    await writeFile(join(packageRoot, "skills/example/SKILL.md"), "# Example\n");
+    await writeFile(
+      join(packageRoot, "package.yaml"),
+      "schema: 1\nid: example/local\nversion: 1.0.0\nprovider: placeholder\nsource: placeholder\ndependencies: []\npermissions: []\nprovenance:\n  source: placeholder\nresources:\n  skills:\n    - { id: example, version: 1.0.0, path: skills/example/SKILL.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n",
+    );
+    const result = await run(["resolve", "--source=./local-package"], cwd);
+    expect(result.exitCode).toBe(0);
+    const lock = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
+    expect(lock).toContain("provider: local");
+    expect(lock).toContain(`source: ${packageRoot}`);
+  });
+
   it("updates a package only when the candidate is newer and compatible", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);

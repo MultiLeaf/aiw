@@ -26,6 +26,8 @@ package/
 
 Packages may come from local paths, Git repositories, npm-compatible providers, Vercel Skills, or a future Multileaf registry.
 
+Local directories and Git repositories are resolved with `aiw resolve --source=<source>`. A local source may be a package directory or its `package.yaml`; relative paths are resolved from the project. Git sources support `git+https`, HTTPS, SSH, and `file://` URLs. Git packages are cloned into an isolated temporary checkout, validated before the lockfile is changed, and removed after resolution. The lockfile records the selected provider and normalized source rather than trusting those fields from the fetched manifest. The legacy `--package=<path>` form remains available for direct manifest resolution.
+
 Every package must declare an identifier, package version, provider, source, engine compatibility, resources, dependencies, supported targets, permissions, and provenance. Each resource has its own stable identifier, version, and path.
 
 The project manifest stores requested version ranges. The lockfile stores the exact resolved version, provider, source, integrity information, and resource versions used by the project. Updates compare the requested range with the resolved lockfile version and never rely on a filename or list position.

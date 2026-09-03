@@ -23,6 +23,7 @@ import { assertPackagePermissions } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
+import { nodePackageSourceLoader } from "./providers.js";
 import {
   composeContext,
   CONTEXT_LAYERS,
@@ -567,11 +568,31 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const packageArg = args.find((arg) => arg.startsWith("--package="));
-      if (!packageArg) return { exitCode: 1, error: "Usage: aiw resolve --package=path" };
-      const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
-      assertPackagePermissions(pkg, parseApprovedPermissions(args));
-      fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(pkg)]));
-      return { exitCode: 0, output: `Package resolved: ${pkg.id}@${pkg.version}` };
+      const sourceArg = args.find((arg) => arg.startsWith("--source="));
+      if (!packageArg && !sourceArg)
+        return { exitCode: 1, error: "Usage: aiw resolve --package=path | --source=source" };
+      const loaded = sourceArg
+        ? (services.packageSources ?? nodePackageSourceLoader).load(sourceArg.slice(9), root)
+        : undefined;
+      try {
+        const pkg = validatePackageContract(
+          loaded?.manifest ?? fs.read(join(root, packageArg!.slice(10))),
+          loaded ? (path): boolean => fs.exists(join(loaded.root, path)) : undefined,
+        );
+        const resolved = loaded
+          ? {
+              ...pkg,
+              provider: loaded.provider,
+              source: loaded.source,
+              provenance: { ...pkg.provenance, source: loaded.source },
+            }
+          : pkg;
+        assertPackagePermissions(resolved, parseApprovedPermissions(args));
+        fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(resolved)]));
+        return { exitCode: 0, output: `Package resolved: ${resolved.id}@${resolved.version}` };
+      } finally {
+        loaded?.release();
+      }
     }
     if (command === "update") {
       if (!fs.exists(join(aiw, "manifest.yml")))
