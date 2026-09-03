@@ -366,12 +366,22 @@ export async function runCommand(
       const specPath = join(aiw, "generated/specs/specification.md");
       const planPath = join(aiw, "generated/plans/implementation-plan.md");
       const issues: string[] = [];
+      let specification = "";
       if (!fs.exists(specPath)) issues.push("Specification artifact is missing.");
-      else if (!fs.read(specPath).includes("Acceptance criteria"))
-        issues.push("Requirements have no acceptance criteria.");
+      else {
+        specification = fs.read(specPath);
+        if (!specification.includes("Acceptance criteria"))
+          issues.push("Requirements have no acceptance criteria.");
+      }
       if (!fs.exists(planPath)) issues.push("Implementation plan is missing.");
-      else if (!fs.read(planPath).includes("Validation"))
-        issues.push("Requirements have no linked validation commands.");
+      else {
+        const plan = fs.read(planPath);
+        if (!plan.includes("Validation"))
+          issues.push("Requirements have no linked validation commands.");
+        const requirements = [...new Set([...specification.matchAll(/REQ-\d+/g)].map(String))];
+        const uncovered = requirements.filter((requirement) => !plan.includes(requirement));
+        if (uncovered.length > 0) issues.push(`Untested requirements: ${uncovered.join(", ")}.`);
+      }
       return issues.length
         ? { exitCode: 1, error: `Verification failed: ${issues.join(" ")}` }
         : {

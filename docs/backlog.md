@@ -40,7 +40,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **SDD-002** Implement specification skill and template. _Acceptance:_ requirements have stable IDs and acceptance criteria.
 - [x] **SDD-003** Implement design and architecture decision records. _Acceptance:_ alternatives, decisions, and rationale are linked.
 - [x] **SDD-004** Implement implementation planning. _Acceptance:_ tasks link to requirements and validation commands.
-- [ ] **SDD-005** Implement verification skill. _Acceptance:_ missing evidence and untested requirements are reported.
+- [x] **SDD-005** Implement verification skill. _Acceptance:_ missing evidence and untested requirements are reported.
 - [ ] **SDD-006** Implement requirement-to-evidence traceability graph. _Acceptance:_ requirement → decision → task → code → test → evidence is queryable.
 - [ ] **SDD-007** Add quality gates between workflow stages. _Acceptance:_ incomplete artifacts block progression with actionable feedback.
 

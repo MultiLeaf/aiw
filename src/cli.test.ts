@@ -414,6 +414,22 @@ describe("AI Workflow CLI", () => {
     expect(result.output).toContain("Verification passed");
   });
 
+  it("reports each requirement without linked validation coverage", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "# Spec\n\nREQ-001\n\nREQ-002\n\nAcceptance criteria\n",
+    );
+    await writeFile(
+      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+      "# Plan\n\nREQ-001\n\nValidation: npm test\n",
+    );
+    const result = await run(["verify"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Untested requirements: REQ-002");
+  });
+
   it("creates a queryable requirement traceability artifact", async () => {
     const cwd = await project();
     await run(["install"], cwd);
