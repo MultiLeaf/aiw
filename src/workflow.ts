@@ -25,7 +25,7 @@ import {
   serializePermissionReview,
 } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
-import { searchRegistry, serializeRegistry } from "./registry.js";
+import { searchRegistry, serializeRegistry, type RegistryPackage } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
 import { nodePackageSourceLoader, resolveProvider } from "./providers.js";
 import { serializeSelfValidationEvidence, validateTicketId } from "./self-validation.js";
@@ -62,6 +62,13 @@ import {
   serializeMigrationSnapshots,
   writeResourceBytes,
 } from "./migration.js";
+import {
+  parsePrivateRegistries,
+  parseTeamPreset,
+  serializePrivateRegistries,
+  serializeTeamPreset,
+  fetchPrivateRegistryClient,
+} from "./team-configuration.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -446,6 +453,10 @@ export async function runCommand(
         return { exitCode: 1, error: `Missing AI Workflow files: ${missing.join(", ")}` };
       try {
         parseManifest(fs.read(join(aiw, "manifest.yml")));
+        if (fs.exists(join(aiw, "team-preset.yml")))
+          parseTeamPreset(fs.read(join(aiw, "team-preset.yml")));
+        if (fs.exists(join(aiw, "registries.yml")))
+          parsePrivateRegistries(fs.read(join(aiw, "registries.yml")));
       } catch (error) {
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
       }
@@ -468,6 +479,8 @@ export async function runCommand(
         "lock.yml",
         "overrides.yml",
         "recommendations.yml",
+        "team-preset.yml",
+        "registries.yml",
       ];
       const dryRun = args.includes("--dry-run");
       if (!dryRun && !fs.remove)
@@ -687,6 +700,21 @@ export async function runCommand(
       fs.write(destination, serializeOrganizationPolicy(policy));
       return { exitCode: 0, output: `Organization policy configured: ${policy.name}` };
     }
+    if (command === "preset") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const fileArg = args.find((arg) => arg.startsWith("--file="));
+      if (!fileArg) return { exitCode: 1, error: "Usage: aiw preset --file=path [--replace]" };
+      const destination = join(aiw, "team-preset.yml");
+      if (fs.exists(destination) && !args.includes("--replace"))
+        return {
+          exitCode: 1,
+          error: "Team preset already exists. Use --replace to update it explicitly.",
+        };
+      const preset = parseTeamPreset(fs.read(join(root, fileArg.slice(7))));
+      fs.write(destination, serializeTeamPreset(preset));
+      return { exitCode: 0, output: `Team preset configured: ${preset.name}` };
+    }
     if (command === "update") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -731,7 +759,60 @@ export async function runCommand(
       return { exitCode: 0, output: `Package updated: ${pkg.id}@${pkg.version}` };
     }
     if (command === "registry") {
+      if (args[1] === "configure") {
+        if (!fs.exists(join(aiw, "manifest.yml")))
+          return { exitCode: 1, error: "Run `aiw install` first." };
+        const fileArg = args.find((arg) => arg.startsWith("--file="));
+        if (!fileArg)
+          return {
+            exitCode: 1,
+            error: "Usage: aiw registry configure --file=path [--replace]",
+          };
+        const destination = join(aiw, "registries.yml");
+        if (fs.exists(destination) && !args.includes("--replace"))
+          return {
+            exitCode: 1,
+            error:
+              "Private registry configuration already exists. Use --replace to update it explicitly.",
+          };
+        const registries = parsePrivateRegistries(fs.read(join(root, fileArg.slice(7))));
+        fs.write(destination, serializePrivateRegistries(registries));
+        return {
+          exitCode: 0,
+          output: `Private registries configured: ${registries.registries.map(({ name }) => name).join(", ")}`,
+        };
+      }
       const query = args.find((arg) => arg.startsWith("--search="))?.slice(9) ?? "";
+      const privateName = args.find((arg) => arg.startsWith("--private="))?.slice(10);
+      if (privateName) {
+        const configurationPath = join(aiw, "registries.yml");
+        if (!fs.exists(configurationPath))
+          return { exitCode: 1, error: "Configure private registries first." };
+        const configuration = parsePrivateRegistries(fs.read(configurationPath));
+        const registry = configuration.registries.find(({ name }) => name === privateName);
+        if (!registry) return { exitCode: 1, error: `Unknown private registry: ${privateName}` };
+        enforceConfiguredOrganizationPolicy(fs, aiw, {
+          provider: "private-registry",
+          source: registry.url,
+          permissions: ["network:external"],
+        });
+        const token = (services.environment ?? process.env)[registry.tokenEnv];
+        if (!token)
+          return {
+            exitCode: 1,
+            error: `Private registry credential is missing from environment variable: ${registry.tokenEnv}`,
+          };
+        const payload = await (services.privateRegistries ?? fetchPrivateRegistryClient).search(
+          registry,
+          query,
+          token,
+        );
+        const packages = parsePrivateRegistryPackages(payload, registry.url).sort((a, b) =>
+          `${a.id}@${a.version}`.localeCompare(`${b.id}@${b.version}`),
+        );
+        packages.forEach((pkg) => assertKnownPermissions(pkg.permissions));
+        return { exitCode: 0, output: serializeRegistry(packages) };
+      }
       return { exitCode: 0, output: serializeRegistry(searchRegistry(query)) };
     }
     if (command === "verify-package") {
@@ -855,11 +936,36 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function parsePrivateRegistryPackages(payload: unknown, registryUrl: string): RegistryPackage[] {
+  if (!Array.isArray(payload)) throw new Error("Private registry response must be an array.");
+  return payload.map((value, index) => {
+    if (!value || typeof value !== "object")
+      throw new Error(`Private registry package ${index} is invalid.`);
+    const item = value as Record<string, unknown>;
+    if (
+      typeof item.id !== "string" ||
+      typeof item.version !== "string" ||
+      typeof item.description !== "string" ||
+      !Array.isArray(item.permissions) ||
+      !item.permissions.every((permission) => typeof permission === "string")
+    )
+      throw new Error(`Private registry package ${index} is invalid.`);
+    return {
+      id: item.id,
+      version: item.version,
+      description: item.description,
+      provider: "private-registry" as const,
+      source: `${registryUrl}/${item.id}`,
+      permissions: item.permissions as string[],
+    };
+  });
 }
 
 function readSelectedRecommendations(fs: FileSystem, aiw: string): string[] {

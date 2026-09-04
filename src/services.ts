@@ -5,6 +5,7 @@ import type { Interpreter } from "./interpreter.js";
 import type { CommandExecutor } from "./vercel-skills.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import type { PackageSourceLoader } from "./providers.js";
+import type { PrivateRegistryClient } from "./team-configuration.js";
 
 export interface ProjectScanner {
   scan(root: string): Promise<ProjectScan>;
@@ -26,6 +27,8 @@ export interface WorkflowDependencies {
   externalSkills?: CommandExecutor;
   packageSources?: PackageSourceLoader;
   selfValidation?: CommandExecutor;
+  privateRegistries?: PrivateRegistryClient;
+  environment?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface WorkflowService {

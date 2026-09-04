@@ -2,7 +2,7 @@ export type RegistryPackage = {
   id: string;
   version: string;
   description: string;
-  provider: "local" | "git" | "vercel-skills";
+  provider: "local" | "git" | "vercel-skills" | "private-registry";
   source: string;
   permissions: string[];
 };

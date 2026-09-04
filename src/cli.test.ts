@@ -714,6 +714,77 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(join(cwd, ".aiw/organization.yml"), "utf8")).resolves.toBe(persisted);
   });
 
+  it("installs deterministic team presets and private registry references safely", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, "preset.yml"),
+      "schema: 1\nname: Platform defaults\npackages: [team/testing@^1.0.0, team/lint@2.0.0]\nregistries: [engineering]\n",
+    );
+    await writeFile(
+      join(cwd, "registries.yml"),
+      "schema: 1\nregistries:\n  - { name: engineering, url: https://registry.example.test/aiw, token_env: AIW_ENGINEERING_TOKEN }\n",
+    );
+
+    expect((await run(["preset", "--file=preset.yml"], cwd)).exitCode).toBe(0);
+    expect((await run(["registry", "configure", "--file=registries.yml"], cwd)).exitCode).toBe(0);
+    const preset = await readFile(join(cwd, ".aiw/team-preset.yml"), "utf8");
+    const registries = await readFile(join(cwd, ".aiw/registries.yml"), "utf8");
+    expect(preset).toContain("packages: [team/lint@2.0.0, team/testing@^1.0.0]");
+    expect(registries).toContain("token_env: AIW_ENGINEERING_TOKEN");
+    expect(registries).not.toContain("secret");
+    await writeFile(
+      join(cwd, "organization.yml"),
+      "schema: 1\nname: Example Org\napproved_sources: [private-registry:https://registry.example.test/aiw]\ndenied_permissions: []\n",
+    );
+    expect((await run(["organization-policy", "--file=organization.yml"], cwd)).exitCode).toBe(0);
+
+    let receivedToken = "";
+    const privateSearch = await run(
+      ["registry", "--private=engineering", "--search=quality"],
+      cwd,
+      {
+        environment: { AIW_ENGINEERING_TOKEN: "runtime-secret" },
+        privateRegistries: {
+          search: async (_registry, query, token) => {
+            expect(query).toBe("quality");
+            receivedToken = token;
+            return [
+              {
+                id: "team/quality",
+                version: "1.2.0",
+                description: "Team quality defaults.",
+                permissions: ["filesystem:read"],
+              },
+            ];
+          },
+        },
+      },
+    );
+    expect(privateSearch.output).toContain("team/quality@1.2.0 [private-registry]");
+    expect(privateSearch.output).not.toContain("runtime-secret");
+    expect(receivedToken).toBe("runtime-secret");
+    const missingCredential = await run(
+      ["registry", "--private=engineering", "--search=quality"],
+      cwd,
+      { environment: {} },
+    );
+    expect(missingCredential.error).toContain("AIW_ENGINEERING_TOKEN");
+
+    expect((await run(["preset", "--file=preset.yml"], cwd)).error).toContain("--replace");
+    await writeFile(
+      join(cwd, "registries.yml"),
+      "schema: 1\nregistries:\n  - { name: engineering, url: https://registry.example.test, token: secret }\n",
+    );
+    const rejected = await run(
+      ["registry", "configure", "--file=registries.yml", "--replace"],
+      cwd,
+    );
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.error).toContain("token_env");
+    await expect(readFile(join(cwd, ".aiw/registries.yml"), "utf8")).resolves.toBe(registries);
+  });
+
   it("updates a package only when the candidate is newer and compatible", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
