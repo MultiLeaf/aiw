@@ -418,6 +418,30 @@ describe("AI Workflow CLI", () => {
     ).toContain("Token budget exceeded");
   });
 
+  it("runs self-validation and records generated-output evidence", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["brainstorm"], cwd);
+    const calls: string[][] = [];
+    const result = await run(["self-validate", "--ticket=FND-009"], cwd, {
+      selfValidation: {
+        execute: async (command): Promise<{ stdout: string; exitCode: number }> => {
+          calls.push(command);
+          return { stdout: "checks passed", exitCode: 0 };
+        },
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([["npm", "--prefix", cwd, "run", "check"]]);
+    const evidence = await readFile(
+      join(cwd, ".aiw/checkpoints/self-validation-fnd-009.yml"),
+      "utf8",
+    );
+    expect(evidence).toContain("ticket: FND-009");
+    expect(evidence).toContain("generated/specs/brainstorm.md");
+    expect(evidence).toContain("result: pass");
+  });
+
   it("reports deterministic context quality metrics", async () => {
     const cwd = await project();
     await run(["install"], cwd);

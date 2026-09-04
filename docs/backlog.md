@@ -4,8 +4,8 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 ## Foundation — P0
 
-- [ ] **FND-001** Define and validate the neutral `manifest.yaml` schema. _Acceptance:_ invalid manifests produce actionable errors; schema is versioned and tested.
-- [ ] **FND-002** Define `package.yaml` and resource contracts. _Acceptance:_ skills, rules, agents, hooks, templates, policies, dependencies, permissions, and provenance are representable.
+- [x] **FND-001** Define and validate the neutral `manifest.yaml` schema. _Acceptance:_ invalid manifests produce actionable errors; schema is versioned and tested.
+- [x] **FND-002** Define `package.yaml` and resource contracts. _Acceptance:_ skills, rules, agents, hooks, templates, policies, dependencies, permissions, and provenance are representable.
 - [x] **FND-003** Define adapter contract and capability matrix. _Acceptance:_ adapters report supported resources and lifecycle events.
 - [x] **FND-004** Introduce structured domain types and service interfaces. _Acceptance:_ CLI contains no business logic; services are dependency-injected and unit-testable.
 - [x] **FND-005** Add complete TDD quality pipeline. _Acceptance:_ `check` runs format, lint, typecheck, tests, and security checks.
@@ -85,7 +85,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 ## Backlog rules
 
-- [ ] **FND-009** Add self-validation workflow. _Acceptance:_ changes affecting AIW behavior execute against this repository and record generated-output evidence.
+- [x] **FND-009** Add self-validation workflow. _Acceptance:_ changes affecting AIW behavior execute against this repository and record generated-output evidence.
 - Every item must have tests or explicit validation evidence before completion.
 - Every item must validate all affected layers; domain tests alone cannot mark an externally visible feature as complete.
 - New work must identify its affected contract and dependencies.

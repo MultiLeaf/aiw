@@ -46,3 +46,5 @@ The CLI is an entry point, not the business layer. Filesystem, package providers
 ## Self-hosting
 
 The repository uses the `multileaf/aiw-self-hosting` package. This package supplies the workflow resources required to develop AI Workflow itself, including SDD skills, quality rules, specialist agents, lifecycle hooks, and artifact templates.
+
+Behavioral changes are validated against this repository with `aiw self-validate --ticket=TYPE-000`. The command runs the complete project quality pipeline and writes deterministic evidence to `.aiw/checkpoints/self-validation-<ticket>.yml`, including required AIW state and the generated artifacts inspected during the run. Checkpoints are reviewable project history and are not part of the ignored `.aiw/generated` tree.

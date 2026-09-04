@@ -25,6 +25,7 @@ export interface WorkflowDependencies {
   interpreter?: Interpreter;
   externalSkills?: CommandExecutor;
   packageSources?: PackageSourceLoader;
+  selfValidation?: CommandExecutor;
 }
 
 export interface WorkflowService {

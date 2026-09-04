@@ -28,6 +28,7 @@ import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
 import { nodePackageSourceLoader } from "./providers.js";
+import { serializeSelfValidationEvidence, validateTicketId } from "./self-validation.js";
 import {
   composeContext,
   CONTEXT_LAYERS,
@@ -778,6 +779,42 @@ export async function runCommand(
       fs.write(join(aiw, "context/quality.yml"), output);
       return { exitCode: 0, output };
     }
+    if (command === "self-validate") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const ticket = args.find((arg) => arg.startsWith("--ticket="))?.slice(9);
+      if (!ticket) return { exitCode: 1, error: "Usage: aiw self-validate --ticket=TYPE-000" };
+      validateTicketId(ticket);
+      const requiredState = ["manifest.yml", "profile.yml", "lock.yml"];
+      const missing = requiredState.filter((path) => !fs.exists(join(aiw, path)));
+      if (missing.length)
+        return { exitCode: 1, error: `Self-validation state is missing: ${missing.join(", ")}` };
+      const result = await (services.selfValidation ?? nodeCommandExecutor).execute([
+        "npm",
+        "--prefix",
+        root,
+        "run",
+        "check",
+      ]);
+      const generatedRoot = join(aiw, "generated");
+      const generatedArtifacts = (fs.listFiles?.(generatedRoot) ?? []).map(
+        (path) => `.aiw/generated/${path}`,
+      );
+      const evidencePath = join(aiw, `checkpoints/self-validation-${ticket.toLowerCase()}.yml`);
+      fs.write(
+        evidencePath,
+        serializeSelfValidationEvidence({
+          ticket,
+          command: "npm run check",
+          exitCode: result.exitCode,
+          requiredState: requiredState.map((path) => `.aiw/${path}`),
+          generatedArtifacts,
+        }),
+      );
+      return result.exitCode === 0
+        ? { exitCode: 0, output: `Self-validation passed: ${evidencePath}` }
+        : { exitCode: 1, error: `Self-validation failed: ${result.stdout}` };
+    }
     if (command === "capabilities") {
       const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
       return { exitCode: 0, output: serializeAdapterCapabilities(target) };
@@ -785,7 +822,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
