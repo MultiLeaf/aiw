@@ -19,7 +19,11 @@ import { validatePackageContract } from "./package-contract.js";
 import { resolvePackage, serializeLock } from "./lockfile.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
-import { assertPackagePermissions, serializePermissionReview } from "./package-audit.js";
+import {
+  assertKnownPermissions,
+  assertPackagePermissions,
+  serializePermissionReview,
+} from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
@@ -319,6 +323,8 @@ export async function runCommand(
         return { exitCode: 1, error: "Run `aiw install` first." };
       const action = args[1];
       const executor = services.externalSkills ?? nodeCommandExecutor;
+      const approvedPermissions = parseApprovedPermissions(args);
+      assertKnownPermissions(approvedPermissions);
       if (action === "search") {
         const query = args.find((arg) => arg.startsWith("--query="))?.slice(8) ?? "";
         return {
@@ -343,7 +349,7 @@ export async function runCommand(
             error:
               "Usage: aiw skills install --source=owner/repository --skill=name --allow=network:external",
           };
-        if (!parseApprovedPermissions(args).includes("network:external"))
+        if (!approvedPermissions.includes("network:external"))
           return { exitCode: 1, error: "Package permissions require approval: network:external" };
         const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
         const output = await installVercelSkill(executor, source, skill, target);
@@ -351,7 +357,7 @@ export async function runCommand(
         return { exitCode: 0, output };
       }
       if (action === "check" || action === "update") {
-        if (!parseApprovedPermissions(args).includes("network:external"))
+        if (!approvedPermissions.includes("network:external"))
           return { exitCode: 1, error: "Package permissions require approval: network:external" };
         const output = await executeVercelSkills(executor, { command: action });
         if (action === "update") refreshVercelSkillLocks(fs, root, aiw);

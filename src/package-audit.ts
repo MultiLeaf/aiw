@@ -16,12 +16,16 @@ export const PACKAGE_PERMISSIONS = {
 } as const;
 export type PackagePermission = keyof typeof PACKAGE_PERMISSIONS;
 
+export function assertKnownPermissions(permissions: string[]): void {
+  const unknown = permissions.filter((permission) => !(permission in PACKAGE_PERMISSIONS));
+  if (unknown.length) throw new Error(`Unknown package permissions: ${unknown.join(", ")}`);
+}
+
 export function reviewPackagePermissions(
   pkg: PackageContract,
   approved: string[],
 ): PermissionReview {
-  const unknown = pkg.permissions.filter((permission) => !(permission in PACKAGE_PERMISSIONS));
-  if (unknown.length) throw new Error(`Unknown package permissions: ${unknown.join(", ")}`);
+  assertKnownPermissions(pkg.permissions);
   const unapproved = pkg.permissions.filter((permission) => !approved.includes(permission));
   return { allowed: unapproved.length === 0, requested: [...pkg.permissions], unapproved };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertPackagePermissions,
+  assertKnownPermissions,
   reviewPackagePermissions,
   serializePermissionReview,
 } from "./package-audit.js";
@@ -32,5 +33,8 @@ describe("package permission audit", () => {
         "system:root",
       ]),
     ).toThrow("Unknown package permissions: system:root");
+    expect(() => assertKnownPermissions(["network:external", "system:root"])).toThrow(
+      "Unknown package permissions: system:root",
+    );
   });
 });

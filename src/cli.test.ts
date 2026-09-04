@@ -766,6 +766,26 @@ resources:
     expect(calls).toContainEqual(["npx", "skills", "update"]);
   });
 
+  it("rejects unknown Vercel skill approvals before executing or changing state", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const lockPath = join(cwd, ".aiw/lock.yml");
+    const before = await readFile(lockPath, "utf8");
+    let calls = 0;
+    const result = await run(["skills", "update", "--allow=network:external,system:root"], cwd, {
+      externalSkills: {
+        execute: async (): Promise<{ stdout: string; exitCode: number }> => {
+          calls += 1;
+          return { stdout: "updated", exitCode: 0 };
+        },
+      },
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Unknown package permissions: system:root");
+    expect(calls).toBe(0);
+    await expect(readFile(lockPath, "utf8")).resolves.toBe(before);
+  });
+
   it("reports actionable diagnostics with doctor", async () => {
     const cwd = await project();
     expect((await run(["doctor"], cwd)).error).toContain("Missing AI Workflow files");
