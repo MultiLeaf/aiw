@@ -48,7 +48,14 @@ export function enforceOrganizationPolicy(
 }
 
 function scalar(content: string, key: string): string {
-  return content.match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1]?.trim() ?? "";
+  const value = content.match(new RegExp(`^${key}:[ \\t]*([^\\r\\n]*)$`, "m"))?.[1]?.trim() ?? "";
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
+  )
+    return value.slice(1, -1).trim();
+  return value;
 }
 
 function list(content: string, key: string): string[] {

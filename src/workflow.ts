@@ -27,7 +27,7 @@ import {
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry } from "./registry.js";
 import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
-import { nodePackageSourceLoader } from "./providers.js";
+import { nodePackageSourceLoader, resolveProvider } from "./providers.js";
 import { serializeSelfValidationEvidence, validateTicketId } from "./self-validation.js";
 import {
   enforceOrganizationPolicy,
@@ -637,6 +637,10 @@ export async function runCommand(
       const sourceArg = args.find((arg) => arg.startsWith("--source="));
       if (!packageArg && !sourceArg)
         return { exitCode: 1, error: "Usage: aiw resolve --package=path | --source=source" };
+      if (sourceArg) {
+        const source = resolveProvider(sourceArg.slice(9), root);
+        enforceConfiguredOrganizationPolicy(fs, aiw, { ...source, permissions: [] });
+      }
       const loaded = sourceArg
         ? (services.packageSources ?? nodePackageSourceLoader).load(sourceArg.slice(9), root)
         : undefined;

@@ -661,6 +661,16 @@ describe("AI Workflow CLI", () => {
       "Example Org",
     );
     const persisted = await readFile(join(cwd, ".aiw/organization.yml"), "utf8");
+    await writeFile(
+      policyPath,
+      'schema: 1\nname: "   "\napproved_sources: [local:*]\ndenied_permissions: []\n',
+    );
+    const invalidReplacement = await run(
+      ["organization-policy", "--file=organization.yml", "--replace"],
+      cwd,
+    );
+    expect(invalidReplacement.error).toContain("name is required");
+    await expect(readFile(join(cwd, ".aiw/organization.yml"), "utf8")).resolves.toBe(persisted);
     let calls = 0;
     const blocked = await run(
       [
@@ -683,6 +693,21 @@ describe("AI Workflow CLI", () => {
     expect(blocked.exitCode).toBe(1);
     expect(blocked.error).toContain("not approved by Example Org");
     expect(calls).toBe(0);
+    let loads = 0;
+    const blockedGit = await run(
+      ["resolve", "--source=git+https://example.test/untrusted.git"],
+      cwd,
+      {
+        packageSources: {
+          load: () => {
+            loads += 1;
+            throw new Error("Loader must not be called");
+          },
+        },
+      },
+    );
+    expect(blockedGit.error).toContain("not approved by Example Org");
+    expect(loads).toBe(0);
     expect((await run(["organization-policy", "--file=organization.yml"], cwd)).error).toContain(
       "--replace",
     );

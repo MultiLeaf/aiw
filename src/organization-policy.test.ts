@@ -46,5 +46,9 @@ describe("organization policy", () => {
     expect(() => parseOrganizationPolicy(content.replace(/\[[^\]]+\]/, "[]"))).toThrow(
       "approved_sources",
     );
+    for (const name of ["", '""', '"   "', "'   '"])
+      expect(() =>
+        parseOrganizationPolicy(content.replace("name: Multileaf", `name: ${name}`)),
+      ).toThrow("name is required");
   });
 });
