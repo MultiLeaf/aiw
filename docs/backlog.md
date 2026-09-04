@@ -75,7 +75,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 ## Enterprise and ecosystem — P3
 
-- [ ] **ENT-001** Add organization policies and approved package sources.
+- [x] **ENT-001** Add organization policies and approved package sources.
 - [ ] **ENT-002** Add team-shared presets and private registries.
 - [ ] **ENT-003** Add policy enforcement in CI and pull requests.
 - [ ] **ENT-004** Add telemetry opt-in with privacy controls.

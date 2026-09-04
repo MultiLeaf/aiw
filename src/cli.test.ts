@@ -649,6 +649,46 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(lockPath, "utf8")).resolves.toBe(before);
   });
 
+  it("enforces organization-approved package sources before external execution", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const policyPath = join(cwd, "organization.yml");
+    await writeFile(
+      policyPath,
+      "schema: 1\nname: Example Org\napproved_sources: [vercel-skills:approved/*, local:./approved/*]\ndenied_permissions: [process:execute]\n",
+    );
+    expect((await run(["organization-policy", "--file=organization.yml"], cwd)).output).toContain(
+      "Example Org",
+    );
+    const persisted = await readFile(join(cwd, ".aiw/organization.yml"), "utf8");
+    let calls = 0;
+    const blocked = await run(
+      [
+        "skills",
+        "install",
+        "--source=untrusted/repository",
+        "--skill=unsafe",
+        "--allow=network:external",
+      ],
+      cwd,
+      {
+        externalSkills: {
+          execute: async (): Promise<{ stdout: string; exitCode: number }> => {
+            calls += 1;
+            return { stdout: "installed", exitCode: 0 };
+          },
+        },
+      },
+    );
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.error).toContain("not approved by Example Org");
+    expect(calls).toBe(0);
+    expect((await run(["organization-policy", "--file=organization.yml"], cwd)).error).toContain(
+      "--replace",
+    );
+    await expect(readFile(join(cwd, ".aiw/organization.yml"), "utf8")).resolves.toBe(persisted);
+  });
+
   it("updates a package only when the candidate is newer and compatible", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);

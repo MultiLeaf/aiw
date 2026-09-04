@@ -32,6 +32,8 @@ Vercel Skills is exposed through `aiw skills search`, `inspect`, `install`, `che
 
 Use `aiw audit-package --package=<path>` before resolution or installation to review requested permissions and their risk levels. Every permission must belong to AIW's known permission catalog, and every requested permission requires an exact `--allow=<permission>` approval. Unknown permissions are rejected even when passed through `--allow`; denied audits and approvals must not modify package state.
 
+Organizations can install a versioned policy with `aiw organization-policy --file=<path>`. The policy defines approved provider/source patterns and denied permissions. A trailing `*` performs an explicit prefix match; all other entries require an exact match. Once configured, package resolution, updates, and external skill installation are blocked before filesystem or process side effects unless the source and permissions satisfy the policy. Replacing an existing policy requires the explicit `--replace` flag.
+
 Every package must declare an identifier, package version, provider, source, engine compatibility, resources, dependencies, supported targets, permissions, and provenance. Each resource has its own stable identifier, version, and path.
 
 The project manifest stores requested version ranges. The lockfile stores the exact resolved version, provider, source, integrity information, and resource versions used by the project. Updates compare the requested range with the resolved lockfile version and never rely on a filename or list position.

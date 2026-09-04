@@ -1,0 +1,15 @@
+schema: 1
+ticket: ENT-001
+command: npm run check
+exit_code: 0
+required_state:
+  - .aiw/lock.yml
+  - .aiw/manifest.yml
+  - .aiw/profile.yml
+generated_artifacts:
+  - .aiw/generated/artifacts/traceability.yml
+  - .aiw/generated/plans/implementation-plan.md
+  - .aiw/generated/rules/project-quality.md
+  - .aiw/generated/rules/tdd-project-policy.md
+  - .aiw/generated/specs/specification.md
+result: pass

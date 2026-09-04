@@ -30,6 +30,12 @@ import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js
 import { nodePackageSourceLoader } from "./providers.js";
 import { serializeSelfValidationEvidence, validateTicketId } from "./self-validation.js";
 import {
+  enforceOrganizationPolicy,
+  parseOrganizationPolicy,
+  serializeOrganizationPolicy,
+  type PackagePolicySubject,
+} from "./organization-policy.js";
+import {
   composeContext,
   CONTEXT_LAYERS,
   readContextStore,
@@ -352,6 +358,11 @@ export async function runCommand(
           };
         if (!approvedPermissions.includes("network:external"))
           return { exitCode: 1, error: "Package permissions require approval: network:external" };
+        enforceConfiguredOrganizationPolicy(fs, aiw, {
+          provider: "vercel-skills",
+          source,
+          permissions: ["network:external"],
+        });
         const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
         const output = await installVercelSkill(executor, source, skill, target);
         writeVercelSkillLock(fs, root, aiw, source, skill);
@@ -642,6 +653,7 @@ export async function runCommand(
               provenance: { ...pkg.provenance, source: loaded.source },
             }
           : pkg;
+        enforceConfiguredOrganizationPolicy(fs, aiw, resolved);
         assertPackagePermissions(resolved, parseApprovedPermissions(args));
         fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(resolved)]));
         return { exitCode: 0, output: `Package resolved: ${resolved.id}@${resolved.version}` };
@@ -655,6 +667,22 @@ export async function runCommand(
       const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
       return { exitCode: 0, output: serializePermissionReview(pkg) };
     }
+    if (command === "organization-policy") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const fileArg = args.find((arg) => arg.startsWith("--file="));
+      if (!fileArg)
+        return { exitCode: 1, error: "Usage: aiw organization-policy --file=path [--replace]" };
+      const destination = join(aiw, "organization.yml");
+      if (fs.exists(destination) && !args.includes("--replace"))
+        return {
+          exitCode: 1,
+          error: "Organization policy already exists. Use --replace to update it explicitly.",
+        };
+      const policy = parseOrganizationPolicy(fs.read(join(root, fileArg.slice(7))));
+      fs.write(destination, serializeOrganizationPolicy(policy));
+      return { exitCode: 0, output: `Organization policy configured: ${policy.name}` };
+    }
     if (command === "update") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -662,6 +690,7 @@ export async function runCommand(
       if (!packageArg)
         return { exitCode: 1, error: "Usage: aiw update --package=path --target=target" };
       const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      enforceConfiguredOrganizationPolicy(fs, aiw, pkg);
       assertPackagePermissions(pkg, parseApprovedPermissions(args));
       const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
       if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
@@ -822,7 +851,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
@@ -849,6 +878,15 @@ function parseApprovedPermissions(args: string[]): string[] {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function enforceConfiguredOrganizationPolicy(
+  fs: FileSystem,
+  aiw: string,
+  subject: PackagePolicySubject,
+): void {
+  const path = join(aiw, "organization.yml");
+  if (fs.exists(path)) enforceOrganizationPolicy(parseOrganizationPolicy(fs.read(path)), subject);
 }
 
 function skillIntegrity(fs: FileSystem, root: string, skill: string): string {
