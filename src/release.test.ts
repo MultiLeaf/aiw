@@ -23,8 +23,12 @@ describe("release package", () => {
     expect(workflow).toContain('      - "v*.*.*"');
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("id-token: write");
+    expect(workflow).toContain("node-version: 24");
+    expect(workflow).toContain("npm@11.5.1");
+    expect(workflow).toContain("git merge-base --is-ancestor HEAD origin/main");
     expect(workflow).toContain("npm ci");
     expect(workflow).toContain("npm run release:check");
+    expect(workflow).toContain("npm run release:publish-check -- --tag=$GITHUB_REF_NAME");
     expect(workflow).toContain("npm publish --access public --provenance");
   });
 });
