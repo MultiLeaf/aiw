@@ -7,6 +7,7 @@ export type FileSystem = {
   read(path: string): string;
   readBytes?(path: string): Uint8Array;
   write(path: string, content: string): void;
+  createExclusive?(path: string, content: string): boolean;
   writeBytes?(path: string, content: Uint8Array): void;
   mkdir(path: string): void;
   list?(path: string): string[];

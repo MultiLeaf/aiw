@@ -25,28 +25,21 @@ export function parseOrchestrationPlan(content: string): OrchestrationPlan {
   const lines = normalized.split("\n").filter(Boolean);
   if (lines.some((line) => !isPlanLine(line)))
     throw new Error("Orchestration plan syntax is invalid.");
-  for (const fieldName of ["schema", "id", "tasks"]) {
-    if ((normalized.match(new RegExp(`^${fieldName}:`, "gm")) ?? []).length !== 1)
-      throw new Error(`Orchestration plan field '${fieldName}' must occur exactly once.`);
-  }
-  const schema = normalized.match(/^schema:\s*(.+)$/m)?.[1]?.trim();
+  if (lines.length < 7 || lines[2] !== "tasks:" || (lines.length - 3) % 4 !== 0)
+    throw new Error("Orchestration plan structure is invalid.");
+  const schema = lines[0]?.match(/^schema:\s*(.+)$/)?.[1]?.trim();
   if (schema !== "1") throw new Error("Orchestration plan schema must be version 1.");
-  const id = normalized.match(/^id:\s*(.+)$/m)?.[1]?.trim() ?? "";
+  const id = lines[1]?.match(/^id:\s*(.+)$/)?.[1]?.trim() ?? "";
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id))
     throw new Error("Orchestration plan id must use lowercase letters, numbers, and hyphens.");
-  const starts = [...normalized.matchAll(/^\s{2}- id:\s*(.+)$/gm)];
-  if (!starts.length) throw new Error("Orchestration plan requires at least one task.");
-  if (starts.length > 64) throw new Error("Orchestration plan cannot exceed 64 tasks.");
-  const tasks = starts.map((match, index): OrchestrationTask => {
-    const block = normalized.slice(match.index, starts[index + 1]?.index ?? normalized.length);
-    const taskId = match[1].trim();
-    const agent = field(block, "agent");
-    const prompt = quotedField(block, "prompt");
-    const dependsOn = inlineList(field(block, "depends_on"));
-    for (const fieldName of ["agent", "prompt", "depends_on"]) {
-      if ((block.match(new RegExp(`^\\s{4}${fieldName}:`, "gm")) ?? []).length !== 1)
-        throw new Error(`${taskId} field '${fieldName}' must occur exactly once.`);
-    }
+  const taskCount = (lines.length - 3) / 4;
+  if (taskCount > 64) throw new Error("Orchestration plan cannot exceed 64 tasks.");
+  const tasks = Array.from({ length: taskCount }, (_, index): OrchestrationTask => {
+    const offset = 3 + index * 4;
+    const taskId = lines[offset]?.match(/^\s{2}- id:\s*(.+)$/)?.[1]?.trim() ?? "";
+    const agent = orderedField(lines[offset + 1] ?? "", "agent");
+    const prompt = quotedValue(orderedField(lines[offset + 2] ?? "", "prompt"), "prompt");
+    const dependsOn = inlineList(orderedField(lines[offset + 3] ?? "", "depends_on"));
     if (!/^TASK-\d+$/.test(taskId)) throw new Error(`Invalid orchestration task id: ${taskId}`);
     if (!ORCHESTRATION_AGENTS.includes(agent as OrchestrationAgent))
       throw new Error(`Unsupported orchestration agent for ${taskId}: ${agent}`);
@@ -84,8 +77,7 @@ export async function executeOrchestrationPlan(
   orchestrator: AgentOrchestrator,
   maxParallel: number,
 ): Promise<OrchestrationTaskResult[]> {
-  if (!Number.isSafeInteger(maxParallel) || maxParallel < 1 || maxParallel > 16)
-    throw new Error("Orchestration parallelism must be between 1 and 16.");
+  validateOrchestrationParallelism(maxParallel);
   const tasks = new Map(plan.tasks.map((task) => [task.id, task]));
   const results = new Map<string, OrchestrationTaskResult>();
   for (const wave of orchestrationWaves(plan)) {
@@ -122,6 +114,12 @@ export async function executeOrchestrationPlan(
   );
 }
 
+export function validateOrchestrationParallelism(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 16)
+    throw new Error("Orchestration parallelism must be between 1 and 16.");
+  return value;
+}
+
 export function serializeOrchestrationPreview(plan: OrchestrationPlan): string {
   return `schema: 1\nplan: ${plan.id}\nwaves:\n${orchestrationWaves(plan)
     .map((wave, index) => `  - index: ${index + 1}\n    tasks: [${wave.join(", ")}]`)
@@ -154,12 +152,13 @@ function assertPlanGraph(tasks: OrchestrationTask[]): void {
   orchestrationWaves({ schema: 1, id: "validation", tasks });
 }
 
-function field(block: string, name: string): string {
-  return block.match(new RegExp(`^\\s{4}${name}:\\s*(.*)$`, "m"))?.[1]?.trim() ?? "";
+function orderedField(line: string, name: string): string {
+  const value = line.match(new RegExp(`^\\s{4}${name}:\\s*(.*)$`))?.[1]?.trim();
+  if (value === undefined) throw new Error(`Orchestration task field order is invalid: ${name}`);
+  return value;
 }
 
-function quotedField(block: string, name: string): string {
-  const value = field(block, name);
+function quotedValue(value: string, name: string): string {
   if (!value.startsWith('"') || !value.endsWith('"'))
     throw new Error(`Orchestration field '${name}' must be a JSON string.`);
   try {

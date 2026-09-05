@@ -85,6 +85,7 @@ import {
   parseOrchestrationPlan,
   serializeOrchestrationPreview,
   serializeOrchestrationResults,
+  validateOrchestrationParallelism,
 } from "./orchestration.js";
 
 export type WorkflowServices = WorkflowDependencies;
@@ -130,25 +131,34 @@ export async function runCommand(
         };
       const planPath = safeProjectFile(root, parsed.plan, fs);
       const plan = parseOrchestrationPlan(fs.read(planPath));
+      const maxParallel = validateOrchestrationParallelism(
+        parsed["max-parallel"] === undefined ? 2 : Number(parsed["max-parallel"]),
+      );
       if (!execute) return { exitCode: 0, output: serializeOrchestrationPreview(plan) };
       if (!services.orchestrator)
         return { exitCode: 1, error: "No multi-agent orchestrator is configured." };
-      const maxParallel = parsed["max-parallel"] === undefined ? 2 : Number(parsed["max-parallel"]);
       const checkpoint = join(aiw, `checkpoints/orchestration-${plan.id}.yml`);
-      if (fs.exists(checkpoint))
+      const reservation = `${checkpoint}.lock`;
+      if (!fs.createExclusive)
+        return { exitCode: 1, error: "The filesystem does not support atomic orchestration." };
+      if (fs.exists(checkpoint) || !fs.createExclusive(reservation, "schema: 1\nstate: running\n"))
         return {
           exitCode: 1,
           error: `Orchestration checkpoint already exists; use a new plan id: ${checkpoint}`,
         };
-      const results = await executeOrchestrationPlan(plan, services.orchestrator, maxParallel);
-      fs.write(checkpoint, serializeOrchestrationResults(plan, results));
-      const failed = results.filter(({ status }) => status !== "passed");
-      return failed.length
-        ? {
-            exitCode: 1,
-            error: `Orchestration finished with ${failed.length} failed or blocked tasks: ${checkpoint}`,
-          }
-        : { exitCode: 0, output: `Orchestration passed: ${checkpoint}` };
+      try {
+        const results = await executeOrchestrationPlan(plan, services.orchestrator, maxParallel);
+        fs.write(checkpoint, serializeOrchestrationResults(plan, results));
+        const failed = results.filter(({ status }) => status !== "passed");
+        return failed.length
+          ? {
+              exitCode: 1,
+              error: `Orchestration finished with ${failed.length} failed or blocked tasks: ${checkpoint}`,
+            }
+          : { exitCode: 0, output: `Orchestration passed: ${checkpoint}` };
+      } finally {
+        fs.remove?.(reservation);
+      }
     }
     if (command === "install") {
       const flag = args.indexOf("--target");

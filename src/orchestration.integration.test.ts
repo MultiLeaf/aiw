@@ -76,6 +76,9 @@ describe("orchestration workflow", () => {
       ["orchestrate", "--plan=../outside"],
       ["orchestrate", "--plan=orchestration.yml", "--execute", "--execute"],
       ["orchestrate", "--plan=orchestration.yml", "--execute", "--max-parallel=0"],
+      ["orchestrate", "--plan=orchestration.yml", "--max-parallel=17"],
+      ["orchestrate", "--plan=orchestration.yml", "--max-parallel=1.5"],
+      ["orchestrate", "--plan=orchestration.yml", "--max-parallel=abc"],
     ]) {
       const fs = project();
       const before = fs.snapshot();
@@ -84,5 +87,32 @@ describe("orchestration workflow", () => {
       ).toBe(1);
       expect(fs.snapshot()).toEqual(before);
     }
+  });
+
+  it("atomically reserves a checkpoint before invoking an adapter", async () => {
+    const fs = project();
+    let release: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started: (() => void) | undefined;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const run = vi.fn(async () => {
+      started?.();
+      await blocked;
+      return { success: true, detail: "complete" };
+    });
+    const args = ["orchestrate", "--plan=orchestration.yml", "--execute"];
+    const first = runCommand(args, "/project", fs, { orchestrator: { run } });
+    await entered;
+    const second = await runCommand(args, "/project", fs, { orchestrator: { run } });
+    expect(second.exitCode).toBe(1);
+    expect(second.error).toContain("checkpoint already exists");
+    expect(run).toHaveBeenCalledTimes(1);
+    release?.();
+    expect((await first).exitCode).toBe(0);
+    expect(fs.exists("/project/.aiw/checkpoints/orchestration-review.yml.lock")).toBe(false);
   });
 });

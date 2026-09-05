@@ -5,6 +5,8 @@ import {
   readFileSync,
   unlinkSync,
   writeFileSync,
+  openSync,
+  closeSync,
   lstatSync,
   realpathSync,
 } from "node:fs";
@@ -17,6 +19,21 @@ export const nodeFileSystem: FileSystem = {
   write: (path, content) => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content);
+  },
+  createExclusive: (path, content) => {
+    mkdirSync(dirname(path), { recursive: true });
+    try {
+      const descriptor = openSync(path, "wx");
+      try {
+        writeFileSync(descriptor, content);
+      } finally {
+        closeSync(descriptor);
+      }
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw error;
+    }
   },
   writeBytes: (path, content) => {
     mkdirSync(dirname(path), { recursive: true });

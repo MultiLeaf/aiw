@@ -92,6 +92,9 @@ describe("multi-agent orchestration", () => {
     content.replace('prompt: "Implement the change."', "prompt: unquoted"),
     content.replace('prompt: "Implement the change."', 'prompt: "Unsafe\\u0000prompt"'),
     content.replace("TASK-003", "TASK-001"),
+    content.replace("tasks:\n", "    agent: codex\ntasks:\n"),
+    content.replace("id: release-readiness\ntasks:", "tasks:\nid: release-readiness"),
+    content.replace("    agent: codex", "schema: 1\n    agent: codex"),
   ])("rejects invalid plans", (value) => {
     expect(() => parseOrchestrationPlan(value)).toThrow();
   });

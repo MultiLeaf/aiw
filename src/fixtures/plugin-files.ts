@@ -27,6 +27,16 @@ export function memoryFileSystem(initial: Record<string, string> = {}): MemoryFi
       addDirectory(dirname(path));
       files.set(path, content);
     },
+    createExclusive: (path, content): boolean => {
+      if (files.has(path) || directories.has(path)) return false;
+      addDirectory(dirname(path));
+      files.set(path, content);
+      return true;
+    },
+    remove: (path): void => {
+      files.delete(path);
+      directories.delete(path);
+    },
     mkdir: (path) => addDirectory(path),
     pathType: (path) =>
       files.has(path) ? "file" : directories.has(path) ? "directory" : "missing",
