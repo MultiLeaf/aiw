@@ -146,14 +146,14 @@ export async function startDashboard(
         const result = await execute(["target", target]);
         notice = result.output ?? result.error ?? "Migration finished.";
         if (result.exitCode !== 0) {
-          renderResponse(response, 409, renderDashboard(buildDashboardModel(root, fs), notice));
+          renderResponse(response, 409, safeDashboardHtml(root, fs, notice));
           notice = "";
           return;
         }
         response.statusCode = 303;
       } catch (error) {
         notice = error instanceof Error ? error.message : String(error);
-        renderResponse(response, 400, renderDashboard(buildDashboardModel(root, fs), notice));
+        renderResponse(response, 400, safeDashboardHtml(root, fs, notice));
         notice = "";
         return;
       }
@@ -288,6 +288,14 @@ function renderResponse(
   response.statusCode = status;
   response.setHeader("Content-Type", "text/html; charset=utf-8");
   response.end(html);
+}
+
+function safeDashboardHtml(root: string, fs: FileSystem, notice: string): string {
+  try {
+    return renderDashboard(buildDashboardModel(root, fs), notice);
+  } catch {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Workflow</title></head><body><main><h1>AI Workflow</h1><p role="alert">${escapeHtml(notice)}</p><p>Dashboard project state is unsafe or unreadable.</p></main></body></html>`;
+  }
 }
 
 function isInside(root: string, destination: string): boolean {

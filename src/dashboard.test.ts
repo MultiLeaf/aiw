@@ -140,6 +140,40 @@ describe("dashboard", () => {
     expect(() => buildDashboardModel("/project", escaped)).toThrow("symbolic link");
   });
 
+  it("keeps serving safe errors when project state becomes unsafe", async () => {
+    const base = fixture();
+    let unsafe = false;
+    const fs = {
+      ...base,
+      pathType: (path: string): ReturnType<NonNullable<typeof base.pathType>> =>
+        unsafe && path === "/project/.aiw/profile.yml"
+          ? "symlink"
+          : (base.pathType?.(path) ?? "missing"),
+      realpath: (path: string): string =>
+        unsafe && path === "/project/.aiw/profile.yml" ? "/outside/profile.yml" : path,
+    };
+    const execute = vi.fn();
+    const dashboard = await startDashboard("/project", fs, execute);
+    try {
+      unsafe = true;
+      const response = await fetch(`${dashboard.url}/migrate`, {
+        method: "POST",
+        headers: {
+          Origin: dashboard.url,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: "target=claude&confirmation=MIGRATE&unknown=1",
+        redirect: "manual",
+      });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("fields are invalid");
+      expect(execute).not.toHaveBeenCalled();
+      expect((await fetch(dashboard.url)).status).toBe(500);
+    } finally {
+      await dashboard.close();
+    }
+  });
+
   it("wraps long unbroken project-controlled values", () => {
     const html = renderDashboard({
       project: `Project${"X".repeat(180)}`,
