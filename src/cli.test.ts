@@ -173,6 +173,86 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(skillPath, "utf8")).resolves.toBe("user override\n");
   });
 
+  it("creates and validates a plugin package through the CLI", async () => {
+    const cwd = await project();
+    const created = await run(
+      [
+        "plugin",
+        "create",
+        "--directory=plugins/example",
+        "--id=acme/example",
+        "--version=1.0.0",
+        "--description=Provide an example workflow.",
+      ],
+      cwd,
+    );
+    expect(created.exitCode).toBe(0);
+    const manifest = join(cwd, "plugins/example/package.yaml");
+    await expect(readFile(manifest, "utf8")).resolves.toContain("id: acme/example");
+    expect((await run(["plugin", "validate", "--directory=plugins/example"], cwd)).output).toBe(
+      "Plugin package is valid: acme/example@1.0.0",
+    );
+    const before = await readFile(manifest, "utf8");
+    expect(
+      (
+        await run(
+          [
+            "plugin",
+            "create",
+            "--directory=plugins/example",
+            "--id=acme/example",
+            "--version=1.0.0",
+            "--description=Replacement.",
+          ],
+          cwd,
+        )
+      ).exitCode,
+    ).toBe(1);
+    await expect(readFile(manifest, "utf8")).resolves.toBe(before);
+  });
+
+  it("rejects unsafe or malformed plugin authoring arguments atomically", async () => {
+    const cwd = await project();
+    for (const args of [
+      [
+        "plugin",
+        "create",
+        "--directory=../outside",
+        "--id=acme/example",
+        "--version=1.0.0",
+        "--description=Example.",
+      ],
+      [
+        "plugin",
+        "create",
+        "--directory=plugins/example",
+        "--id=INVALID",
+        "--version=1.0.0",
+        "--description=Example.",
+      ],
+      [
+        "plugin",
+        "create",
+        "--directory=plugins/example",
+        "--id=acme/example",
+        "--version=latest",
+        "--description=Example.",
+      ],
+      [
+        "plugin",
+        "create",
+        "--directory=plugins/example",
+        "--id=acme/example",
+        "--version=1.0.0",
+        "--description=Example.",
+        "--unknown=value",
+      ],
+    ]) {
+      expect((await run(args, cwd)).exitCode).toBe(1);
+    }
+    await expect(stat(join(cwd, "plugins/example/package.yaml"))).rejects.toThrow();
+  });
+
   it("scans a JavaScript project and writes its profile", async () => {
     const cwd = await project();
     await run(["install"], cwd);

@@ -75,6 +75,12 @@ import {
   parseTelemetryConfig,
   serializeTelemetryConfig,
 } from "./telemetry.js";
+import {
+  createPluginScaffold,
+  resolvePluginDirectory,
+  validatePluginDirectory,
+  writePluginScaffold,
+} from "./plugin-sdk.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -160,6 +166,37 @@ export async function runCommand(
         exitCode: 1,
         error: usage,
       };
+    }
+    if (command === "plugin") {
+      const usage =
+        "Usage: aiw plugin create --directory=path --id=owner/name --version=1.0.0 --description=text | aiw plugin validate --directory=path";
+      const action = args[1];
+      const options = args.slice(2);
+      if (action === "create") {
+        const allowed = ["directory", "id", "version", "description"];
+        const parsed = parseNamedOptions(options, allowed);
+        if (!parsed || allowed.some((name) => !parsed[name])) return { exitCode: 1, error: usage };
+        const scaffold = createPluginScaffold(root, parsed.directory, {
+          id: parsed.id,
+          version: parsed.version,
+          description: parsed.description,
+        });
+        writePluginScaffold(fs, scaffold);
+        return { exitCode: 0, output: `Plugin scaffold created: ${scaffold.root}` };
+      }
+      if (action === "validate") {
+        const parsed = parseNamedOptions(options, ["directory"]);
+        if (!parsed?.directory) return { exitCode: 1, error: usage };
+        const contract = validatePluginDirectory(
+          fs,
+          resolvePluginDirectory(root, parsed.directory),
+        );
+        return {
+          exitCode: 0,
+          output: `Plugin package is valid: ${contract.id}@${contract.version}`,
+        };
+      }
+      return { exitCode: 1, error: usage };
     }
     if (command === "scan") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -1049,11 +1086,21 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | telemetry <status|enable|disable> [privacy options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function parseNamedOptions(args: string[], allowed: string[]): Record<string, string> | undefined {
+  const entries = args.map((arg) => arg.match(/^--([a-z-]+)=(.+)$/)?.slice(1));
+  if (
+    entries.some((entry) => !entry || !allowed.includes(entry[0])) ||
+    new Set(entries.map((entry) => entry?.[0])).size !== entries.length
+  )
+    return undefined;
+  return Object.fromEntries(entries as string[][]);
 }
 
 function parsePrivateRegistryPackages(payload: unknown, registryUrl: string): RegistryPackage[] {

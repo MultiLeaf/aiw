@@ -11,6 +11,7 @@ CLI
       ├── Resource registry
       ├── Validation and evidence engine
       ├── Opt-in telemetry boundary
+      ├── Plugin authoring SDK
       └── Adapter manager
              ├── Codex
              ├── Claude Code

@@ -6,6 +6,10 @@
   "bin": {
     "aiw": "dist/cli.js"
   },
+  "exports": {
+    ".": "./dist/cli.js",
+    "./plugin-sdk": "./dist/plugin-sdk.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

@@ -39,6 +39,7 @@ const TELEMETRY_COMMANDS = new Set([
   "install",
   "organization-policy",
   "plan",
+  "plugin",
   "policy-check",
   "preset",
   "recommend",
