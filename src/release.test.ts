@@ -28,7 +28,7 @@ describe("release package", () => {
     expect(workflow).toContain("git merge-base --is-ancestor HEAD origin/main");
     expect(workflow).toContain("npm ci");
     expect(workflow).toContain("npm run release:check");
-    expect(workflow).toContain("npm run release:publish-check -- --tag=$GITHUB_REF_NAME");
+    expect(workflow).toContain('npm run release:publish-check -- --tag="$GITHUB_REF_NAME"');
     expect(workflow).toContain("npm publish --access public --provenance");
   });
 });

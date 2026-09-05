@@ -51,7 +51,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test && npm run security:check",
     "start": "node dist/cli.js",
-    "release:check": "npm run check && npm run policy:check && node scripts/release-check.mjs",
+    "release:check": "npm run check && npm run policy:check && npm run release:gate-test && node scripts/release-check.mjs",
+    "release:gate-test": "node --test scripts/*.node-test.mjs",
     "release:publish-check": "node scripts/release-publish-check.mjs"
   },
   "publishConfig": {

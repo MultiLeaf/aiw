@@ -31,4 +31,4 @@ git tag -s v0.1.0 -m "AI Workflow v0.1.0"
 git push origin v0.1.0
 ```
 
-Configure `MultiLeaf/aiw` as a trusted publisher for `@multileaf/ai-workflow` before pushing the tag. The workflow uses Node 24 and npm 11.5.1 or newer, checks that the tag is `v<package-version>`, rejects `UNLICENSED`, and verifies ancestry from `origin/main`. Publish each tag only once; never reuse, move, or overwrite a published version.
+Configure `MultiLeaf/aiw` as a trusted publisher for `@multileaf/ai-workflow` before pushing the tag. The workflow uses Node 24 and npm 11.5.1 or newer, strictly validates Semantic Versioning, checks that the tag is `v<package-version>`, rejects `UNLICENSED`, and verifies ancestry from `origin/main`. Publish each tag only once; never reuse, move, or overwrite a published version.
