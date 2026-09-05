@@ -117,6 +117,9 @@ Resources are distributed as versioned packages that may contain:
 ```bash
 npx @multileaf/ai-workflow registry
 npx @multileaf/ai-workflow skills search --query=react
+
+# Install locally before addressing files inside the package's node_modules path.
+npm install --save-dev @multileaf/ai-workflow
 npx @multileaf/ai-workflow audit-package \
   --package=node_modules/@multileaf/ai-workflow/resources/package.yaml
 npx @multileaf/ai-workflow resolve \
