@@ -15,11 +15,11 @@ AI-assisted development often relies on implicit prompts, duplicated configurati
 - target-specific files are generated through adapters;
 - quality gates and checkpoints provide completion evidence;
 - context is filtered and loaded only when needed to reduce token usage;
-- sensitive or networked capabilities require explicit permission.
+- package-declared sensitive capabilities are evaluated by policy boundaries.
 
 ## Installation
 
-Requirements: Node.js 18 or newer.
+The published package declares Node.js 18 or newer. Development uses Node.js 24 because the current lint toolchain requires a newer runtime; the oldest declared runtime is not part of this repository's release validation matrix yet.
 
 ```bash
 npx @multileaf/ai-workflow install --target codex
@@ -31,7 +31,7 @@ Supported targets are `codex`, `claude`, `cursor`, `gemini`, `copilot`, and `uni
 npx @multileaf/ai-workflow <command> <options>
 ```
 
-The initial installation creates the neutral workflow state and the target-specific `ai-init` skill. Existing project files and user edits are preserved.
+The initial installation creates workflow state and a target-specific `ai-init` skill. Run it in a repository that does not already use the reserved paths shown below: first installation currently writes the base ADR index and target `ai-init` file at those paths. Reinstallation detects existing AI Workflow state and preserves it.
 
 ## What gets created
 
@@ -47,18 +47,20 @@ For a Codex installation, the base layout is:
     └── INDEX.md
 .aiw/
 ├── checkpoints/
+├── context/
 ├── generated/
 │   ├── artifacts/
 │   ├── docs/
 │   ├── plans/
-│   ├── rules/
 │   └── specs/
 ├── lock.yml
 ├── manifest.yml
 └── profile.yml
 ```
 
-`.aiw/` is the provider-neutral source of truth. Adapter outputs such as `.claude/skills`, `.cursor/rules`, or `.github/copilot-instructions.md` are derived from it. Generated working artifacts live under `.aiw/generated/` and are ignored by default; versioned checkpoints remain reviewable project history.
+`.aiw/` stores the provider-neutral manifest, profile, lockfile, checkpoints, and generated working artifacts. ADRs are stored under `.context/adrs/`. The initial `ai-init` resource is rendered directly to the selected target; installed neutral package resources can be rendered through adapters to paths such as `.claude/skills`, `.cursor/rules`, or `.github/copilot-instructions.md`.
+
+The installer does not modify `.gitignore`. Add `.aiw/generated/` yourself if generated specifications, plans, and artifacts should remain local. Versioned files under `.aiw/checkpoints/` are designed to remain reviewable project history.
 
 ## The SDD workflow
 
@@ -72,22 +74,25 @@ Scan → Recommend → Brainstorm → Specify → Decide → Plan → Implement 
 # Detect the repository stack, tools, scripts, and conventions.
 npx @multileaf/ai-workflow scan
 
-# Review recommended skills, rules, agents, hooks, and templates.
+# Review recommendations interactively in a TTY.
 npx @multileaf/ai-workflow recommend
+
+# In CI, provide comma-separated recommendation IDs detected for that project.
+npx @multileaf/ai-workflow recommend --select=typescript-quality,vitest-testing
 
 # Create structured product artifacts.
 npx @multileaf/ai-workflow brainstorm --title="Feature name"
 npx @multileaf/ai-workflow spec --title="Feature requirements"
-npx @multileaf/ai-workflow adr --id=ADR-001 --title="Technical decision"
+npx @multileaf/ai-workflow adr --id=001 --title="Technical decision"
 npx @multileaf/ai-workflow plan --title="Implementation plan"
 
-# Enforce stage completeness and generate evidence.
+# Fill the generated scaffold sections before running their quality gates.
 npx @multileaf/ai-workflow gate specification
 npx @multileaf/ai-workflow verify
 npx @multileaf/ai-workflow trace
 ```
 
-Requirements use stable identifiers and Given/When/Then acceptance criteria. Plans link tasks to requirements, tests, risks, dependencies, and expected evidence. Traceability connects requirements, decisions, tasks, code, tests, and validation output.
+Scaffold commands write deterministic files at fixed paths and a repeated invocation replaces that scaffold. Complete and review each artifact before advancing. Requirements use stable identifiers and Given/When/Then acceptance criteria. Plans link tasks to requirements, tests, risks, dependencies, and expected evidence. `gate` performs textual completeness checks, `verify` validates the expected verification fields rather than running a test command, and `trace` records declared links between requirements, decisions, tasks, code, tests, and evidence.
 
 ## Project intelligence
 
@@ -96,7 +101,7 @@ Analysis uses two complementary layers:
 1. Deterministic detectors identify observable facts such as languages, package managers, workspaces, frameworks, scripts, tests, linters, CI, and configuration files.
 2. An optional provider-neutral AI interpreter examines a filtered context to suggest architecture conventions and capabilities.
 
-Detected facts cannot be replaced by conflicting AI output. Inferred facts remain unconfirmed until the user accepts, rejects, or edits them. Secrets, binaries, dependencies, Git internals, generated output, and checkpoints are excluded from AI context by default.
+Detected facts cannot be replaced by conflicting AI output. Inferred facts remain unconfirmed until the user accepts, rejects, or edits them. Context selection excludes known sensitive filenames, binaries, dependencies, Git internals, generated output, and checkpoints, then applies pattern-based redaction. This is a defense-in-depth filter, not a general secret scanner; review eligible text before enabling an external AI provider.
 
 ## Resource packages and recommendations
 
@@ -112,11 +117,13 @@ Resources are distributed as versioned packages that may contain:
 ```bash
 npx @multileaf/ai-workflow registry
 npx @multileaf/ai-workflow skills search --query=react
-npx @multileaf/ai-workflow audit-package --package=resources/package.yaml
-npx @multileaf/ai-workflow resolve --package=resources/package.yaml
+npx @multileaf/ai-workflow audit-package \
+  --package=node_modules/@multileaf/ai-workflow/resources/package.yaml
+npx @multileaf/ai-workflow resolve \
+  --package=node_modules/@multileaf/ai-workflow/resources/package.yaml
 ```
 
-The registry can combine local packages, private registries, and Vercel Skills metadata. Package locks preserve exact provider, version, integrity, source, and permission information.
+The registry can combine local packages, configured private registries, and Vercel Skills metadata. Vercel operations invoke the external `npx skills` CLI and therefore require network access outside AI Workflow's package-permission gate. Lock entries record the provider, reported version, source, permissions, and available integrity metadata. Local entries may use a synthetic identity value, while an upstream provider may report `latest` or unknown integrity.
 
 ## Switching AI targets
 
@@ -127,13 +134,13 @@ npx @multileaf/ai-workflow target claude --dry-run
 npx @multileaf/ai-workflow target claude
 ```
 
-Migration performs conflict detection before writing, creates a rollback checkpoint, removes obsolete source-target artifacts, and preserves unrelated files. If needed:
+Migration provides a deterministic dry-run, writes a rollback checkpoint, and handles the active `ai-init` transition. Neutral package resources are rendered to the destination adapter. Review the dry-run and back up custom target files first: conflict detection and cleanup do not yet cover every custom destination or every obsolete compatibility file. If needed:
 
 ```bash
 npx @multileaf/ai-workflow rollback
 ```
 
-Use `capabilities --target=<target>` to inspect which resource types and lifecycle events an adapter supports natively or through compatibility files.
+Use `capabilities --target=<target>` to inspect aggregate supported resource types, lifecycle events, and whether the target uses fallback compatibility. See [Adapter Model](docs/adapter-model.md) for the native and compatibility path matrix.
 
 ## Health, recovery, and visibility
 
@@ -144,18 +151,20 @@ npx @multileaf/ai-workflow repair
 npx @multileaf/ai-workflow ui
 ```
 
-The local dashboard binds only to `127.0.0.1`, reads project state from `.aiw/`, and requires the exact `MIGRATE` confirmation before changing targets. `doctor` diagnoses invalid or missing state, while `repair` recreates required AI Workflow structures without replacing user content.
+The local dashboard binds only to `127.0.0.1`, reads project state from `.aiw/`, and requires the exact `MIGRATE` confirmation before changing targets. `doctor` checks the required installation structure, manifest schema, and active target. `repair` recreates a defined subset of required directories and files; it does not repair arbitrary malformed profile or lock content, and a missing profile may still require reinstallation or regeneration.
 
 ## Multi-agent orchestration
 
 AI Workflow can preview and execute a strict, versioned task graph:
+
+Create `orchestration.yml` using the schema in [Multi-agent Orchestration](docs/orchestration.md), then preview it:
 
 ```bash
 npx @multileaf/ai-workflow orchestrate --plan=orchestration.yml
 npx @multileaf/ai-workflow orchestrate --plan=orchestration.yml --execute --max-parallel=4
 ```
 
-Preview is deterministic and read-only. Execution is opt-in and requires a host-provided agent adapter. Dependencies, bounded concurrency, failure propagation, replay protection, and checkpoint evidence are handled by the orchestration domain. The typed contract is exported from `@multileaf/ai-workflow/orchestration`.
+Preview is deterministic and read-only. Execution is opt-in and requires an application host to inject an `AgentOrchestrator`; the standalone CLI does not configure one, so its `--execute` form fails clearly until integrated by a host. Dependencies, bounded concurrency, failure propagation, replay protection, and checkpoint evidence are handled by the orchestration domain. The typed contract is exported from `@multileaf/ai-workflow/orchestration`.
 
 ## Plugins and SDK
 
@@ -170,7 +179,7 @@ npx @multileaf/ai-workflow plugin create \
 npx @multileaf/ai-workflow plugin validate --directory=plugins/plugin-name
 ```
 
-The typed SDK is available from `@multileaf/ai-workflow/plugin-sdk`. Plugins declare resources and receive a guarded filesystem interface that validates paths and preflights writes before mutation. See [Plugin Authoring](docs/plugin-authoring.md).
+The typed SDK is available from `@multileaf/ai-workflow/plugin-sdk`. It exports scaffold and validation helpers that accept an injected filesystem boundary. Those helpers validate project-relative paths and preflight scaffold conflicts; AI Workflow does not currently host arbitrary plugin runtime code or inject a filesystem into executing plugins. See [Plugin Authoring](docs/plugin-authoring.md).
 
 ## Privacy and security
 
@@ -182,7 +191,7 @@ npx @multileaf/ai-workflow telemetry enable
 npx @multileaf/ai-workflow telemetry disable
 ```
 
-Package sources, network access, filesystem permissions, and organization policy are validated before side effects. Published releases include npm registry signatures and SLSA provenance. See [Security and Trust](docs/security.md) and [Telemetry and Privacy](docs/telemetry.md).
+Package contracts, declared permissions, and organization policy are validated at documented workflow boundaries, but not every external subprocess is covered by one global preflight. In particular, Vercel Skills delegates to `npx skills`, and Git sources may be checked out before their package manifest can be inspected. Treat third-party sources as untrusted and review dry-runs and package audits. Published npm releases include registry signatures and SLSA provenance that consumers can verify with `npm audit signatures`. See [Security and Trust](docs/security.md) and [Telemetry and Privacy](docs/telemetry.md).
 
 ## Developing this repository
 
