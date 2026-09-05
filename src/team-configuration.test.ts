@@ -41,5 +41,31 @@ describe("team configuration", () => {
         "schema: 1\nregistries:\n  - { name: engineering, url: http://registry.example.test, token_env: token-name }\n",
       ),
     ).toThrow("HTTPS");
+    for (const url of [
+      "https://user:password@registry.example.test",
+      "https://registry.example.test?token=secret",
+      "https://registry.example.test#secret",
+    ]) {
+      expect(() =>
+        parsePrivateRegistries(
+          `schema: 1\nregistries:\n  - { name: engineering, url: ${url}, token_env: AIW_TOKEN }\n`,
+        ),
+      ).toThrow("must not contain credentials");
+    }
+    expect(() =>
+      parsePrivateRegistries(
+        "schema: 1\ntoken: secret\nregistries:\n  - { name: engineering, url: https://registry.example.test, token_env: AIW_TOKEN }\n",
+      ),
+    ).toThrow("unsupported or malformed");
+    expect(() =>
+      parsePrivateRegistries(
+        "schema: 1\nregistries:\n  - { name: first, name: second, url: https://registry.example.test, token_env: AIW_TOKEN }\n",
+      ),
+    ).toThrow("duplicate fields");
+    expect(() =>
+      parsePrivateRegistries(
+        "schema: 1\nregistries:\n  - { name: engineering, url: https://registry.example.test, token_env: AIW_TOKEN }\n  - malformed-entry\n",
+      ),
+    ).toThrow("unsupported or malformed");
   });
 });

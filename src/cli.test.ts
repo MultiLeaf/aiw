@@ -764,6 +764,39 @@ describe("AI Workflow CLI", () => {
     expect(privateSearch.output).toContain("team/quality@1.2.0 [private-registry]");
     expect(privateSearch.output).not.toContain("runtime-secret");
     expect(receivedToken).toBe("runtime-secret");
+    const leakingFailure = await run(
+      ["registry", "--private=engineering", "--search=quality"],
+      cwd,
+      {
+        environment: { AIW_ENGINEERING_TOKEN: "runtime-secret" },
+        privateRegistries: {
+          search: async () => {
+            throw new Error("transport leaked runtime-secret");
+          },
+        },
+      },
+    );
+    expect(leakingFailure.error).toContain("[REDACTED]");
+    expect(leakingFailure.error).not.toContain("runtime-secret");
+    const leakingPayload = await run(
+      ["registry", "--private=engineering", "--search=quality"],
+      cwd,
+      {
+        environment: { AIW_ENGINEERING_TOKEN: "runtime-secret" },
+        privateRegistries: {
+          search: async () => [
+            {
+              id: "team/quality",
+              version: "1.2.0",
+              description: "runtime-secret",
+              permissions: [],
+            },
+          ],
+        },
+      },
+    );
+    expect(leakingPayload.exitCode).toBe(1);
+    expect(leakingPayload.error).not.toContain("runtime-secret");
     const missingCredential = await run(
       ["registry", "--private=engineering", "--search=quality"],
       cwd,
@@ -783,6 +816,21 @@ describe("AI Workflow CLI", () => {
     expect(rejected.exitCode).toBe(1);
     expect(rejected.error).toContain("token_env");
     await expect(readFile(join(cwd, ".aiw/registries.yml"), "utf8")).resolves.toBe(registries);
+    await writeFile(
+      join(cwd, "registries.yml"),
+      "schema: 1\nregistries:\n  - { name: replacement, url: https://registry.example.test, token_env: AIW_TOKEN }\n  - malformed-entry\n",
+    );
+    expect(
+      (await run(["registry", "configure", "--file=registries.yml", "--replace"], cwd)).exitCode,
+    ).toBe(1);
+    await expect(readFile(join(cwd, ".aiw/registries.yml"), "utf8")).resolves.toBe(registries);
+    await writeFile(
+      join(cwd, ".aiw/registries.yml"),
+      "schema: 1\nregistries:\n  - { name: engineering, url: https://user:secret@registry.example.test, token_env: AIW_TOKEN }\n",
+    );
+    const unhealthy = await run(["doctor"], cwd);
+    expect(unhealthy.exitCode).toBe(1);
+    expect(unhealthy.error).not.toContain("secret");
   });
 
   it("updates a package only when the candidate is newer and compatible", async () => {

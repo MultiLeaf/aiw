@@ -790,7 +790,7 @@ export async function runCommand(
           return { exitCode: 1, error: "Configure private registries first." };
         const configuration = parsePrivateRegistries(fs.read(configurationPath));
         const registry = configuration.registries.find(({ name }) => name === privateName);
-        if (!registry) return { exitCode: 1, error: `Unknown private registry: ${privateName}` };
+        if (!registry) return { exitCode: 1, error: "Unknown private registry." };
         enforceConfiguredOrganizationPolicy(fs, aiw, {
           provider: "private-registry",
           source: registry.url,
@@ -802,11 +802,20 @@ export async function runCommand(
             exitCode: 1,
             error: `Private registry credential is missing from environment variable: ${registry.tokenEnv}`,
           };
-        const payload = await (services.privateRegistries ?? fetchPrivateRegistryClient).search(
-          registry,
-          query,
-          token,
-        );
+        let payload: unknown;
+        try {
+          payload = await (services.privateRegistries ?? fetchPrivateRegistryClient).search(
+            registry,
+            query,
+            token,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Private registry request failed.";
+          throw new Error(message.split(token).join("[REDACTED]"), { cause: error });
+        }
+        if ((JSON.stringify(payload) ?? "").includes(token))
+          throw new Error("Private registry response contains sensitive credential data.");
         const packages = parsePrivateRegistryPackages(payload, registry.url).sort((a, b) =>
           `${a.id}@${a.version}`.localeCompare(`${b.id}@${b.version}`),
         );
@@ -936,7 +945,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
@@ -957,6 +966,14 @@ function parsePrivateRegistryPackages(payload: unknown, registryUrl: string): Re
       !item.permissions.every((permission) => typeof permission === "string")
     )
       throw new Error(`Private registry package ${index} is invalid.`);
+    if (
+      !item.id ||
+      !item.version ||
+      /[\r\n]/.test(item.id) ||
+      /[\r\n]/.test(item.version) ||
+      /[\r\n]/.test(item.description)
+    )
+      throw new Error(`Private registry package ${index} contains unsafe text.`);
     return {
       id: item.id,
       version: item.version,
