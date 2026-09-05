@@ -77,7 +77,6 @@ import {
 } from "./telemetry.js";
 import {
   createPluginScaffold,
-  resolvePluginDirectory,
   validatePluginDirectory,
   writePluginScaffold,
 } from "./plugin-sdk.js";
@@ -187,10 +186,7 @@ export async function runCommand(
       if (action === "validate") {
         const parsed = parseNamedOptions(options, ["directory"]);
         if (!parsed?.directory) return { exitCode: 1, error: usage };
-        const contract = validatePluginDirectory(
-          fs,
-          resolvePluginDirectory(root, parsed.directory),
-        );
+        const contract = validatePluginDirectory(fs, root, parsed.directory);
         return {
           exitCode: 0,
           output: `Plugin package is valid: ${contract.id}@${contract.version}`,
@@ -1096,6 +1092,7 @@ export async function runCommand(
 function parseNamedOptions(args: string[], allowed: string[]): Record<string, string> | undefined {
   const entries = args.map((arg) => arg.match(/^--([a-z-]+)=(.+)$/)?.slice(1));
   if (
+    args.some((arg) => arg.indexOf("=") !== arg.lastIndexOf("=")) ||
     entries.some((entry) => !entry || !allowed.includes(entry[0])) ||
     new Set(entries.map((entry) => entry?.[0])).size !== entries.length
   )

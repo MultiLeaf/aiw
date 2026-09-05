@@ -8,7 +8,10 @@
   },
   "exports": {
     ".": "./dist/cli.js",
-    "./plugin-sdk": "./dist/plugin-sdk.js"
+    "./plugin-sdk": {
+      "types": "./dist/plugin-sdk.d.ts",
+      "default": "./dist/plugin-sdk.js"
+    }
   },
   "scripts": {
     "build": "tsc",

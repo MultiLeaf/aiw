@@ -25,7 +25,7 @@ The package exports `@multileaf/ai-workflow/plugin-sdk` with:
 - `definePlugin` for a typed, immutable package definition;
 - `createPluginScaffold` for deterministic in-memory authoring;
 - `writePluginScaffold` for conflict-safe persistence;
-- `validatePluginDirectory` for contract and resource validation;
+- `validatePluginDirectory` for project-root-confined contract and resource validation;
 - `resolvePluginDirectory` for project-confined paths.
 
 The filesystem boundary is injected, so hosts can test authoring without disk access. Package permissions and organization policies are still enforced by the normal installation and resolution workflow.

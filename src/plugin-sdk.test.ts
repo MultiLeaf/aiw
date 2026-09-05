@@ -18,7 +18,7 @@ describe("plugin SDK", () => {
       description: "Provide an example workflow.",
     });
     writePluginScaffold(fs, scaffold);
-    const contract = validatePluginDirectory(fs, scaffold.root);
+    const contract = validatePluginDirectory(fs, "/project", "plugins/example");
     expect(contract.id).toBe("acme/example");
     expect(fs.read(join(scaffold.root, "skills/example/SKILL.md"))).toContain(
       "Describe the focused workflow",
@@ -69,5 +69,6 @@ describe("plugin SDK", () => {
       provenance: { source: "." },
     });
     expect(Object.isFrozen(contract)).toBe(true);
+    expect(Object.isFrozen(contract.permissions)).toBe(true);
   });
 });

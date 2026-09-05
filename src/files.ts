@@ -5,6 +5,8 @@ import {
   readFileSync,
   unlinkSync,
   writeFileSync,
+  lstatSync,
+  realpathSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { FileSystem } from "./types.js";
@@ -28,4 +30,17 @@ export const nodeFileSystem: FileSystem = {
       .map((entry) => join(entry.parentPath.slice(path.length + 1), entry.name))
       .sort(),
   remove: unlinkSync,
+  pathType: (path) => {
+    try {
+      const entry = lstatSync(path);
+      if (entry.isSymbolicLink()) return "symlink";
+      if (entry.isFile()) return "file";
+      if (entry.isDirectory()) return "directory";
+      return "other";
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+      throw error;
+    }
+  },
+  realpath: realpathSync,
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./cli.js";
@@ -251,6 +251,63 @@ describe("AI Workflow CLI", () => {
       expect((await run(args, cwd)).exitCode).toBe(1);
     }
     await expect(stat(join(cwd, "plugins/example/package.yaml"))).rejects.toThrow();
+  });
+
+  it("blocks plugin symlink escapes and obstructed ancestors before writing", async () => {
+    const cwd = await project();
+    const outside = await project();
+    await symlink(outside, join(cwd, "plugins"));
+    const args = [
+      "plugin",
+      "create",
+      "--directory=plugins/example",
+      "--id=acme/example",
+      "--version=1.0.0",
+      "--description=Example.",
+    ];
+    expect((await run(args, cwd)).exitCode).toBe(1);
+    expect(await readdir(outside)).toEqual([]);
+
+    const obstructed = await project();
+    await mkdir(join(obstructed, "plugins/example"), { recursive: true });
+    await writeFile(join(obstructed, "plugins/example/skills"), "obstruction");
+    expect((await run(args, obstructed)).exitCode).toBe(1);
+    await expect(stat(join(obstructed, "plugins/example/package.yaml"))).rejects.toThrow();
+
+    const dangling = await project();
+    await mkdir(join(dangling, "plugins/example"), { recursive: true });
+    await symlink(join(outside, "created.yaml"), join(dangling, "plugins/example/package.yaml"));
+    expect((await run(args, dangling)).exitCode).toBe(1);
+    await expect(stat(join(outside, "created.yaml"))).rejects.toThrow();
+  });
+
+  it("strictly validates plugin identity, versions, syntax, and confined resource files", async () => {
+    const cwd = await project();
+    const create = [
+      "plugin",
+      "create",
+      "--directory=plugins/example",
+      "--id=acme/example",
+      "--version=1.0.0",
+      "--description=Example.",
+    ];
+    await run(create, cwd);
+    const manifestPath = join(cwd, "plugins/example/package.yaml");
+    const original = await readFile(manifestPath, "utf8");
+    for (const malformed of [
+      original.replace("id: acme/example", "id:"),
+      original.replace("id: acme/example", "id: ACME/Example"),
+      original.replaceAll("version: 1.0.0", "version: 1.0"),
+      original.replace("id: acme/example", "id: acme/example\nid: other/plugin"),
+      `${original}broken: [\n`,
+      original.replace("dependencies: []", "dependencies: [\n"),
+      original.replace("skills/example/SKILL.md", "../outside.md"),
+    ]) {
+      await writeFile(manifestPath, malformed);
+      expect((await run(["plugin", "validate", "--directory=plugins/example"], cwd)).exitCode).toBe(
+        1,
+      );
+    }
   });
 
   it("scans a JavaScript project and writes its profile", async () => {
