@@ -8,6 +8,7 @@ import type { PackageSourceLoader } from "./providers.js";
 import type { PrivateRegistryClient } from "./team-configuration.js";
 import type { PolicyTracking } from "./policy-gate.js";
 import type { TelemetryClient } from "./telemetry.js";
+import type { DashboardHandle } from "./dashboard.js";
 
 export interface ProjectScanner {
   scan(root: string): Promise<ProjectScan>;
@@ -33,6 +34,7 @@ export interface WorkflowDependencies {
   environment?: Readonly<Record<string, string | undefined>>;
   policyTracking?: PolicyTracking;
   telemetry?: TelemetryClient;
+  dashboard?: { start(root: string, port: number): Promise<DashboardHandle> };
 }
 
 export interface WorkflowService {

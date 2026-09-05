@@ -40,6 +40,13 @@
 - Generated files must be distinguishable from user-owned files.
 - Lockfiles must make installations reproducible.
 
+### Local dashboard
+
+- `aiw ui` must expose project profile, recommendations, traceability, and target migration from a loopback-only web interface.
+- The dashboard must render project data safely without external assets, third-party scripts, telemetry, or a separate source of truth.
+- Target migration must require explicit confirmation and use the same workflow service as the CLI.
+- Read-only dashboard requests must not mutate project state.
+
 ## Non-functional requirements
 
 - TypeScript code must pass formatting, linting, type checking, and tests.

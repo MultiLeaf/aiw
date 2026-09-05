@@ -12,6 +12,7 @@ CLI
       ├── Validation and evidence engine
       ├── Opt-in telemetry boundary
       ├── Plugin authoring SDK
+      ├── Local dashboard
       └── Adapter manager
              ├── Codex
              ├── Claude Code
@@ -48,6 +49,10 @@ The CLI is an entry point, not the business layer. Filesystem, package providers
 ## Telemetry
 
 Telemetry is disabled by default and separated from command execution through an injectable client. The core emits only user-approved aggregate fields and does not own a network transport. Collector failures are isolated from workflow results.
+
+## Local dashboard
+
+`aiw ui` starts an HTTP server bound exclusively to `127.0.0.1`. It projects the neutral `.aiw/` state into an English HTML dashboard and JSON read model. The page uses no external assets or client-side scripts. Migration posts require the exact `MIGRATE` confirmation and delegate to the existing target command, preserving its conflict, backup, and rollback behavior.
 
 ## Self-hosting
 

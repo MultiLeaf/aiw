@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { run } from "./cli.js";
 import type { Interpreter } from "./interpreter.js";
 import { checksumPackage } from "./package-integrity.js";
+import type { DashboardHandle } from "./dashboard.js";
 
 async function project(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aiw-test-"));
@@ -209,6 +210,26 @@ describe("AI Workflow CLI", () => {
       ).exitCode,
     ).toBe(1);
     await expect(readFile(manifest, "utf8")).resolves.toBe(before);
+  });
+
+  it("starts the local dashboard through an injected service", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const starts: Array<{ root: string; port: number }> = [];
+    const result = await run(["ui", "--port=4173"], cwd, {
+      dashboard: {
+        start: async (root, port): Promise<DashboardHandle> => {
+          starts.push({ root, port });
+          return { url: "http://127.0.0.1:4173", close: async () => undefined };
+        },
+      },
+    });
+    expect(result).toEqual({
+      exitCode: 0,
+      output: "AI Workflow dashboard: http://127.0.0.1:4173",
+    });
+    expect(starts).toEqual([{ root: cwd, port: 4173 }]);
+    expect((await run(["ui", "--port=65536"], cwd)).exitCode).toBe(1);
   });
 
   it("rejects unsafe or malformed plugin authoring arguments atomically", async () => {

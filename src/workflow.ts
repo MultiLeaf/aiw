@@ -92,6 +92,19 @@ export async function runCommand(
   const aiw = join(root, WORKFLOW_DIRECTORY);
   try {
     const command = args[0] ?? "help";
+    if (command === "ui") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const parsed = parseNamedOptions(args.slice(1), ["port"]);
+      if (!parsed || (parsed.port !== undefined && !/^\d+$/.test(parsed.port)))
+        return { exitCode: 1, error: "Usage: aiw ui [--port=number]" };
+      const port = parsed.port === undefined ? 0 : Number(parsed.port);
+      if (!Number.isSafeInteger(port) || port < 0 || port > 65535)
+        return { exitCode: 1, error: "Dashboard port must be between 0 and 65535." };
+      if (!services.dashboard) return { exitCode: 1, error: "Dashboard service is unavailable." };
+      const dashboard = await services.dashboard.start(root, port);
+      return { exitCode: 0, output: `AI Workflow dashboard: ${dashboard.url}` };
+    }
     if (command === "install") {
       const flag = args.indexOf("--target");
       const requestedTarget = flag >= 0 ? args[flag + 1] : undefined;
@@ -1082,7 +1095,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | ui [--port=number] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

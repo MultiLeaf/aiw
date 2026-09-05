@@ -80,7 +80,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **ENT-003** Add policy enforcement in CI and pull requests.
 - [x] **ENT-004** Add telemetry opt-in with privacy controls. _Acceptance:_ telemetry is disabled by default, users independently control aggregate command/outcome fields, sensitive execution data is never serialized, and collector failures cannot affect workflow results.
 - [x] **ENT-005** Add plugin SDK and package authoring tooling. _Acceptance:_ authors can deterministically scaffold and validate portable packages through the CLI and typed SDK, unsafe paths and overwrites fail atomically, and generated resources are English and contract-valid.
-- [ ] **ENT-006** Add web UI for project profile, recommendations, traceability, and migrations.
+- [x] **ENT-006** Add web UI for project profile, recommendations, traceability, and migrations. _Acceptance:_ `aiw ui` serves a local-only, responsive and accessible dashboard from packaged project state; profile, recommendations, and requirement evidence are visible; migrations require explicit confirmation and delegate to the existing workflow.
 - [ ] **ENT-007** Add multi-agent orchestration and parallel task execution.
 
 ## Backlog rules
