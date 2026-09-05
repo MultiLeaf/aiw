@@ -35,7 +35,8 @@ test("rejects malformed Semantic Versions", () => {
   }
 });
 
-test("rejects mismatched tags and unapproved licenses", () => {
+test("rejects mismatched tags and licenses other than MIT", () => {
   assert.notEqual(validate("0.1.0", "v0.1.1").status, 0);
   assert.notEqual(validate("0.1.0", "v0.1.0", "UNLICENSED").status, 0);
+  assert.notEqual(validate("0.1.0", "v0.1.0", "Apache-2.0").status, 0);
 });

@@ -31,6 +31,8 @@ git tag -s v0.1.0 -m "AI Workflow v0.1.0"
 git push origin v0.1.0
 ```
 
-For the first publication only, add a granular npm automation token as the `NPM_TOKEN` secret in the protected GitHub `npm` environment. The token is exposed only to the publish step, which still generates provenance from the GitHub-hosted runner. After `0.1.0` exists, configure `MultiLeaf/aiw`, workflow `release.yml`, and environment `npm` as a trusted publisher for `@multileaf/ai-workflow`, then delete the bootstrap secret and revoke its token.
+For the first publication only, create a short-lived granular npm token scoped to `@multileaf/ai-workflow` with package read/write access and add it as the `NPM_TOKEN` secret in the protected GitHub `npm` environment. The token is exposed only to the publish step, which still generates provenance from the GitHub-hosted runner. Do not store the token in project files, shell history, workflow output, or documentation.
+
+After `0.1.0` exists, configure organization `MultiLeaf`, repository `aiw`, workflow `release.yml`, and environment `npm` as a trusted publisher in the package settings. Publish a subsequent release through OIDC and verify its provenance on npm before deleting the GitHub bootstrap secret and revoking the granular token. A saved publisher configuration alone is insufficient evidence because npm validates it only during publication.
 
 The workflow uses Node 24 and npm 11.5.1 or newer, strictly validates Semantic Versioning, checks that the tag is `v<package-version>`, requires the approved license, and verifies ancestry from `origin/main`. Publish each tag only once; never reuse, move, or overwrite a published version.

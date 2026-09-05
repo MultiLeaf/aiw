@@ -18,7 +18,7 @@ if (!semanticVersion.test(manifest.version))
   throw new Error(`Package version is not valid Semantic Versioning: ${manifest.version}.`);
 if (tag !== `v${manifest.version}`)
   throw new Error(`Release tag ${tag} does not match package version ${manifest.version}.`);
-if (!manifest.license || manifest.license === "UNLICENSED")
-  throw new Error("An approved public package license is required before publication.");
+if (manifest.license !== "MIT")
+  throw new Error("The approved MIT License is required before publication.");
 
 stdout.write(`Publish contract validated: ${manifest.name}@${manifest.version} (${tag}).\n`);
