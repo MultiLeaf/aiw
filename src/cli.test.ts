@@ -12,6 +12,53 @@ async function project(): Promise<string> {
 }
 
 describe("AI Workflow CLI", () => {
+  it("previews and executes an orchestration plan through injected agent adapters", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "orchestration.yml"),
+      `schema: 1
+id: cli-integration
+tasks:
+  - id: TASK-001
+    agent: codex
+    prompt: "Implement the change."
+    depends_on: []
+  - id: TASK-002
+    agent: claude
+    prompt: "Review the implementation."
+    depends_on: [TASK-001]
+`,
+    );
+    let calls = 0;
+    const services = {
+      orchestrator: {
+        run: async (): Promise<{ success: boolean; detail: string }> => {
+          calls += 1;
+          return { success: true, detail: "complete" };
+        },
+      },
+    };
+
+    expect(
+      (await run(["orchestrate", "--plan=orchestration.yml"], cwd, services)).output,
+    ).toContain("tasks: [TASK-001]");
+    expect(calls).toBe(0);
+    expect(
+      (
+        await run(
+          ["orchestrate", "--plan=orchestration.yml", "--execute", "--max-parallel=2"],
+          cwd,
+          services,
+        )
+      ).exitCode,
+    ).toBe(0);
+    expect(calls).toBe(2);
+    await expect(
+      readFile(join(cwd, ".aiw/checkpoints/orchestration-cli-integration.yml"), "utf8"),
+    ).resolves.toContain("status: passed");
+  });
+
   it("installs the neutral structure and the selected Codex target", async () => {
     const cwd = await project();
     const result = await run(["install", "--target", "codex"], cwd);

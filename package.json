@@ -11,6 +11,10 @@
     "./plugin-sdk": {
       "types": "./dist/plugin-sdk.d.ts",
       "default": "./dist/plugin-sdk.js"
+    },
+    "./orchestration": {
+      "types": "./dist/orchestration.d.ts",
+      "default": "./dist/orchestration.js"
     }
   },
   "scripts": {

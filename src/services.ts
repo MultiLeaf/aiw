@@ -9,6 +9,7 @@ import type { PrivateRegistryClient } from "./team-configuration.js";
 import type { PolicyTracking } from "./policy-gate.js";
 import type { TelemetryClient } from "./telemetry.js";
 import type { DashboardHandle } from "./dashboard.js";
+import type { AgentOrchestrator } from "./orchestration.js";
 
 export interface ProjectScanner {
   scan(root: string): Promise<ProjectScan>;
@@ -35,6 +36,7 @@ export interface WorkflowDependencies {
   policyTracking?: PolicyTracking;
   telemetry?: TelemetryClient;
   dashboard?: { start(root: string, port: number): Promise<DashboardHandle> };
+  orchestrator?: AgentOrchestrator;
 }
 
 export interface WorkflowService {

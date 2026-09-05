@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
 import { detectTarget, generateAiInit, isTarget, renderAiInitPath } from "./adapter.js";
 import { parseProjectProfile, profileProject } from "./profile.js";
@@ -80,6 +80,12 @@ import {
   validatePluginDirectory,
   writePluginScaffold,
 } from "./plugin-sdk.js";
+import {
+  executeOrchestrationPlan,
+  parseOrchestrationPlan,
+  serializeOrchestrationPreview,
+  serializeOrchestrationResults,
+} from "./orchestration.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -104,6 +110,45 @@ export async function runCommand(
       if (!services.dashboard) return { exitCode: 1, error: "Dashboard service is unavailable." };
       const dashboard = await services.dashboard.start(root, port);
       return { exitCode: 0, output: `AI Workflow dashboard: ${dashboard.url}` };
+    }
+    if (command === "orchestrate") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const executeCount = args.filter((arg) => arg === "--execute").length;
+      if (executeCount > 1)
+        return {
+          exitCode: 1,
+          error: "Usage: aiw orchestrate --plan=path [--execute] [--max-parallel=number]",
+        };
+      const execute = executeCount === 1;
+      const named = args.slice(1).filter((arg) => arg !== "--execute");
+      const parsed = parseNamedOptions(named, ["plan", "max-parallel"]);
+      if (!parsed?.plan)
+        return {
+          exitCode: 1,
+          error: "Usage: aiw orchestrate --plan=path [--execute] [--max-parallel=number]",
+        };
+      const planPath = safeProjectFile(root, parsed.plan, fs);
+      const plan = parseOrchestrationPlan(fs.read(planPath));
+      if (!execute) return { exitCode: 0, output: serializeOrchestrationPreview(plan) };
+      if (!services.orchestrator)
+        return { exitCode: 1, error: "No multi-agent orchestrator is configured." };
+      const maxParallel = parsed["max-parallel"] === undefined ? 2 : Number(parsed["max-parallel"]);
+      const checkpoint = join(aiw, `checkpoints/orchestration-${plan.id}.yml`);
+      if (fs.exists(checkpoint))
+        return {
+          exitCode: 1,
+          error: `Orchestration checkpoint already exists; use a new plan id: ${checkpoint}`,
+        };
+      const results = await executeOrchestrationPlan(plan, services.orchestrator, maxParallel);
+      fs.write(checkpoint, serializeOrchestrationResults(plan, results));
+      const failed = results.filter(({ status }) => status !== "passed");
+      return failed.length
+        ? {
+            exitCode: 1,
+            error: `Orchestration finished with ${failed.length} failed or blocked tasks: ${checkpoint}`,
+          }
+        : { exitCode: 0, output: `Orchestration passed: ${checkpoint}` };
     }
     if (command === "install") {
       const flag = args.indexOf("--target");
@@ -1095,7 +1140,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | ui [--port=number] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
@@ -1111,6 +1156,33 @@ function parseNamedOptions(args: string[], allowed: string[]): Record<string, st
   )
     return undefined;
   return Object.fromEntries(entries as string[][]);
+}
+
+function safeProjectFile(root: string, path: string, fs: FileSystem): string {
+  if (
+    !path ||
+    isAbsolute(path) ||
+    [...path].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 31 || code === 127;
+    }) ||
+    path.split(/[\\/]/).includes("..")
+  )
+    throw new Error("Orchestration plan must be a safe project-relative file.");
+  const projectRoot = fs.realpath?.(resolve(root)) ?? resolve(root);
+  const candidate = resolve(root, path);
+  const candidateType = fs.pathType?.(candidate) ?? (fs.exists(candidate) ? "file" : "missing");
+  if (!isInsidePath(resolve(root), candidate) || candidateType !== "file")
+    throw new Error(`Orchestration plan does not exist or is not a file: ${path}`);
+  const realCandidate = fs.realpath?.(candidate) ?? candidate;
+  if (!isInsidePath(projectRoot, realCandidate))
+    throw new Error("Orchestration plan must stay inside the project.");
+  return candidate;
+}
+
+function isInsidePath(root: string, destination: string): boolean {
+  const path = relative(root, destination);
+  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
 }
 
 function parsePrivateRegistryPackages(payload: unknown, registryUrl: string): RegistryPackage[] {

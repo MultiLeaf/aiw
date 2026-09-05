@@ -13,6 +13,7 @@ CLI
       ├── Opt-in telemetry boundary
       ├── Plugin authoring SDK
       ├── Local dashboard
+      ├── Multi-agent scheduler
       └── Adapter manager
              ├── Codex
              ├── Claude Code
@@ -53,6 +54,10 @@ Telemetry is disabled by default and separated from command execution through an
 ## Local dashboard
 
 `aiw ui` starts an HTTP server bound exclusively to `127.0.0.1`. It projects the neutral `.aiw/` state into an English HTML dashboard and JSON read model. The page uses no external assets or client-side scripts. Migration posts require the exact `MIGRATE` confirmation and delegate to the existing target command, preserving its conflict, backup, and rollback behavior.
+
+## Multi-agent orchestration
+
+The orchestration domain parses a strict, versioned task graph and schedules dependency waves with bounded parallelism. Preview is deterministic and read-only. Execution requires the explicit `--execute` flag and an injected `AgentOrchestrator`; this keeps Codex, Claude, Gemini, Orca, and future runtimes outside the core. Failed tasks block only their descendants, while independent work continues. Completed outcomes are recorded once in a versioned `.aiw/checkpoints/orchestration-<plan>.yml` checkpoint.
 
 ## Self-hosting
 

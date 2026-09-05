@@ -18,3 +18,5 @@ Telemetry is disabled by default. Use `aiw telemetry status`, `enable`, or `disa
 Create portable plugins with `aiw plugin create` and validate them with `aiw plugin validate`. The typed SDK is exported from `@multileaf/ai-workflow/plugin-sdk`; see [Plugin Authoring](docs/plugin-authoring.md).
 
 Inspect project state in the local dashboard with `aiw ui`. It binds to `127.0.0.1`, loads only `.aiw/` project state, and requires explicit confirmation before target migration.
+
+Preview a versioned multi-agent task graph with `aiw orchestrate --plan=orchestration.yml`. Execution is opt-in through `--execute`, uses a host-provided agent adapter, limits concurrency with `--max-parallel`, and records results under `.aiw/checkpoints/`. The scheduler and adapter contract are exported from `@multileaf/ai-workflow/orchestration`; see [Multi-agent Orchestration](docs/orchestration.md).
