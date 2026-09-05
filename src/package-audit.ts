@@ -17,7 +17,9 @@ export const PACKAGE_PERMISSIONS = {
 export type PackagePermission = keyof typeof PACKAGE_PERMISSIONS;
 
 export function assertKnownPermissions(permissions: string[]): void {
-  const unknown = permissions.filter((permission) => !(permission in PACKAGE_PERMISSIONS));
+  const unknown = permissions.filter(
+    (permission) => !Object.prototype.hasOwnProperty.call(PACKAGE_PERMISSIONS, permission),
+  );
   if (unknown.length) throw new Error(`Unknown package permissions: ${unknown.join(", ")}`);
 }
 

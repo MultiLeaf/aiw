@@ -36,5 +36,8 @@ describe("package permission audit", () => {
     expect(() => assertKnownPermissions(["network:external", "system:root"])).toThrow(
       "Unknown package permissions: system:root",
     );
+    expect(() => assertKnownPermissions(["constructor"])).toThrow(
+      "Unknown package permissions: constructor",
+    );
   });
 });

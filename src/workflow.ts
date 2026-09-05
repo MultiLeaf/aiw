@@ -16,7 +16,7 @@ import { detectDrift } from "./drift.js";
 import { parseManifest } from "./manifest.js";
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
-import { resolvePackage, serializeLock } from "./lockfile.js";
+import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import {
@@ -69,7 +69,7 @@ import {
   serializeTeamPreset,
   fetchPrivateRegistryClient,
 } from "./team-configuration.js";
-import { enforcePolicyGate } from "./policy-gate.js";
+import { enforcePolicyGate, gitPolicyTracking } from "./policy-gate.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -414,10 +414,12 @@ export async function runCommand(
           "vercel-react-best-practices",
           target,
         );
-        const lockPath = join(aiw, "lock.yml");
-        fs.write(
-          lockPath,
-          `${fs.exists(lockPath) ? fs.read(lockPath).replace(/\n*$/, "\n") : "schema: 1\npackages:\n"}  - id: vercel-labs/agent-skills/vercel-react-best-practices\n    provider: vercel-skills\n    source: vercel-labs/agent-skills\n    target: ${target}\n    integrity: ${fs.exists(join(root, "skills-lock.json")) ? (fs.read(join(root, "skills-lock.json")).match(/"computedHash":\s*"([^"]+)"/)?.[1] ?? "unknown") : "unknown"}\n`,
+        writeVercelSkillLock(
+          fs,
+          root,
+          aiw,
+          "vercel-labs/agent-skills",
+          "vercel-react-best-practices",
         );
       }
       const conflicts: string[] = [];
@@ -707,6 +709,8 @@ export async function runCommand(
       const policyPath = join(aiw, "organization.yml");
       if (!fs.exists(policyPath))
         return { exitCode: 1, error: "Organization policy is required for the CI policy gate." };
+      if (!(services.policyTracking ?? gitPolicyTracking).isTracked(root, policyPath))
+        return { exitCode: 1, error: "Organization policy must be tracked by Git." };
       const packageArgs = args.filter((arg) => arg.startsWith("--package="));
       if (!packageArgs.length)
         return { exitCode: 1, error: "Usage: aiw policy-check --package=path [--package=path]" };
@@ -718,24 +722,14 @@ export async function runCommand(
         source: pkg.source,
         permissions: pkg.permissions,
       }));
-      const knownPackageIds = new Set(packages.map(({ id }) => id));
       const lock = fs.read(join(aiw, "lock.yml"));
-      for (const block of lock.split(/^\s{2}- id: /m).slice(1)) {
-        const id = block.split("\n", 1)[0].trim();
-        const provider = block.match(/^\s+provider: ([^\n]+)$/m)?.[1]?.trim();
-        const source = block.match(/^\s+source: ([^\n]+)$/m)?.[1]?.trim();
-        const permissions = block.match(/^\s+permissions: \[([^\n]*)\]$/m)?.[1] ?? "";
-        if (!provider || !source) throw new Error(`Lockfile package is invalid: ${id}`);
-        if (!knownPackageIds.has(id))
-          subjects.push({
-            provider,
-            source,
-            permissions: permissions
-              .split(",")
-              .map((permission) => permission.trim())
-              .filter(Boolean),
-          });
-      }
+      subjects.push(
+        ...parseLock(lock).map((locked) => ({
+          provider: locked.provider,
+          source: locked.source,
+          permissions: locked.permissions ?? [],
+        })),
+      );
       const registriesPath = join(aiw, "registries.yml");
       if (fs.exists(registriesPath))
         subjects.push(

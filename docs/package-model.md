@@ -42,7 +42,7 @@ Private registries are configured with `aiw registry configure --file=<path>`. E
 
 Every package must declare an identifier, package version, provider, source, engine compatibility, resources, dependencies, supported targets, permissions, and provenance. Each resource has its own stable identifier, version, and path.
 
-The project manifest stores requested version ranges. The lockfile stores the exact resolved version, provider, source, integrity information, and resource versions used by the project. Updates compare the requested range with the resolved lockfile version and never rely on a filename or list position.
+The project manifest stores requested version ranges. The lockfile stores the exact resolved version, provider, source, integrity information, requested permissions, and resource versions used by the project. The CI policy gate parses every lock entry strictly and evaluates it independently from package manifests, including entries with matching identifiers. Updates compare the requested range with the resolved lockfile version and never rely on a filename or list position.
 
 ```yaml
 packages:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolvePackage, serializeLock } from "./lockfile.js";
+import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
 import type { PackageContract } from "./package-contract.js";
 
 const pkg: PackageContract = {
@@ -40,5 +40,18 @@ describe("lockfile resolution", () => {
     const first = serializeLock([resolvePackage(pkg)]);
     const second = serializeLock([resolvePackage({ ...pkg })]);
     expect(first).toBe(second);
+  });
+
+  it("strictly parses current and legacy lock entries", () => {
+    const serialized = serializeLock([resolvePackage(pkg)]);
+    expect(parseLock(serialized)).toEqual([resolvePackage(pkg)]);
+    expect(
+      parseLock(serialized.replace("    permissions: []\n", ""))[0].permissions,
+    ).toBeUndefined();
+    expect(() => parseLock("not: [valid\n")).toThrow("schema");
+    expect(() => parseLock(serialized.replace("schema: 1", "schema: 9"))).toThrow("schema");
+    expect(() =>
+      parseLock(serialized.replace("permissions: []", "permissions: [process:execute")),
+    ).toThrow("permissions");
   });
 });
