@@ -62,12 +62,111 @@ For a Codex installation, the base layout is:
 
 The installer does not modify `.gitignore`. Add `.aiw/generated/` yourself if generated specifications, plans, and artifacts should remain local. Versioned files under `.aiw/checkpoints/` are designed to remain reviewable project history.
 
+### Installation and configuration flow
+
+```mermaid
+flowchart TD
+    A[Run aiw install] --> B{Target provided?}
+    B -->|Yes| C[Validate selected target]
+    B -->|No| D[Detect installed AI tools]
+    D --> E{One supported target?}
+    E -->|Yes| C
+    E -->|No| F[Request or require target selection]
+    F --> C
+
+    C --> G[Create base directories]
+    G --> H[Write manifest, profile, and lock state]
+    H --> I[Create ADR index]
+    I --> J[Render ai-init through target adapter]
+    J --> K[Installed project]
+
+    K --> L[Run ai-init or aiw scan]
+    L --> M[Ignore-aware deterministic scan]
+    M --> N[Optional filtered AI interpretation]
+    N --> O[Write confirmed and inferred facts to profile.yml]
+    O --> P[Generate recommendations.yml]
+    P --> Q{User selection and confirmation}
+    Q -->|Accept or edit| R[Resolve packages and resources]
+    Q -->|Reject| S[Persist override decision]
+    R --> T[Update lock.yml]
+    T --> U[Generate project-specific resources]
+    U --> V[Render resources through active adapter]
+    V --> W[Record applicable checkpoint evidence]
+
+    K --> X[Run aiw target TARGET]
+    X --> Y[Dry-run and conflict review]
+    Y --> Z[Write migration checkpoint]
+    Z --> AA[Render destination resources]
+    AA --> AB[Update active target in manifest.yml]
+    AB --> AC{Rollback requested?}
+    AC -->|Yes| AD[Restore files and manifest from checkpoint]
+    AC -->|No| AE[Continue with new target]
+
+    H -. project state .-> STATE[(.aiw/*.yml)]
+    W -. session and validation history .-> LOGS[(.aiw/checkpoints/)]
+    I -. decisions index .-> ADRS[(.context/adrs/INDEX.md)]
+```
+
 ## The SDD workflow
 
 AI Workflow supports an end-to-end specification-driven development cycle:
 
-```text
-Scan → Recommend → Brainstorm → Specify → Decide → Plan → Implement → Verify → Trace
+```mermaid
+flowchart TD
+    A[Project request] --> B[Scan repository]
+    B --> C[(.aiw/profile.yml)]
+    C --> D[Recommend capabilities]
+    D --> E[(.aiw/recommendations.yml)]
+    E --> F{User confirms scope}
+    F -->|Revise| B
+    F -->|Proceed| G[Brainstorm]
+
+    G --> H[(generated/specs/brainstorm.md)]
+    H --> I{Brainstorm gate}
+    I -->|Incomplete| G
+    I -->|Complete| J[Write specification]
+
+    J --> K[(generated/specs/specification.md)]
+    K --> L{Specification gate}
+    L -->|Incomplete| J
+    L -->|Complete| M{Architecture decision needed?}
+
+    M -->|Yes| N[Create ADR]
+    N --> O[(.context/adrs/ADR-NNN-title.md)]
+    O --> P[Update ADR index]
+    P --> Q[(.context/adrs/INDEX.md)]
+    M -->|No| R[Create implementation plan]
+    Q --> R
+
+    R --> S[(generated/plans/implementation-plan.md)]
+    S --> T{Plan gate}
+    T -->|Incomplete| R
+    T -->|Ready| U[Implement tasks with TDD]
+
+    U --> V[Write code and tests]
+    V --> W[Run task validation commands]
+    W --> X{Validation passes?}
+    X -->|No| U
+    X -->|Yes| Y[Record completion evidence]
+
+    Y --> Z[(generated/artifacts and checkpoint evidence)]
+    Z --> AA[Verify declared evidence]
+    AA --> AB{Verification gate}
+    AB -->|Missing evidence| U
+    AB -->|Complete| AC[Build traceability graph]
+
+    AC --> AD[Requirement → ADR → Task → Code → Test → Evidence]
+    AD --> AE[(generated artifacts and trace output)]
+    AE --> AF[Run repository self-validation]
+    AF --> AG[(.aiw/checkpoints/self-validation-TICKET.yml)]
+    AG --> AH{Review outcome}
+    AH -->|Changes required| U
+    AH -->|Accepted| AI[Commit and independent integration validation]
+
+    B -. command history and evidence .-> LOGS[(.aiw/checkpoints/)]
+    D -. command history and evidence .-> LOGS
+    U -. implementation session evidence .-> LOGS
+    AI -. final validation result .-> LOGS
 ```
 
 ```bash
