@@ -8,6 +8,7 @@ describe("continuous integration", () => {
     expect(workflow).toContain("push:");
     expect(workflow).toContain("npm ci");
     expect(workflow).toContain("npm run check");
+    expect(workflow).toContain("npm run policy:check");
     expect(workflow).toContain("permissions:");
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("node-version: 20");

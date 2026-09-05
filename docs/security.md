@@ -12,5 +12,6 @@ AI Workflow can install instructions and execute hooks, so packages are supply-c
 - Exclude secret files and ignored paths from scans.
 - Provide `--dry-run`, audit output, and rollback.
 - Run dependency and code security scans in CI.
+- Enforce the tracked organization policy on every push and pull request with `npm run policy:check`.
 
 Packages with critical or high vulnerabilities, malicious provenance, archival status, or stale maintenance should be rejected or require an explicit documented override.

@@ -907,6 +907,46 @@ resources:
     expect(conflict.error).toContain("incompatible");
   });
 
+  it("enforces the configured organization policy as a CI gate", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/organization.yml"),
+      "schema: 1\nname: Engineering\napproved_sources: [local:./resources]\ndenied_permissions: [process:execute]\n",
+    );
+    await writeFile(
+      join(cwd, "package.yaml"),
+      "schema: 1\nid: team/base\nversion: 1.0.0\nprovider: local\nsource: ./resources\ndependencies: []\npermissions: []\nprovenance:\n  source: ./resources\nresources:\n  skills:\n    - { id: base, version: 1.0.0, path: skills/base.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n",
+    );
+
+    expect((await run(["policy-check", "--package=package.yaml"], cwd)).exitCode).toBe(0);
+    await writeFile(
+      join(cwd, ".aiw/lock.yml"),
+      "schema: 1\npackages:\n  - id: unknown/package\n    version: 1.0.0\n    provider: git\n    source: https://unapproved.example.test/package.git\n    integrity: sha256-test\n",
+    );
+    const unapprovedLock = await run(["policy-check", "--package=package.yaml"], cwd);
+    expect(unapprovedLock.exitCode).toBe(1);
+    expect(unapprovedLock.error).toContain("not approved");
+    await writeFile(
+      join(cwd, ".aiw/lock.yml"),
+      "schema: 1\npackages:\n  - id: unknown/package\n    version: 1.0.0\n    provider: local\n    source: ./resources\n    integrity: sha256-test\n    permissions: [process:execute]\n",
+    );
+    const deniedLock = await run(["policy-check", "--package=package.yaml"], cwd);
+    expect(deniedLock.exitCode).toBe(1);
+    expect(deniedLock.error).toContain("denied by Engineering");
+    await writeFile(join(cwd, ".aiw/lock.yml"), "schema: 1\npackages:\n");
+    await writeFile(
+      join(cwd, "package.yaml"),
+      (await readFile(join(cwd, "package.yaml"), "utf8")).replace(
+        "permissions: []",
+        "permissions: [process:execute]",
+      ),
+    );
+    const denied = await run(["policy-check", "--package=package.yaml"], cwd);
+    expect(denied.exitCode).toBe(1);
+    expect(denied.error).toContain("denied by Engineering");
+  });
+
   it("records an externally installed Vercel skill in the AIW lockfile", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);

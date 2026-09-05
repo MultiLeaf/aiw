@@ -5,3 +5,4 @@ packages:
     provider: local
     source: ./resources
     integrity: sha256-multileaf/aiw-self-hosting@0.1.0
+    permissions: []

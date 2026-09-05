@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "security:check": "npm audit --audit-level=high",
+    "policy:check": "node dist/cli.js policy-check --package=resources/package.yaml",
     "format": "prettier --write \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test && npm run security:check",

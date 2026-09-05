@@ -26,6 +26,7 @@ describe("lockfile resolution", () => {
       id: "demo/package",
       version: "1.0.0",
       integrity: "sha256-demo/package@1.0.0",
+      permissions: [],
     });
   });
 

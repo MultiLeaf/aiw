@@ -23,3 +23,5 @@ jobs:
         run: npm ci
       - name: Run quality gates
         run: npm run check
+      - name: Enforce organization policy
+        run: npm run policy:check

@@ -6,6 +6,7 @@ export type LockedPackage = {
   provider: string;
   source: string;
   integrity: string;
+  permissions?: string[];
 };
 
 export function resolvePackage(pkg: PackageContract): LockedPackage {
@@ -15,10 +16,11 @@ export function resolvePackage(pkg: PackageContract): LockedPackage {
     provider: pkg.provider,
     source: pkg.source,
     integrity: `sha256-${pkg.id}@${pkg.version}`,
+    permissions: [...pkg.permissions].sort(),
   };
 }
 
 export function serializeLock(packages: LockedPackage[]): string {
   const ordered = [...packages].sort((a, b) => a.id.localeCompare(b.id));
-  return `schema: 1\npackages:\n${ordered.map((pkg) => `  - id: ${pkg.id}\n    version: ${pkg.version}\n    provider: ${pkg.provider}\n    source: ${pkg.source}\n    integrity: ${pkg.integrity}\n`).join("")}`;
+  return `schema: 1\npackages:\n${ordered.map((pkg) => `  - id: ${pkg.id}\n    version: ${pkg.version}\n    provider: ${pkg.provider}\n    source: ${pkg.source}\n    integrity: ${pkg.integrity}\n    permissions: [${[...(pkg.permissions ?? [])].sort().join(", ")}]\n`).join("")}`;
 }

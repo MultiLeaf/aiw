@@ -1,0 +1,4 @@
+schema: 1
+name: Multileaf AI Workflow
+approved_sources: [local:./resources]
+denied_permissions: [process:execute]

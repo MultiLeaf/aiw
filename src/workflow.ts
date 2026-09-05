@@ -69,6 +69,7 @@ import {
   serializeTeamPreset,
   fetchPrivateRegistryClient,
 } from "./team-configuration.js";
+import { enforcePolicyGate } from "./policy-gate.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -700,6 +701,58 @@ export async function runCommand(
       fs.write(destination, serializeOrganizationPolicy(policy));
       return { exitCode: 0, output: `Organization policy configured: ${policy.name}` };
     }
+    if (command === "policy-check") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const policyPath = join(aiw, "organization.yml");
+      if (!fs.exists(policyPath))
+        return { exitCode: 1, error: "Organization policy is required for the CI policy gate." };
+      const packageArgs = args.filter((arg) => arg.startsWith("--package="));
+      if (!packageArgs.length)
+        return { exitCode: 1, error: "Usage: aiw policy-check --package=path [--package=path]" };
+      const packages = packageArgs.map((argument) =>
+        validatePackageContract(fs.read(join(root, argument.slice(10)))),
+      );
+      const subjects: PackagePolicySubject[] = packages.map((pkg) => ({
+        provider: pkg.provider,
+        source: pkg.source,
+        permissions: pkg.permissions,
+      }));
+      const knownPackageIds = new Set(packages.map(({ id }) => id));
+      const lock = fs.read(join(aiw, "lock.yml"));
+      for (const block of lock.split(/^\s{2}- id: /m).slice(1)) {
+        const id = block.split("\n", 1)[0].trim();
+        const provider = block.match(/^\s+provider: ([^\n]+)$/m)?.[1]?.trim();
+        const source = block.match(/^\s+source: ([^\n]+)$/m)?.[1]?.trim();
+        const permissions = block.match(/^\s+permissions: \[([^\n]*)\]$/m)?.[1] ?? "";
+        if (!provider || !source) throw new Error(`Lockfile package is invalid: ${id}`);
+        if (!knownPackageIds.has(id))
+          subjects.push({
+            provider,
+            source,
+            permissions: permissions
+              .split(",")
+              .map((permission) => permission.trim())
+              .filter(Boolean),
+          });
+      }
+      const registriesPath = join(aiw, "registries.yml");
+      if (fs.exists(registriesPath))
+        subjects.push(
+          ...parsePrivateRegistries(fs.read(registriesPath)).registries.map((registry) => ({
+            provider: "private-registry",
+            source: registry.url,
+            permissions: ["network:external"],
+          })),
+        );
+      const policy = parseOrganizationPolicy(fs.read(policyPath));
+      subjects.forEach((subject) => assertKnownPermissions(subject.permissions));
+      enforcePolicyGate(policy, subjects);
+      return {
+        exitCode: 0,
+        output: `Organization policy gate passed: ${policy.name} (${subjects.length} subjects).`,
+      };
+    }
     if (command === "preset") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -945,7 +998,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
@@ -1051,12 +1104,12 @@ function writeVercelSkillLock(
   const current = fs.exists(lockPath) ? fs.read(lockPath) : "schema: 1\npackages:\n";
   const id = `${source}/${skill}`;
   const withoutExisting = current.replace(
-    new RegExp(`  - id: ${escapeRegExp(id)}\\n(?:    [^\\n]+\\n){4}`, "g"),
+    new RegExp(`  - id: ${escapeRegExp(id)}\\n(?:    [^\\n]+\\n){4,5}`, "g"),
     "",
   );
   fs.write(
     lockPath,
-    `${withoutExisting.replace(/\n*$/, "\n")}  - id: ${id}\n    version: latest\n    provider: vercel-skills\n    source: ${source}\n    integrity: ${skillIntegrity(fs, root, skill)}\n`,
+    `${withoutExisting.replace(/\n*$/, "\n")}  - id: ${id}\n    version: latest\n    provider: vercel-skills\n    source: ${source}\n    integrity: ${skillIntegrity(fs, root, skill)}\n    permissions: [network:external]\n`,
   );
 }
 
