@@ -17,6 +17,14 @@ describe("telemetry privacy", () => {
   it("round-trips explicit telemetry preferences", () => {
     expect(parseTelemetryConfig(serializeTelemetryConfig(enabled))).toEqual(enabled);
     expect(() => parseTelemetryConfig("schema: 2\n")).toThrow("version 1");
+    expect(() =>
+      parseTelemetryConfig(
+        "unrelated:\n  schema: 1\n  enabled: true\n  privacy:\n    include_command: true\n    include_outcome: true\n",
+      ),
+    ).toThrow("Telemetry");
+    expect(() =>
+      parseTelemetryConfig(`${serializeTelemetryConfig(enabled)}token: secret\n`),
+    ).toThrow("structure");
   });
 
   it("creates only allowlisted aggregate fields", () => {

@@ -129,6 +129,26 @@ describe("AI Workflow CLI", () => {
     await expect(stat(join(cwd, ".aiw/telemetry.yml"))).rejects.toThrow();
   });
 
+  it.each([
+    ["telemetry"],
+    ["telemetry", "status", "extra"],
+    ["telemetry", "disable", "extra"],
+    ["telemetry", "enable", "--commands"],
+    ["telemetry", "enable", "--unknown=exclude"],
+    ["telemetry", "enable", "--commands=include=secret"],
+    ["telemetry", "enable", "--commands=include", "--commands=exclude"],
+  ])("rejects invalid telemetry arguments without changing preferences: %j", async (...args) => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["telemetry", "enable", "--commands=exclude", "--outcomes=exclude"], cwd);
+    const path = join(cwd, ".aiw/telemetry.yml");
+    const before = await readFile(path, "utf8");
+    const result = await run(args, cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Usage: aiw telemetry");
+    await expect(readFile(path, "utf8")).resolves.toBe(before);
+  });
+
   it("does not overwrite a user-edited target skill on reinstall", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);

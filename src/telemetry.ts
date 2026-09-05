@@ -64,13 +64,24 @@ const TELEMETRY_COMMANDS = new Set([
 ]);
 
 export function parseTelemetryConfig(content: string): TelemetryConfig {
-  const schema = value(content, "schema");
-  if (schema !== "1") throw new Error("Telemetry schema must be version 1.");
+  const lines = content.split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  if (lines[0] !== "schema: 1") throw new Error("Telemetry schema must be version 1.");
+  if (lines.length !== 5) throw new Error("Telemetry configuration structure is invalid.");
+  if (lines[2] !== "privacy:") throw new Error("Telemetry privacy section is required.");
   return {
     schema: 1,
-    enabled: booleanValue(content, "enabled"),
-    includeCommand: booleanValue(content, "include_command"),
-    includeOutcome: booleanValue(content, "include_outcome"),
+    enabled: booleanLine(lines[1], /^enabled: (true|false)$/, "enabled"),
+    includeCommand: booleanLine(
+      lines[3],
+      /^[ ]{2}include_command: (true|false)$/,
+      "include_command",
+    ),
+    includeOutcome: booleanLine(
+      lines[4],
+      /^[ ]{2}include_outcome: (true|false)$/,
+      "include_outcome",
+    ),
   };
 }
 
@@ -111,13 +122,8 @@ function safeCommand(command: string | undefined): string {
   return command && TELEMETRY_COMMANDS.has(command) ? command : "unknown";
 }
 
-function value(content: string, key: string): string | undefined {
-  return content.match(new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, "m"))?.[1];
-}
-
-function booleanValue(content: string, key: string): boolean {
-  const parsed = value(content, key);
-  if (parsed !== "true" && parsed !== "false")
-    throw new Error(`Telemetry field '${key}' must be true or false.`);
+function booleanLine(line: string | undefined, pattern: RegExp, key: string): boolean {
+  const parsed = line?.match(pattern)?.[1];
+  if (!parsed) throw new Error(`Telemetry field '${key}' must be true or false.`);
   return parsed === "true";
 }

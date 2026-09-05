@@ -116,9 +116,13 @@ export async function runCommand(
     if (command === "telemetry") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
-      const action = args[1] ?? "status";
+      const usage =
+        "Usage: aiw telemetry <status|enable|disable> [--commands=include|exclude] [--outcomes=include|exclude]";
+      const action = args[1];
+      if (!action) return { exitCode: 1, error: usage };
       const path = join(aiw, "telemetry.yml");
       if (action === "status") {
+        if (args.length !== 2) return { exitCode: 1, error: usage };
         const config = fs.exists(path)
           ? parseTelemetryConfig(fs.read(path))
           : DEFAULT_TELEMETRY_CONFIG;
@@ -128,16 +132,19 @@ export async function runCommand(
         };
       }
       if (action === "disable") {
+        if (args.length !== 2) return { exitCode: 1, error: usage };
         fs.write(path, serializeTelemetryConfig({ ...DEFAULT_TELEMETRY_CONFIG }));
         return { exitCode: 0, output: "Telemetry disabled." };
       }
       if (action === "enable") {
-        const privacyValue = (name: string): boolean => {
-          const option = args.find((arg) => arg.startsWith(`--${name}=`))?.split("=", 2)[1];
-          if (option === undefined || option === "include") return true;
-          if (option === "exclude") return false;
-          throw new Error(`Telemetry privacy option '${name}' must be include or exclude.`);
-        };
+        const options = args.slice(2);
+        if (
+          options.some((option) => !/^--(?:commands|outcomes)=(?:include|exclude)$/.test(option)) ||
+          new Set(options.map((option) => option.slice(0, option.indexOf("=")))).size !==
+            options.length
+        )
+          return { exitCode: 1, error: usage };
+        const privacyValue = (name: string): boolean => !options.includes(`--${name}=exclude`);
         fs.write(
           path,
           serializeTelemetryConfig({
@@ -151,8 +158,7 @@ export async function runCommand(
       }
       return {
         exitCode: 1,
-        error:
-          "Usage: aiw telemetry <status|enable|disable> [--commands=include|exclude] [--outcomes=include|exclude]",
+        error: usage,
       };
     }
     if (command === "scan") {

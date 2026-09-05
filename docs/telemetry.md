@@ -23,4 +23,4 @@ An event contains only:
 
 Events never contain command arguments, file paths, project names, file contents, environment variables, prompts, output, error messages, credentials, or stable user/project identifiers. Invalid command names are reported as `unknown` instead of being copied into an event.
 
-The core package does not define a network endpoint. Delivery is provided through the injectable `TelemetryClient` boundary. Missing or failing collectors cannot change a workflow command's result.
+The telemetry subsystem does not define a network endpoint or transport. Delivery is provided exclusively through the injectable `TelemetryClient` boundary. Other product features, such as private registries, have separate network boundaries and are not telemetry transports. Missing or failing telemetry collectors cannot change a workflow command's result.
