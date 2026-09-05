@@ -1,0 +1,26 @@
+schema: 1
+version: 0.1.0
+package: "@multileaf/ai-workflow"
+source_commit: d3788705e78c6ac95b780cf97bac92fc41bd39eb
+signed_tag: v0.1.0
+workflow:
+  run: https://github.com/MultiLeaf/aiw/actions/runs/33942348060
+  attempt: 3
+  result: pass
+registry:
+  package: https://www.npmjs.com/package/@multileaf/ai-workflow/v/0.1.0
+  integrity: sha512-CoZ+dpPWlrFjvnBJ+wHXHHywE//oc82SGkSWBQlaAXsj0A2XORvikjAWjfQJvg0mPQmOAMjBllmoH0Zlxo5e1g==
+  shasum: 22d3ffb7d98522dd5ed6fffc7a9f10d19d790280
+  files: 165
+provenance:
+  predicate: https://slsa.dev/provenance/v1
+  transparency_log_index: 2720401089
+github_release: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.0
+verification:
+  clean_install: pass
+  cli_help: pass
+  install_codex: pass
+  doctor: pass
+  scan: pass
+  registry_signature: pass
+  attestation: pass
