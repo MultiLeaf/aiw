@@ -907,6 +907,26 @@ resources:
     expect(conflict.error).toContain("incompatible");
   });
 
+  it("preserves unrelated lock permissions while updating a package", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/lock.yml"),
+      "schema: 1\npackages:\n  - id: demo/package\n    version: 1.0.0\n    provider: local\n    source: ./package\n    integrity: sha256-old\n    permissions: []\n  - id: unrelated/package\n    version: 1.0.0\n    provider: local\n    source: ./unrelated\n    integrity: sha256-unrelated\n    permissions: [filesystem:read, network:external]\n",
+    );
+    await writeFile(
+      join(cwd, "package.yaml"),
+      "schema: 1\nid: demo/package\nversion: 2.0.0\nprovider: local\nsource: ./package\ndependencies: []\npermissions: []\nprovenance:\n  source: ./package\nresources:\n  skills:\n    - { id: demo-skill, version: 2.0.0, path: skill.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n",
+    );
+
+    expect((await run(["update", "--package=package.yaml", "--target=codex"], cwd)).exitCode).toBe(
+      0,
+    );
+    expect(await readFile(join(cwd, ".aiw/lock.yml"), "utf8")).toContain(
+      "permissions: [filesystem:read, network:external]",
+    );
+  });
+
   it("enforces the configured organization policy as a CI gate", async () => {
     const cwd = await project();
     const services = { policyTracking: { isTracked: (): boolean => true } };
@@ -982,6 +1002,64 @@ resources:
       "integrity: hash-123",
     );
   });
+
+  it.each(["generate", "sync"])(
+    "enforces organization policy before %s installs an external skill",
+    async (command) => {
+      const cwd = await project();
+      await run(["install", "--target", "codex"], cwd);
+      await writeFile(
+        join(cwd, ".aiw/organization.yml"),
+        "schema: 1\nname: Engineering\napproved_sources: [vercel-skills:vercel-labs/agent-skills]\ndenied_permissions: [network:external]\n",
+      );
+      let calls = 0;
+      const result = await run(
+        [command, "--select=react-best-practices", "--allow=network:external"],
+        cwd,
+        {
+          externalSkills: {
+            execute: async () => {
+              calls += 1;
+              return { stdout: "installed", exitCode: 0 };
+            },
+          },
+        },
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.error).toContain("denied by Engineering");
+      expect(calls).toBe(0);
+    },
+  );
+
+  it.each(["check", "update"])(
+    "enforces organization policy before skills %s accesses an external provider",
+    async (action) => {
+      const cwd = await project();
+      await run(["install", "--target", "codex"], cwd);
+      await writeFile(
+        join(cwd, ".aiw/organization.yml"),
+        "schema: 1\nname: Engineering\napproved_sources: [vercel-skills:vercel-labs/agent-skills]\ndenied_permissions: [network:external]\n",
+      );
+      await writeFile(
+        join(cwd, ".aiw/lock.yml"),
+        "schema: 1\npackages:\n  - id: vercel-labs/agent-skills/react-best-practices\n    version: latest\n    provider: vercel-skills\n    source: vercel-labs/agent-skills\n    integrity: hash-v1\n    permissions: [network:external]\n",
+      );
+      let calls = 0;
+      const result = await run(["skills", action, "--allow=network:external"], cwd, {
+        externalSkills: {
+          execute: async () => {
+            calls += 1;
+            return { stdout: "completed", exitCode: 0 };
+          },
+        },
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.error).toContain("denied by Engineering");
+      expect(calls).toBe(0);
+    },
+  );
 
   it("searches, inspects, installs, and updates Vercel skills through AIW", async () => {
     const cwd = await project();

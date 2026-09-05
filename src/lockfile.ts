@@ -42,10 +42,9 @@ export function parseLock(content: string): LockedPackage[] {
     if (lines[index]?.startsWith("    permissions:")) {
       const value = lines[index].match(/^ {4}permissions: \[([^\]]*)\]$/)?.[1];
       if (value === undefined) throw new Error(`Lockfile permissions are invalid: ${id}`);
-      permissions = value
-        .split(",")
-        .map((permission) => permission.trim())
-        .filter(Boolean);
+      permissions = value === "" ? [] : value.split(",").map((permission) => permission.trim());
+      if (permissions.some((permission) => permission.length === 0))
+        throw new Error(`Lockfile permissions are invalid: ${id}`);
       index += 1;
     }
     packages.push({

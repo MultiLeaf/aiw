@@ -53,5 +53,8 @@ describe("lockfile resolution", () => {
     expect(() =>
       parseLock(serialized.replace("permissions: []", "permissions: [process:execute")),
     ).toThrow("permissions");
+    expect(() =>
+      parseLock(serialized.replace("permissions: []", "permissions: [, filesystem:read]")),
+    ).toThrow("permissions");
   });
 });

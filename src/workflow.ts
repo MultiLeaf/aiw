@@ -379,6 +379,17 @@ export async function runCommand(
       if (action === "check" || action === "update") {
         if (!approvedPermissions.includes("network:external"))
           return { exitCode: 1, error: "Package permissions require approval: network:external" };
+        const lockPath = join(aiw, "lock.yml");
+        if (fs.exists(lockPath)) {
+          parseLock(fs.read(lockPath))
+            .filter(({ provider }) => provider === "vercel-skills")
+            .forEach((locked) =>
+              enforceConfiguredOrganizationPolicy(fs, aiw, {
+                ...locked,
+                permissions: [...new Set([...(locked.permissions ?? []), "network:external"])],
+              }),
+            );
+        }
         const output = await executeVercelSkills(executor, { command: action });
         if (action === "update") refreshVercelSkillLocks(fs, root, aiw);
         return { exitCode: 0, output };
@@ -403,6 +414,11 @@ export async function runCommand(
         const approvedPermissions = parseApprovedPermissions(args);
         if (!approvedPermissions.includes("network:external"))
           return { exitCode: 1, error: "Package permissions require approval: network:external" };
+        enforceConfiguredOrganizationPolicy(fs, aiw, {
+          provider: "vercel-skills",
+          source: "vercel-labs/agent-skills",
+          permissions: ["network:external"],
+        });
         const target =
           fs
             .read(join(aiw, "manifest.yml"))
@@ -774,34 +790,19 @@ export async function runCommand(
       const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
       if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
       const lock = fs.exists(join(aiw, "lock.yml")) ? fs.read(join(aiw, "lock.yml")) : "";
-      const current = lock.match(
-        new RegExp(`id: ${escapeRegExp(pkg.id)}\\n\\s+version: ([^\\n]+)`),
-      );
+      const lockedPackages = lock ? parseLock(lock) : [];
+      const current = lockedPackages.find(({ id }) => id === pkg.id);
       const plan = planPackageUpdate(
-        current ? { id: pkg.id, version: current[1].trim() } : undefined,
+        current ? { id: pkg.id, version: current.version } : undefined,
         pkg,
         target,
         new Map(
-          [...lock.matchAll(/- id: ([^\n]+)\n\s+version: ([^\n]+)/g)]
-            .filter((match) => match[1].trim() !== pkg.id)
-            .map((match) => [match[1].trim(), match[2].trim()]),
+          lockedPackages.filter(({ id }) => id !== pkg.id).map(({ id, version }) => [id, version]),
         ),
       );
       if (plan.status !== "update")
         return { exitCode: 1, error: plan.reason ?? `Update blocked: ${plan.status}.` };
-      const existingPackages = [
-        ...lock.matchAll(
-          /- id: ([^\n]+)\n\s+version: ([^\n]+)\n\s+provider: ([^\n]+)\n\s+source: ([^\n]+)\n\s+integrity: ([^\n]+)/g,
-        ),
-      ]
-        .filter((match) => match[1].trim() !== pkg.id)
-        .map((match) => ({
-          id: match[1].trim(),
-          version: match[2].trim(),
-          provider: match[3].trim(),
-          source: match[4].trim(),
-          integrity: match[5].trim(),
-        }));
+      const existingPackages = lockedPackages.filter(({ id }) => id !== pkg.id);
       fs.write(join(aiw, "lock.yml"), serializeLock([...existingPackages, resolvePackage(pkg)]));
       return { exitCode: 0, output: `Package updated: ${pkg.id}@${pkg.version}` };
     }
