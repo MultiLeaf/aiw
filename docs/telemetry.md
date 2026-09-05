@@ -13,6 +13,8 @@ aiw telemetry disable
 
 Preferences are stored in `.aiw/telemetry.yml`. Command and outcome collection can be enabled or excluded independently. Disabling telemetry takes effect before the next event can be recorded.
 
+Rejected telemetry administration commands never produce telemetry events, even when a previous valid configuration enabled collection. This keeps malformed consent or privacy changes outside the telemetry stream.
+
 ## Data contract
 
 An event contains only:

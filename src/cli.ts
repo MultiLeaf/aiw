@@ -19,6 +19,7 @@ async function runWithTelemetry(
   services: WorkflowServices,
 ): Promise<CommandResult> {
   const result = await runCommand(args, root, nodeFileSystem, services);
+  if (args[0] === "telemetry" && result.exitCode !== 0) return result;
   await recordConfiguredTelemetry(
     nodeFileSystem,
     join(root, ".aiw/telemetry.yml"),

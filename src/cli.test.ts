@@ -149,6 +149,20 @@ describe("AI Workflow CLI", () => {
     await expect(readFile(path, "utf8")).resolves.toBe(before);
   });
 
+  it("does not emit telemetry for rejected telemetry administration commands", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["telemetry", "enable"], cwd);
+    const events: unknown[] = [];
+    const result = await run(["telemetry", "enable", "--commands"], cwd, {
+      telemetry: {
+        record: async (event: unknown): Promise<void> => void events.push(event),
+      },
+    });
+    expect(result.exitCode).toBe(1);
+    expect(events).toEqual([]);
+  });
+
   it("does not overwrite a user-edited target skill on reinstall", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
