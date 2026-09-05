@@ -7,6 +7,7 @@ import type { CommandResult, FileSystem } from "./types.js";
 import type { PackageSourceLoader } from "./providers.js";
 import type { PrivateRegistryClient } from "./team-configuration.js";
 import type { PolicyTracking } from "./policy-gate.js";
+import type { TelemetryClient } from "./telemetry.js";
 
 export interface ProjectScanner {
   scan(root: string): Promise<ProjectScan>;
@@ -31,6 +32,7 @@ export interface WorkflowDependencies {
   privateRegistries?: PrivateRegistryClient;
   environment?: Readonly<Record<string, string | undefined>>;
   policyTracking?: PolicyTracking;
+  telemetry?: TelemetryClient;
 }
 
 export interface WorkflowService {

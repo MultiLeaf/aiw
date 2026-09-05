@@ -70,6 +70,11 @@ import {
   fetchPrivateRegistryClient,
 } from "./team-configuration.js";
 import { enforcePolicyGate, gitPolicyTracking } from "./policy-gate.js";
+import {
+  DEFAULT_TELEMETRY_CONFIG,
+  parseTelemetryConfig,
+  serializeTelemetryConfig,
+} from "./telemetry.js";
 
 export type WorkflowServices = WorkflowDependencies;
 
@@ -107,6 +112,48 @@ export async function runCommand(
       fs.write(join(aiw, "lock.yml"), "schema: 1\npackages:\n");
       generateAiInit(root, target, fs);
       return { exitCode: 0, output: `AI Workflow installed for target: ${target}` };
+    }
+    if (command === "telemetry") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const action = args[1] ?? "status";
+      const path = join(aiw, "telemetry.yml");
+      if (action === "status") {
+        const config = fs.exists(path)
+          ? parseTelemetryConfig(fs.read(path))
+          : DEFAULT_TELEMETRY_CONFIG;
+        return {
+          exitCode: 0,
+          output: `Telemetry is ${config.enabled ? "enabled" : "disabled"}. Command collection: ${config.includeCommand ? "included" : "excluded"}. Outcome collection: ${config.includeOutcome ? "included" : "excluded"}.`,
+        };
+      }
+      if (action === "disable") {
+        fs.write(path, serializeTelemetryConfig({ ...DEFAULT_TELEMETRY_CONFIG }));
+        return { exitCode: 0, output: "Telemetry disabled." };
+      }
+      if (action === "enable") {
+        const privacyValue = (name: string): boolean => {
+          const option = args.find((arg) => arg.startsWith(`--${name}=`))?.split("=", 2)[1];
+          if (option === undefined || option === "include") return true;
+          if (option === "exclude") return false;
+          throw new Error(`Telemetry privacy option '${name}' must be include or exclude.`);
+        };
+        fs.write(
+          path,
+          serializeTelemetryConfig({
+            schema: 1,
+            enabled: true,
+            includeCommand: privacyValue("commands"),
+            includeOutcome: privacyValue("outcomes"),
+          }),
+        );
+        return { exitCode: 0, output: "Telemetry enabled with explicit privacy preferences." };
+      }
+      return {
+        exitCode: 1,
+        error:
+          "Usage: aiw telemetry <status|enable|disable> [--commands=include|exclude] [--outcomes=include|exclude]",
+      };
     }
     if (command === "scan") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -476,6 +523,8 @@ export async function runCommand(
           parseTeamPreset(fs.read(join(aiw, "team-preset.yml")));
         if (fs.exists(join(aiw, "registries.yml")))
           parsePrivateRegistries(fs.read(join(aiw, "registries.yml")));
+        if (fs.exists(join(aiw, "telemetry.yml")))
+          parseTelemetryConfig(fs.read(join(aiw, "telemetry.yml")));
       } catch (error) {
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
       }
@@ -500,6 +549,7 @@ export async function runCommand(
         "recommendations.yml",
         "team-preset.yml",
         "registries.yml",
+        "telemetry.yml",
       ];
       const dryRun = args.includes("--dry-run");
       if (!dryRun && !fs.remove)
@@ -993,7 +1043,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | telemetry <status|enable|disable> [privacy options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

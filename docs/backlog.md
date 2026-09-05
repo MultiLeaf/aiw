@@ -78,7 +78,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **ENT-001** Add organization policies and approved package sources.
 - [x] **ENT-002** Add team-shared presets and private registries.
 - [x] **ENT-003** Add policy enforcement in CI and pull requests.
-- [ ] **ENT-004** Add telemetry opt-in with privacy controls.
+- [x] **ENT-004** Add telemetry opt-in with privacy controls. _Acceptance:_ telemetry is disabled by default, users independently control aggregate command/outcome fields, sensitive execution data is never serialized, and collector failures cannot affect workflow results.
 - [ ] **ENT-005** Add plugin SDK and package authoring tooling.
 - [ ] **ENT-006** Add web UI for project profile, recommendations, traceability, and migrations.
 - [ ] **ENT-007** Add multi-agent orchestration and parallel task execution.

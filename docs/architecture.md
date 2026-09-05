@@ -10,6 +10,7 @@ CLI
       ├── Personalization engine
       ├── Resource registry
       ├── Validation and evidence engine
+      ├── Opt-in telemetry boundary
       └── Adapter manager
              ├── Codex
              ├── Claude Code
@@ -42,6 +43,10 @@ Project analysis is hybrid: deterministic detectors establish observable facts, 
 ## Modularity
 
 The CLI is an entry point, not the business layer. Filesystem, package providers, scanners, recommendation engines, generators, validators, and adapters must be replaceable through interfaces and dependency injection.
+
+## Telemetry
+
+Telemetry is disabled by default and separated from command execution through an injectable client. The core emits only user-approved aggregate fields and does not own a network transport. Collector failures are isolated from workflow results.
 
 ## Self-hosting
 

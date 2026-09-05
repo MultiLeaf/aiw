@@ -71,6 +71,64 @@ describe("AI Workflow CLI", () => {
     await expect(stat(join(cwd, ".claude/skills/ai-init/SKILL.md"))).rejects.toThrow();
   });
 
+  it("keeps telemetry disabled until explicit opt-in and applies privacy controls", async () => {
+    const cwd = await project();
+    const events: unknown[] = [];
+    const services = {
+      telemetry: {
+        record: async (event: unknown): Promise<void> => void events.push(event),
+      },
+    };
+    await run(["install", "--target", "codex"], cwd, services);
+    expect((await run(["telemetry", "status"], cwd, services)).output).toContain(
+      "Telemetry is disabled",
+    );
+    expect(events).toEqual([]);
+
+    expect(
+      (
+        await run(
+          ["telemetry", "enable", "--commands=exclude", "--outcomes=include"],
+          cwd,
+          services,
+        )
+      ).exitCode,
+    ).toBe(0);
+    expect(events).toEqual([{ schema: 1, outcome: "success" }]);
+    await run(["unknown-command", "--token=must-not-leak"], cwd, services);
+    expect(events.at(-1)).toEqual({ schema: 1, outcome: "success" });
+
+    await run(["telemetry", "disable"], cwd, services);
+    const countAfterDisable = events.length;
+    await run(["status"], cwd, services);
+    expect(events).toHaveLength(countAfterDisable);
+  });
+
+  it("does not let telemetry failures affect command results", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["telemetry", "enable"], cwd);
+    const result = await run(["status"], cwd, {
+      telemetry: {
+        record: async () => {
+          throw new Error("collector unavailable");
+        },
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("schema: 1");
+  });
+
+  it("diagnoses and uninstalls malformed or owned telemetry preferences", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(join(cwd, ".aiw/telemetry.yml"), "schema: 2\nenabled: true\n");
+    expect((await run(["doctor"], cwd)).error).toContain("Telemetry schema");
+    expect((await run(["uninstall", "--dry-run"], cwd)).output).toContain("telemetry.yml");
+    await run(["uninstall"], cwd);
+    await expect(stat(join(cwd, ".aiw/telemetry.yml"))).rejects.toThrow();
+  });
+
   it("does not overwrite a user-edited target skill on reinstall", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
