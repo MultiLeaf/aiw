@@ -797,6 +797,27 @@ describe("AI Workflow CLI", () => {
     );
     expect(leakingPayload.exitCode).toBe(1);
     expect(leakingPayload.error).not.toContain("runtime-secret");
+    for (const escapedToken of ['runtime-"secret', "runtime-\\secret"]) {
+      const escapedPayload = await run(
+        ["registry", "--private=engineering", "--search=quality"],
+        cwd,
+        {
+          environment: { AIW_ENGINEERING_TOKEN: escapedToken },
+          privateRegistries: {
+            search: async () => [
+              {
+                id: "team/quality",
+                version: "1.2.0",
+                description: escapedToken,
+                permissions: [],
+              },
+            ],
+          },
+        },
+      );
+      expect(escapedPayload.exitCode).toBe(1);
+      expect(escapedPayload.error).not.toContain(escapedToken);
+    }
     const missingCredential = await run(
       ["registry", "--private=engineering", "--search=quality"],
       cwd,

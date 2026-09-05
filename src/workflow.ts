@@ -814,7 +814,7 @@ export async function runCommand(
             error instanceof Error ? error.message : "Private registry request failed.";
           throw new Error(message.split(token).join("[REDACTED]"), { cause: error });
         }
-        if ((JSON.stringify(payload) ?? "").includes(token))
+        if (containsCredential(payload, token))
           throw new Error("Private registry response contains sensitive credential data.");
         const packages = parsePrivateRegistryPackages(payload, registry.url).sort((a, b) =>
           `${a.id}@${a.version}`.localeCompare(`${b.id}@${b.version}`),
@@ -983,6 +983,17 @@ function parsePrivateRegistryPackages(payload: unknown, registryUrl: string): Re
       permissions: item.permissions as string[],
     };
   });
+}
+
+function containsCredential(
+  value: unknown,
+  credential: string,
+  visited: Set<object> = new Set(),
+): boolean {
+  if (typeof value === "string") return value.includes(credential);
+  if (!value || typeof value !== "object" || visited.has(value)) return false;
+  visited.add(value);
+  return Object.values(value).some((entry) => containsCredential(entry, credential, visited));
 }
 
 function readSelectedRecommendations(fs: FileSystem, aiw: string): string[] {
