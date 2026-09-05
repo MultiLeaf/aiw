@@ -9,7 +9,15 @@ describe("release package", () => {
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(manifest.bin).toEqual({ aiw: "dist/cli.js" });
     expect(manifest.publishConfig).toEqual({ access: "public", provenance: true });
-    expect(manifest.files).toEqual(["dist", "resources", "docs", "README.md", "CHANGELOG.md"]);
+    expect(manifest.license).toBe("MIT");
+    expect(manifest.files).toEqual([
+      "dist",
+      "resources",
+      "docs",
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE",
+    ]);
   });
 
   it("keeps tests and fixtures out of the compiled distribution", async () => {
@@ -30,5 +38,6 @@ describe("release package", () => {
     expect(workflow).toContain("npm run release:check");
     expect(workflow).toContain('npm run release:publish-check -- --tag="$GITHUB_REF_NAME"');
     expect(workflow).toContain("npm publish --access public --provenance");
+    expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
   });
 });

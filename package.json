@@ -2,7 +2,7 @@
   "name": "@multileaf/ai-workflow",
   "version": "0.1.0",
   "description": "Portable spec-driven development workflow for AI coding agents",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MultiLeaf/aiw.git"
@@ -22,7 +22,8 @@
     "resources",
     "docs",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "type": "module",
   "bin": {

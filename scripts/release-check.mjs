@@ -22,6 +22,7 @@ const required = [
   "resources/package.yaml",
   "README.md",
   "CHANGELOG.md",
+  "LICENSE",
   "docs/release-process.md",
 ];
 const forbidden = [
@@ -41,6 +42,8 @@ if (missing.length) throw new Error(`Release package is missing: ${missing.join(
 if (leaked.length) throw new Error(`Release package contains internal files: ${leaked.join(", ")}`);
 if (report.name !== "@multileaf/ai-workflow" || report.version !== manifest.version)
   throw new Error("Release package identity does not match package.json.");
+if (manifest.license !== "MIT")
+  throw new Error("Release package must use the approved MIT License.");
 
 stdout.write(
   `Release package validated: ${report.name}@${report.version} (${paths.length} files).\n`,

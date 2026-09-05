@@ -28,3 +28,5 @@ jobs:
       - run: npm run release:check
       - run: npm run release:publish-check -- --tag="$GITHUB_REF_NAME"
       - run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -29,4 +29,4 @@ Inspect project state in the local dashboard with `aiw ui`. It binds to `127.0.0
 
 Preview a versioned multi-agent task graph with `aiw orchestrate --plan=orchestration.yml`. Execution is opt-in through `--execute`, uses a host-provided agent adapter, limits concurrency with `--max-parallel`, and records results under `.aiw/checkpoints/`. The scheduler and adapter contract are exported from `@multileaf/ai-workflow/orchestration`; see [Multi-agent Orchestration](docs/orchestration.md).
 
-Release candidates must pass `npm run release:check`. Publication remains blocked while the package license is `UNLICENSED`; select an approved license before the first public npm release.
+Release candidates must pass `npm run release:check`. AI Workflow is available under the MIT License.
