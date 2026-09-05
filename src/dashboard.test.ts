@@ -87,6 +87,70 @@ describe("dashboard", () => {
     }
   });
 
+  it("rejects ambiguous and malformed migration forms without delegation", async () => {
+    const execute = vi.fn();
+    const dashboard = await startDashboard("/project", fixture(), execute);
+    const send = (
+      body: BodyInit,
+      contentType = "application/x-www-form-urlencoded",
+    ): Promise<Response> =>
+      fetch(`${dashboard.url}/migrate`, {
+        method: "POST",
+        headers: { Origin: dashboard.url, "Content-Type": contentType },
+        body,
+        redirect: "manual",
+      });
+    try {
+      for (const body of [
+        "target=claude&target=codex&confirmation=MIGRATE",
+        "target=claude&target=claude&confirmation=MIGRATE",
+        "target=claude&confirmation=MIGRATE&confirmation=NO",
+        "target=claude&confirmation=MIGRATE&junk=%ZZ",
+      ]) {
+        expect((await send(body)).status).toBe(400);
+      }
+      expect(
+        (await send("target=claude&confirmation=MIGRATE", "application/x-www-form-urlencodedEVIL"))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await send(
+            Uint8Array.from([...Buffer.from("target=claude&confirmation=MIGRATE&junk="), 0xff]),
+          )
+        ).status,
+      ).toBe(400);
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      await dashboard.close();
+    }
+  });
+
+  it("rejects dashboard inputs that resolve outside the project", () => {
+    const base = fixture();
+    const escaped = {
+      ...base,
+      pathType: (path: string): ReturnType<NonNullable<typeof base.pathType>> =>
+        path === "/project/.aiw/profile.yml"
+          ? ("symlink" as const)
+          : (base.pathType?.(path) ?? "missing"),
+      realpath: (path: string): string =>
+        path === "/project/.aiw/profile.yml" ? "/outside/profile.yml" : path,
+    };
+    expect(() => buildDashboardModel("/project", escaped)).toThrow("symbolic link");
+  });
+
+  it("wraps long unbroken project-controlled values", () => {
+    const html = renderDashboard({
+      project: `Project${"X".repeat(180)}`,
+      target: "codex",
+      facts: [],
+      recommendations: [],
+      traceability: [],
+    });
+    expect(html).toContain("overflow-wrap:anywhere");
+  });
+
   it("requires an installed workflow", async () => {
     await expect(startDashboard("/project", memoryFileSystem(), vi.fn())).rejects.toThrow(
       "aiw install",

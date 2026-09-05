@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import type { FileSystem, Target } from "./types.js";
 import { TARGETS } from "./types.js";
 
@@ -24,7 +24,16 @@ export type DashboardCommand = (
 export type DashboardHandle = { url: string; close(): Promise<void> };
 
 export function buildDashboardModel(root: string, fs: FileSystem): DashboardModel {
-  const read = (path: string): string => (fs.exists(path) ? fs.read(path) : "");
+  const projectRoot = fs.realpath?.(root) ?? root;
+  const read = (path: string): string => {
+    if (!fs.exists(path)) return "";
+    if (fs.pathType?.(path) === "symlink")
+      throw new Error(`Dashboard input cannot be a symbolic link: ${path}`);
+    const realPath = fs.realpath?.(path) ?? path;
+    if (!isInside(projectRoot, realPath))
+      throw new Error(`Dashboard input must stay inside the project: ${path}`);
+    return fs.read(path);
+  };
   const aiw = join(root, ".aiw");
   const manifest = read(join(aiw, "manifest.yml"));
   const profile = read(join(aiw, "profile.yml"));
@@ -111,19 +120,28 @@ export async function startDashboard(
       return;
     }
     if (request.method === "GET" && request.url === "/api/dashboard") {
-      response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.end(JSON.stringify(buildDashboardModel(root, fs)));
+      try {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.end(JSON.stringify(buildDashboardModel(root, fs)));
+      } catch {
+        response.statusCode = 500;
+        response.end(JSON.stringify({ error: "Dashboard project state is unsafe or unreadable." }));
+      }
       return;
     }
     if (request.method === "POST" && request.url === "/migrate") {
       try {
         if (request.headers.origin !== expectedOrigin)
           throw new Error("Migration requests must originate from this dashboard.");
-        if (!request.headers["content-type"]?.startsWith("application/x-www-form-urlencoded"))
+        if (
+          !/^application\/x-www-form-urlencoded(?:;\s*charset=utf-8)?$/i.test(
+            request.headers["content-type"] ?? "",
+          )
+        )
           throw new Error("Migration request content type is invalid.");
-        const params = new URLSearchParams(await requestBody(request));
-        const target = params.get("target") ?? "";
-        if (!TARGETS.includes(target as Target) || params.get("confirmation") !== "MIGRATE")
+        const params = parseForm(await requestBody(request));
+        const target = params.target;
+        if (!TARGETS.includes(target as Target) || params.confirmation !== "MIGRATE")
           throw new Error("Select a supported target and type MIGRATE to confirm.");
         const result = await execute(["target", target]);
         notice = result.output ?? result.error ?? "Migration finished.";
@@ -149,7 +167,12 @@ export async function startDashboard(
       return;
     }
     response.setHeader("Content-Type", "text/html; charset=utf-8");
-    response.end(renderDashboard(buildDashboardModel(root, fs), notice));
+    try {
+      response.end(renderDashboard(buildDashboardModel(root, fs), notice));
+    } catch {
+      response.statusCode = 500;
+      response.end("Dashboard project state is unsafe or unreadable.");
+    }
     notice = "";
   });
   await new Promise<void>((resolve, reject) => {
@@ -230,7 +253,25 @@ async function requestBody(request: import("node:http").IncomingMessage): Promis
     if (size > 4096) throw new Error("Request body is too large.");
     chunks.push(value);
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
+}
+
+function parseForm(body: string): { target: string; confirmation: string } {
+  const values = new Map<string, string>();
+  for (const pair of body.split("&")) {
+    const separator = pair.indexOf("=");
+    if (!pair || separator <= 0 || separator !== pair.lastIndexOf("="))
+      throw new Error("Migration request form is malformed.");
+    const decode = (value: string): string => decodeURIComponent(value.replaceAll("+", " "));
+    const key = decode(pair.slice(0, separator));
+    const value = decode(pair.slice(separator + 1));
+    if (!(["target", "confirmation"] as string[]).includes(key) || values.has(key))
+      throw new Error("Migration request fields are invalid or duplicated.");
+    values.set(key, value);
+  }
+  if (values.size !== 2 || !values.has("target") || !values.has("confirmation"))
+    throw new Error("Migration request fields are incomplete.");
+  return { target: values.get("target") ?? "", confirmation: values.get("confirmation") ?? "" };
 }
 
 function closeServer(server: Server): Promise<void> {
@@ -249,4 +290,9 @@ function renderResponse(
   response.end(html);
 }
 
-const styles = `:root{color-scheme:dark;--ink:#09111f;--panel:#101d30;--line:#29405d;--text:#e8f1fa;--muted:#8fa6bd;--cyan:#55d6d0;--amber:#f0b35a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#173251 0,transparent 35%),var(--ink);color:var(--text);font:15px/1.55 ui-sans-serif,system-ui,sans-serif}header,main,footer{max-width:1180px;margin:auto}header{padding:52px 24px 30px;border-bottom:1px solid var(--line);position:relative}h1{font:700 clamp(2.4rem,7vw,5.5rem)/.9 ui-monospace,SFMono-Regular,monospace;letter-spacing:-.08em;margin:.2em 0}.eyebrow,.section-title,small,footer{color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font:600 11px/1.4 ui-monospace,monospace}.target{position:absolute;right:24px;bottom:32px}.target strong,.state{color:var(--cyan)}main{padding:28px 24px;display:grid;grid-template-columns:1.3fr .7fr;gap:18px}section{background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);padding:22px;min-width:0}.wide{grid-column:1/-1}.section-title{display:flex;justify-content:space-between;gap:12px;color:var(--text);margin-bottom:18px}.section-title small{color:var(--muted);text-align:right}section:not(.wide) .section-title{align-items:flex-start;flex-direction:column}section:not(.wide) .section-title small{text-align:left}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:10px;border-bottom:1px solid var(--line)}thead th{color:var(--muted);font-size:11px;text-transform:uppercase}tbody th{font-family:ui-monospace,monospace}ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}li small{display:block}.selected{color:var(--cyan)}.pending{color:var(--amber)}.trace{display:grid;grid-template-columns:auto minmax(20px,1fr) auto minmax(20px,1fr) auto minmax(20px,1fr) auto;align-items:center;gap:10px;margin:12px 0;font-family:ui-monospace,monospace}.trace i{height:1px;background:linear-gradient(90deg,var(--cyan),var(--line));position:relative}.trace i:after{content:'›';position:absolute;right:-2px;top:-12px;color:var(--cyan)}.migration{display:flex;justify-content:space-between;gap:24px;align-items:end}.migration form{display:flex;gap:10px;align-items:end}label{color:var(--muted);font-size:12px}select,input,button{display:block;margin-top:5px;background:var(--ink);color:var(--text);border:1px solid var(--line);padding:10px 12px;font:inherit}button{background:var(--cyan);color:var(--ink);font-weight:800;cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--amber);outline-offset:2px}.notice{grid-column:1/-1;border-left:3px solid var(--cyan);padding:12px 16px;background:var(--panel)}.empty{color:var(--muted)}code{font-family:ui-monospace,monospace;color:var(--cyan)}footer{padding:18px 24px 40px}@media(max-width:760px){header{padding-top:32px}.target{position:static}main{grid-template-columns:1fr}.wide{grid-column:auto}.migration,.migration form{display:grid}.trace{grid-template-columns:1fr}.trace i{width:28px}.table-wrap{overflow:auto}}@media(prefers-reduced-motion:no-preference){section{animation:enter .35s ease both}@keyframes enter{from{opacity:0;transform:translateY(8px)}}}`;
+function isInside(root: string, destination: string): boolean {
+  const path = relative(root, destination);
+  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
+
+const styles = `:root{color-scheme:dark;--ink:#09111f;--panel:#101d30;--line:#29405d;--text:#e8f1fa;--muted:#8fa6bd;--cyan:#55d6d0;--amber:#f0b35a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#173251 0,transparent 35%),var(--ink);color:var(--text);font:15px/1.55 ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}header,main,footer{max-width:1180px;margin:auto;min-width:0}header{padding:52px 24px 30px;border-bottom:1px solid var(--line);position:relative}h1{font:700 clamp(2.4rem,7vw,5.5rem)/.9 ui-monospace,SFMono-Regular,monospace;letter-spacing:-.08em;margin:.2em 0;overflow-wrap:anywhere}.eyebrow,.section-title,small,footer{color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font:600 11px/1.4 ui-monospace,monospace}.target{position:absolute;right:24px;bottom:32px}.target strong,.state{color:var(--cyan)}main{padding:28px 24px;display:grid;grid-template-columns:1.3fr .7fr;gap:18px}section{background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);padding:22px;min-width:0}.wide{grid-column:1/-1}.section-title{display:flex;justify-content:space-between;gap:12px;color:var(--text);margin-bottom:18px}.section-title small{color:var(--muted);text-align:right}section:not(.wide) .section-title{align-items:flex-start;flex-direction:column}section:not(.wide) .section-title small{text-align:left}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:10px;border-bottom:1px solid var(--line)}thead th{color:var(--muted);font-size:11px;text-transform:uppercase}tbody th{font-family:ui-monospace,monospace}ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}li small{display:block}.selected{color:var(--cyan)}.pending{color:var(--amber)}.trace{display:grid;grid-template-columns:auto minmax(20px,1fr) auto minmax(20px,1fr) auto minmax(20px,1fr) auto;align-items:center;gap:10px;margin:12px 0;font-family:ui-monospace,monospace}.trace>*{min-width:0;overflow-wrap:anywhere}.trace i{height:1px;background:linear-gradient(90deg,var(--cyan),var(--line));position:relative}.trace i:after{content:'›';position:absolute;right:-2px;top:-12px;color:var(--cyan)}.migration{display:flex;justify-content:space-between;gap:24px;align-items:end}.migration form{display:flex;gap:10px;align-items:end}label{color:var(--muted);font-size:12px}select,input,button{display:block;margin-top:5px;background:var(--ink);color:var(--text);border:1px solid var(--line);padding:10px 12px;font:inherit;max-width:100%}button{background:var(--cyan);color:var(--ink);font-weight:800;cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--amber);outline-offset:2px}.notice{grid-column:1/-1;border-left:3px solid var(--cyan);padding:12px 16px;background:var(--panel)}.empty{color:var(--muted)}code{font-family:ui-monospace,monospace;color:var(--cyan)}footer{padding:18px 24px 40px}@media(max-width:760px){header{padding-top:32px}.target{position:static}main{grid-template-columns:1fr}.wide{grid-column:auto}.migration,.migration form{display:grid}.trace{grid-template-columns:1fr}.trace i{width:28px}.table-wrap{overflow:auto}}@media(prefers-reduced-motion:no-preference){section{animation:enter .35s ease both}@keyframes enter{from{opacity:0;transform:translateY(8px)}}}`;
