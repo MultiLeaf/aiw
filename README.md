@@ -2,6 +2,14 @@
 
 Portable spec-driven development workflow for AI coding agents.
 
+## Installation
+
+```bash
+npx @multileaf/ai-workflow install --target codex
+```
+
+Replace `codex` with `claude`, `cursor`, `gemini`, `copilot`, or `universal` when needed. Every command follows `npx @multileaf/ai-workflow <command> <options>`.
+
 ## Development
 
 ```bash
@@ -20,3 +28,5 @@ Create portable plugins with `aiw plugin create` and validate them with `aiw plu
 Inspect project state in the local dashboard with `aiw ui`. It binds to `127.0.0.1`, loads only `.aiw/` project state, and requires explicit confirmation before target migration.
 
 Preview a versioned multi-agent task graph with `aiw orchestrate --plan=orchestration.yml`. Execution is opt-in through `--execute`, uses a host-provided agent adapter, limits concurrency with `--max-parallel`, and records results under `.aiw/checkpoints/`. The scheduler and adapter contract are exported from `@multileaf/ai-workflow/orchestration`; see [Multi-agent Orchestration](docs/orchestration.md).
+
+Release candidates must pass `npm run release:check`. Publication remains blocked while the package license is `UNLICENSED`; select an approved license before the first public npm release.

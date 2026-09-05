@@ -2,6 +2,28 @@
   "name": "@multileaf/ai-workflow",
   "version": "0.1.0",
   "description": "Portable spec-driven development workflow for AI coding agents",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MultiLeaf/aiw.git"
+  },
+  "homepage": "https://github.com/MultiLeaf/aiw#readme",
+  "bugs": "https://github.com/MultiLeaf/aiw/issues",
+  "keywords": [
+    "ai",
+    "sdd",
+    "codex",
+    "claude",
+    "cursor",
+    "developer-tools"
+  ],
+  "files": [
+    "dist",
+    "resources",
+    "docs",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "type": "module",
   "bin": {
     "aiw": "dist/cli.js"
@@ -18,7 +40,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/clean-dist.mjs && tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -28,7 +50,12 @@
     "format": "prettier --write \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js}\" \"docs/**/*.md\" \"*.{json,js}\"",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test && npm run security:check",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "release:check": "npm run check && npm run policy:check && node scripts/release-check.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "engines": {
     "node": ">=18"
