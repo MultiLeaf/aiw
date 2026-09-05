@@ -33,19 +33,34 @@ export function createPluginScaffold(
     files: {
       "package.yaml": pluginManifest(definition, skillId, skillPath),
       [skillPath]: `---\nname: ${skillId}\ndescription: ${JSON.stringify(definition.description)}\n---\n\n# ${title(skillId)}\n\nDescribe the focused workflow this skill provides.\n`,
-      "README.md": `# ${definition.id}\n\n${definition.description}\n\nValidate this plugin from the project root with \`aiw plugin validate --directory=${directory}\`.\n`,
+      "README.md": `# ${definition.id}\n\n${definition.description}\n\nValidate this plugin from the project root with \`aiw plugin validate --directory=${shellQuote(directory)}\`.\n`,
     },
   };
 }
 
 export function writePluginScaffold(fs: FileSystem, scaffold: PluginScaffold): void {
-  const destinations = Object.keys(scaffold.files).map((path) => {
-    if (isAbsolute(path)) throw new Error(`Plugin scaffold path must be relative: ${path}`);
+  const entries = Object.entries(scaffold.files).map(([path, content]) => {
+    if (!path || path === "." || hasUnsafePathSegment(path) || isAbsolute(path))
+      throw new Error(`Plugin scaffold path must be a safe relative file path: ${path}`);
+    if (typeof content !== "string")
+      throw new Error(`Plugin scaffold content must be text: ${path}`);
     const destination = resolve(scaffold.root, path);
     if (!isInside(scaffold.root, destination))
       throw new Error(`Plugin scaffold path must stay inside its root: ${path}`);
-    return destination;
+    return { content, destination, path };
   });
+  const destinations = entries.map(({ destination }) => destination);
+  if (new Set(destinations).size !== destinations.length)
+    throw new Error("Plugin scaffold paths must resolve to unique destinations.");
+  const destinationSet = new Set(destinations);
+  if (
+    destinations.some((destination) =>
+      ancestorsUntil(destination, scaffold.root).some(
+        (ancestor) => ancestor !== scaffold.root && destinationSet.has(ancestor),
+      ),
+    )
+  )
+    throw new Error("Plugin scaffold cannot use a planned file as a directory.");
   assertNoSymlinkTraversal(fs, scaffold.projectRoot, scaffold.root);
   const ancestors = new Set(destinations.flatMap((path) => ancestorsUntil(path, scaffold.root)));
   const obstructed = [...ancestors].find((path) => {
@@ -57,9 +72,7 @@ export function writePluginScaffold(fs: FileSystem, scaffold: PluginScaffold): v
   const conflict = destinations.find((path) => pathType(fs, path) !== "missing");
   if (conflict) throw new Error(`Plugin scaffold would overwrite an existing file: ${conflict}`);
   fs.mkdir(scaffold.root);
-  Object.entries(scaffold.files).forEach(([path, content]) =>
-    fs.write(resolve(scaffold.root, path), content),
-  );
+  entries.forEach(({ destination, content }) => fs.write(destination, content));
 }
 
 export function validatePluginDirectory(
@@ -90,7 +103,12 @@ export function validatePluginDirectory(
 }
 
 export function resolvePluginDirectory(projectRoot: string, directory: string): string {
-  if (!directory || directory === "." || isAbsolute(directory) || /[\0\r\n]/.test(directory))
+  if (
+    !directory ||
+    isAbsolute(directory) ||
+    hasUnsafePathSegment(directory) ||
+    resolve(projectRoot, directory) === resolve(projectRoot)
+  )
     throw new Error("Plugin directory must be a non-empty project-relative path.");
   const root = resolve(projectRoot);
   const destination = resolve(root, directory);
@@ -109,6 +127,12 @@ function assertPluginDefinition(definition: PluginDefinition): void {
 }
 
 function assertPluginManifestSyntax(content: string): void {
+  if ([...content].some((character) => character !== "\n" && isUnsafeCharacter(character)))
+    throw new Error("Plugin manifest contains unsupported control characters.");
+  const lines = content.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  if (!lines.length || lines.some((line) => !isValidManifestLine(line)))
+    throw new Error("Plugin manifest syntax is invalid.");
   const topLevel = [...content.matchAll(/^([a-z_]+):/gm)].map((match) => match[1]);
   const allowed = new Set([
     "schema",
@@ -138,11 +162,56 @@ function assertPluginManifestSyntax(content: string): void {
     if (line !== undefined) {
       const list = line.trim();
       const body = list.slice(1, -1);
-      if (!list.startsWith("[") || !list.endsWith("]") || body.includes("[") || body.includes("]"))
+      if (
+        !list.startsWith("[") ||
+        !list.endsWith("]") ||
+        body.includes("[") ||
+        body.includes("]") ||
+        (body && body.split(",").some((entry) => !isPlainManifestValue(entry.trim())))
+      )
         throw new Error(`Plugin manifest field '${key}' must be an inline list.`);
     }
   }
-  if (/^[^\s#][^:]*$/m.test(content)) throw new Error("Plugin manifest syntax is invalid.");
+  for (const type of ["skills", "rules", "agents", "hooks", "templates"]) {
+    if ((content.match(new RegExp(`^  ${type}:`, "gm")) ?? []).length !== 1)
+      throw new Error(`Plugin manifest resource section '${type}' must occur exactly once.`);
+  }
+  const resourceEntries = [
+    ...content.matchAll(/^\s{4}- \{ id: ([^,]+), version: ([^,]+), path: ([^ }]+) \}$/gm),
+  ];
+  const identities = new Set<string>();
+  for (const entry of resourceEntries) {
+    const [, resourceId, resourceVersion, resourcePath] = entry;
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(resourceId))
+      throw new Error("Plugin resource id must use lowercase letters and hyphens.");
+    if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(resourceVersion))
+      throw new Error("Plugin resource version must be an exact semantic version.");
+    if (!isPlainManifestValue(resourcePath)) throw new Error("Plugin resource path is invalid.");
+    const identity = `${resourceId}@${resourceVersion}`;
+    if (identities.has(identity)) throw new Error(`Duplicate plugin resource: ${identity}`);
+    identities.add(identity);
+  }
+}
+
+function isValidManifestLine(line: string): boolean {
+  if (!line.trim() || /^#[^\r\n]*$/.test(line)) return true;
+  if (/^[a-z_]+:$/.test(line)) return true;
+  if (/^(schema|id|version|provider|source): [^\s].*$/.test(line))
+    return isPlainManifestValue(line.slice(line.indexOf(":") + 1).trim());
+  if (/^(dependencies|permissions|targets): \[.*\]$/.test(line)) return true;
+  if (/^\s{2}(source|checksum|ai_workflow): [^\s].*$/.test(line))
+    return isPlainManifestValue(line.slice(line.indexOf(":") + 1).trim());
+  if (/^\s{2}(skills|rules|agents|hooks|templates):(?: \[\])?$/.test(line)) return true;
+  if (/^\s{4}- \{ id: [^,]+, version: [^,]+, path: [^ }]+ \}$/.test(line)) return true;
+  if (/^\s{2}- \{ id: [^,]+, value: [^ }]+ \}$/.test(line)) return true;
+  return /^\s{4}(skills|rules|agents|hooks|templates): \[.*\]$/.test(line);
+}
+
+function isPlainManifestValue(value: string): boolean {
+  if (!value || value.includes("[") || value.includes("]") || /[{}#,]/.test(value)) return false;
+  if (value.startsWith('"') || value.endsWith('"') || value.startsWith("'") || value.endsWith("'"))
+    return false;
+  return true;
 }
 
 function pluginManifest(definition: PluginDefinition, skillId: string, skillPath: string): string {
@@ -192,4 +261,17 @@ function title(value: string): string {
     .split("-")
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
+}
+
+function hasUnsafePathSegment(value: string): boolean {
+  return [...value].some(isUnsafeCharacter) || value.split(/[\\/]/).includes("..");
+}
+
+function isUnsafeCharacter(value: string): boolean {
+  const code = value.codePointAt(0) ?? 0;
+  return code <= 31 || code === 127 || code === 133 || code === 8232 || code === 8233;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
