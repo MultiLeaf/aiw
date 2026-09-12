@@ -55,6 +55,67 @@ describe("project profile", () => {
     expect(profile.packageManager).toBe("unknown");
   });
 
+  it("profiles nested monorepo projects independently and aggregates their technology signals", async () => {
+    const root = await fixture();
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ name: "workspace-root", workspaces: ["apps/*", "packages/*"] }),
+    );
+    await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    await mkdir(join(root, "apps/api/src"), { recursive: true });
+    await mkdir(join(root, "apps/api/prisma"), { recursive: true });
+    await writeFile(
+      join(root, "apps/api/package.json"),
+      JSON.stringify({
+        name: "api",
+        scripts: { test: "jest --runInBand" },
+        dependencies: { "@nestjs/core": "latest", "@prisma/client": "latest" },
+        devDependencies: { prisma: "latest", jest: "latest", typescript: "latest" },
+      }),
+    );
+    await writeFile(join(root, "apps/api/src/main.ts"), "export {};");
+    await writeFile(join(root, "apps/api/prisma/schema.prisma"), "generator client {}");
+    await mkdir(join(root, "apps/web/src"), { recursive: true });
+    await writeFile(
+      join(root, "apps/web/package.json"),
+      JSON.stringify({
+        name: "web",
+        scripts: { test: "vitest run" },
+        dependencies: { react: "latest" },
+        devDependencies: { vite: "latest", vitest: "latest", typescript: "latest" },
+      }),
+    );
+    await writeFile(join(root, "apps/web/src/main.tsx"), "export {};");
+
+    const profile = await profileProject(root);
+
+    expect(profile.frameworks).toEqual(
+      expect.arrayContaining(["nestjs", "prisma", "react", "vite"]),
+    );
+    expect(profile.modules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "apps/api",
+          name: "api",
+          frameworks: ["nestjs", "prisma"],
+          testing: { name: "jest", command: "jest --runInBand" },
+        }),
+        expect.objectContaining({
+          path: "apps/web",
+          name: "web",
+          frameworks: ["react", "vite"],
+          testing: { name: "vitest", command: "vitest run" },
+        }),
+      ]),
+    );
+    expect(profile.modules?.find(({ path }) => path === "apps/api")?.runtime.languages).toContain(
+      "typescript",
+    );
+    expect(profile.modules?.find(({ path }) => path === "apps/web")?.runtime.languages).toContain(
+      "typescript",
+    );
+  });
+
   it("prioritizes confirmed facts in a persisted profile", () => {
     const profile = parseProjectProfile(
       "schema: 1\nstatus: scanned\nfacts:\n  - key: package-manager\n    value: pnpm\n    state: confirmed\n    method: user-confirmed\n    confidence: 1\n    evidence: []\nruntime:\n  languages: [typescript]\nframeworks: []\npackage_manager: npm\nquality:\n  linter: eslint\n  linter_command: pnpm lint\n  formatter: unknown\n  formatter_command: unknown\n  typecheck: unknown\n  typecheck_command: unknown\ntesting: unknown\ntesting_command: unknown\nci: []\nworkspaces: []\n",

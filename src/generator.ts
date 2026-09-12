@@ -11,17 +11,21 @@ export function generateProjectResources(
   const linterCommand = safeInlineValue(profile.quality.linter?.command);
   const formatterCommand = safeInlineValue(profile.quality.formatter?.command);
   const testCommand = safeInlineValue(profile.testing?.command);
-  if (selected.includes("typescript-quality"))
+  if (selected.includes("typescript-quality") || selected.includes("rules/project-quality"))
     write(
       resolveGeneratedPath("rules/project-quality.md"),
       `# Project Quality Rules\n\n- Use ${profile.runtime.languages.map((language) => (language === "typescript" ? "TypeScript" : language)).join(", ")} with strict typing.\n${linterCommand ? `- Run \`${linterCommand}\` before completion.\n` : ""}${formatterCommand ? `- Run \`${formatterCommand}\` before review.\n` : ""}- Keep all generated AI Workflow artifacts in English.\n`,
     );
-  if (selected.includes("tdd-development"))
+  if (selected.includes("tdd-development") || selected.includes("rules/tdd-project-policy"))
     write(
       resolveGeneratedPath("rules/tdd-project-policy.md"),
       `# TDD Project Policy\n\n${testCommand ? `- Run \`${testCommand}\` for verification.\n` : ""}- Write a failing behavioral test before implementation.\n- Refactor only after the test is green.\n`,
     );
-  if (selected.includes("nextjs-development") || selected.includes("react-best-practices"))
+  if (
+    selected.includes("nextjs-development") ||
+    selected.includes("react-best-practices") ||
+    selected.includes("rules/architecture-policy")
+  )
     write(
       resolveGeneratedPath("agents/project-context.md"),
       `# Project Context\n\nThis project uses ${profile.frameworks.map((framework) => (framework === "nextjs" ? "Next.js" : framework)).join(", ")}. Follow the detected project structure and existing framework conventions.\n`,

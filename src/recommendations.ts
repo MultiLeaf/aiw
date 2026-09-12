@@ -117,6 +117,40 @@ const CATALOG: Capability[] = [
         : undefined,
   },
   {
+    id: "nestjs-backend",
+    provider: "multileaf",
+    rationale:
+      "NestJS is detected in this project; its module, dependency-injection, and test conventions can guide backend work.",
+    permissions: [],
+    resources: local([
+      { type: "skills", id: "nestjs-development" },
+      { type: "agents", id: "nestjs-engineer" },
+      { type: "rules", id: "architecture-policy" },
+      { type: "templates", id: "technical-design" },
+    ]),
+    matches: (profile) =>
+      profile.frameworks.includes("nestjs")
+        ? { evidence: projectEvidence(profile, "nestjs"), confidence: 1 }
+        : undefined,
+  },
+  {
+    id: "prisma-data-access",
+    provider: "multileaf",
+    rationale:
+      "Prisma is detected; schema and data-access changes need migration-aware guidance aligned to the owning workspace.",
+    permissions: [],
+    resources: local([
+      { type: "skills", id: "prisma-data-access" },
+      { type: "agents", id: "prisma-engineer" },
+      { type: "rules", id: "data-access-policy" },
+      { type: "rules", id: "security-policy" },
+    ]),
+    matches: (profile) =>
+      profile.frameworks.includes("prisma")
+        ? { evidence: projectEvidence(profile, "prisma"), confidence: 1 }
+        : undefined,
+  },
+  {
     id: "vitest-testing",
     provider: "multileaf",
     rationale:
@@ -168,6 +202,23 @@ const CATALOG: Capability[] = [
         : undefined,
   },
   {
+    id: "vite-frontend",
+    provider: "multileaf",
+    rationale:
+      "Vite is detected; frontend build, test, and module guidance should follow the owning app's framework and scripts.",
+    permissions: [],
+    resources: local([
+      { type: "skills", id: "vite-frontend" },
+      { type: "agents", id: "typescript-engineer" },
+      { type: "rules", id: "quality-gates" },
+      { type: "templates", id: "technical-design" },
+    ]),
+    matches: (profile) =>
+      profile.frameworks.includes("vite")
+        ? { evidence: projectEvidence(profile, "vite"), confidence: 1 }
+        : undefined,
+  },
+  {
     id: "security-review",
     provider: "multileaf",
     rationale:
@@ -204,9 +255,16 @@ export function recommendCapabilities(profile: ProjectProfile): CapabilityRecomm
 }
 
 export function resourcesForCapabilities(ids: string[]): RecommendedResource[] {
-  const selected = new Set(ids);
-  const resources = CATALOG.filter(({ id }) => selected.has(id)).flatMap(
-    ({ resources }) => resources,
+  const selectedCapabilities = new Set(
+    CATALOG.filter(({ id }) => ids.includes(id)).map(({ id }) => id),
+  );
+  const selectedResources = new Set(ids.filter((id) => id.includes("/")));
+  const resources = CATALOG.flatMap(({ id, resources }) =>
+    selectedCapabilities.has(id)
+      ? resources
+      : resources.filter(({ type, id: resourceId }) =>
+          selectedResources.has(`${type}/${resourceId}`),
+        ),
   );
   return [
     ...new Map(resources.map((resource) => [`${resource.type}/${resource.id}`, resource])).values(),
@@ -220,7 +278,12 @@ export function serializeRecommendations(
   return `schema: 1\nrecommendations:\n${items
     .map(
       (item) =>
-        `  - id: ${item.id}\n    provider: ${item.provider}\n    confidence: ${item.confidence}\n    selected: ${selected.includes(item.id)}\n    resources: [${item.resources.map(({ type, id }) => `${type}/${id}`).join(", ")}]\n    evidence: [${item.evidence.map((evidence) => `"${evidence}"`).join(", ")}]\n    rationale: ${item.rationale}`,
+        `  - id: ${item.id}\n    provider: ${item.provider}\n    confidence: ${item.confidence}\n    selected: ${selected.includes(item.id)}\n    resources: [${item.resources.map(({ type, id }) => `${type}/${id}`).join(", ")}]\n    selected_resources: [${item.resources
+          .filter(({ type, id }) => selected.includes(`${type}/${id}`))
+          .map(({ type, id }) => `${type}/${id}`)
+          .join(
+            ", ",
+          )}]\n    evidence: [${item.evidence.map((evidence) => `"${evidence}"`).join(", ")}]\n    rationale: ${item.rationale}`,
     )
     .join("\n")}\n`;
 }
@@ -236,7 +299,15 @@ function hasProjectSignals(profile: ProjectProfile): boolean {
   );
 }
 
-function projectEvidence(profile: ProjectProfile): string[] {
+function projectEvidence(profile: ProjectProfile, framework?: string): string[] {
+  const moduleEvidence = (profile.modules ?? [])
+    .filter((module) => !framework || module.frameworks.includes(framework))
+    .flatMap((module) => [
+      `workspace:${module.path}`,
+      ...module.frameworks.map((name) => `framework:${name}`),
+      ...(module.testing ? [`testing:${module.testing.name}`] : []),
+      ...(module.testing?.command ? [`test-command:${module.testing.command}`] : []),
+    ]);
   return [
     ...profile.runtime.languages.map((language) => `language:${language}`),
     ...profile.frameworks.map((framework) => `framework:${framework}`),
@@ -244,5 +315,6 @@ function projectEvidence(profile: ProjectProfile): string[] {
     ...(profile.testing ? [`testing:${profile.testing.name}`] : []),
     ...(profile.quality.linter ? [`linter:${profile.quality.linter.name}`] : []),
     ...(profile.ci.length ? profile.ci.map((system) => `ci:${system}`) : []),
+    ...moduleEvidence,
   ];
 }

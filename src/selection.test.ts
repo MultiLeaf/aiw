@@ -11,6 +11,7 @@ const items: CapabilityRecommendation[] = [
     evidence: ["language:typescript"],
     permissions: [],
     conflicts: [],
+    resources: [],
   },
   {
     id: "vitest-testing",
@@ -20,6 +21,7 @@ const items: CapabilityRecommendation[] = [
     evidence: ["testing:vitest"],
     permissions: [],
     conflicts: [],
+    resources: [],
   },
 ];
 
@@ -33,5 +35,21 @@ describe("interactive recommendation selection", () => {
   it("supports non-interactive selection", async () => {
     const result = await selectRecommendations(items, async () => "n", ["vitest-testing"]);
     expect(result).toEqual(["vitest-testing"]);
+  });
+
+  it("selects every capability with the all shortcut", async () => {
+    const result = await selectRecommendations(items, async () => "n", ["all"]);
+    expect(result).toEqual(["typescript-quality", "vitest-testing"]);
+  });
+
+  it("accepts individual recommended resources for custom installation", async () => {
+    const catalog = [
+      {
+        ...items[0],
+        resources: [{ type: "skills" as const, id: "verification" }],
+      },
+    ];
+    const result = await selectRecommendations(catalog, async () => "n", ["skills/verification"]);
+    expect(result).toEqual(["skills/verification"]);
   });
 });

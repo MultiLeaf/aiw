@@ -28,6 +28,9 @@ resources:
     - { id: documentation-maintenance, version: 0.1.0, path: skills/documentation-maintenance.md }
     - { id: adapter-development, version: 0.1.0, path: skills/adapter-development.md }
     - { id: skill-authoring, version: 0.1.0, path: skills/skill-authoring.md }
+    - { id: nestjs-development, version: 0.1.0, path: skills/nestjs-development.md }
+    - { id: prisma-data-access, version: 0.1.0, path: skills/prisma-data-access.md }
+    - { id: vite-frontend, version: 0.1.0, path: skills/vite-frontend.md }
   rules:
     - { id: language-policy, version: 0.1.0, path: rules/language-policy.md }
     - { id: tdd-policy, version: 0.1.0, path: rules/tdd-policy.md }
@@ -39,6 +42,7 @@ resources:
     - { id: documentation-policy, version: 0.1.0, path: rules/documentation-policy.md }
     - { id: self-validation, version: 0.1.0, path: rules/self-validation.md }
     - { id: completion-validation, version: 0.1.0, path: rules/completion-validation.md }
+    - { id: data-access-policy, version: 0.1.0, path: rules/data-access-policy.md }
   agents:
     - { id: requirements-analyst, version: 0.1.0, path: agents/requirements-analyst.md }
     - { id: technical-architect, version: 0.1.0, path: agents/technical-architect.md }
@@ -48,6 +52,8 @@ resources:
     - { id: security-reviewer, version: 0.1.0, path: agents/security-reviewer.md }
     - { id: adapter-engineer, version: 0.1.0, path: agents/adapter-engineer.md }
     - { id: documentation-writer, version: 0.1.0, path: agents/documentation-writer.md }
+    - { id: nestjs-engineer, version: 0.1.0, path: agents/nestjs-engineer.md }
+    - { id: prisma-engineer, version: 0.1.0, path: agents/prisma-engineer.md }
   hooks:
     - { id: pre-implementation, version: 0.1.0, path: hooks/pre-implementation.md }
     - { id: post-implementation, version: 0.1.0, path: hooks/post-implementation.md }
@@ -66,8 +72,62 @@ resources:
     - { id: security-review, version: 0.1.0, path: templates/security-review.md }
     - { id: migration-report, version: 0.1.0, path: templates/migration-report.md }
 provides:
-  skills: [project-init, brainstorming, requirements-specification, technical-design, implementation-planning, tdd-development, verification, code-review, security-review, documentation-maintenance, adapter-development, skill-authoring]
-  rules: [language-policy, tdd-policy, architecture-policy, quality-gates, security-policy, dependency-policy, generated-files, documentation-policy, self-validation, completion-validation]
-  agents: [requirements-analyst, technical-architect, typescript-engineer, test-engineer, quality-reviewer, security-reviewer, adapter-engineer, documentation-writer]
+  skills:
+    [
+      project-init,
+      brainstorming,
+      requirements-specification,
+      technical-design,
+      implementation-planning,
+      tdd-development,
+      verification,
+      code-review,
+      security-review,
+      documentation-maintenance,
+      adapter-development,
+      skill-authoring,
+      nestjs-development,
+      prisma-data-access,
+      vite-frontend,
+    ]
+  rules:
+    [
+      language-policy,
+      tdd-policy,
+      architecture-policy,
+      quality-gates,
+      security-policy,
+      dependency-policy,
+      generated-files,
+      documentation-policy,
+      self-validation,
+      completion-validation,
+      data-access-policy,
+    ]
+  agents:
+    [
+      requirements-analyst,
+      technical-architect,
+      typescript-engineer,
+      test-engineer,
+      quality-reviewer,
+      security-reviewer,
+      adapter-engineer,
+      documentation-writer,
+      nestjs-engineer,
+      prisma-engineer,
+    ]
   hooks: [pre-implementation, post-implementation, pre-commit, post-change, pre-release]
-  templates: [brainstorm, specification, technical-design, decision-record, implementation-plan, task, test-plan, verification-report, security-review, migration-report]
+  templates:
+    [
+      brainstorm,
+      specification,
+      technical-design,
+      decision-record,
+      implementation-plan,
+      task,
+      test-plan,
+      verification-report,
+      security-review,
+      migration-report,
+    ]

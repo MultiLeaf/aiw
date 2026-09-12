@@ -398,7 +398,7 @@ export async function runCommand(
         .join("\n");
       fs.write(
         join(aiw, "profile.yml"),
-        `schema: 1\nstatus: scanned\nfacts:\n${evidence}\nruntime:\n  languages: [${profile.runtime.languages.join(", ")}]\nframeworks: [${profile.frameworks.join(", ")}]\npackage_manager: ${profile.packageManager}\nquality:\n  linter: ${profile.quality.linter?.name ?? "unknown"}\n  linter_command: ${profile.quality.linter?.command ?? "unknown"}\n  formatter: ${profile.quality.formatter?.name ?? "unknown"}\n  formatter_command: ${profile.quality.formatter?.command ?? "unknown"}\n  typecheck: ${profile.quality.typecheck?.name ?? "unknown"}\n  typecheck_command: ${profile.quality.typecheck?.command ?? "unknown"}\ntesting: ${profile.testing?.name ?? "unknown"}\ntesting_command: ${profile.testing?.command ?? "unknown"}\nci: [${profile.ci.join(", ")}]\nworkspaces: [${profile.workspaces.join(", ")}]\npolicies:\n  artifact_language: en\n`,
+        `schema: 1\nstatus: scanned\nfacts:\n${evidence}\nruntime:\n  languages: [${profile.runtime.languages.join(", ")}]\nframeworks: [${profile.frameworks.join(", ")}]\npackage_manager: ${profile.packageManager}\nquality:\n  linter: ${profile.quality.linter?.name ?? "unknown"}\n  linter_command: ${profile.quality.linter?.command ?? "unknown"}\n  formatter: ${profile.quality.formatter?.name ?? "unknown"}\n  formatter_command: ${profile.quality.formatter?.command ?? "unknown"}\n  typecheck: ${profile.quality.typecheck?.name ?? "unknown"}\n  typecheck_command: ${profile.quality.typecheck?.command ?? "unknown"}\ntesting: ${profile.testing?.name ?? "unknown"}\ntesting_command: ${profile.testing?.command ?? "unknown"}\nci: [${profile.ci.join(", ")}]\nworkspaces: [${profile.workspaces.join(", ")}]\nproject_modules: ${JSON.stringify(profile.modules ?? [])}\npolicies:\n  artifact_language: en\n`,
       );
       return { exitCode: 0, output: "Project profile generated." };
     }
@@ -1891,8 +1891,22 @@ function personalizeBundledResource(
   content: string,
   profile: ProjectProfile,
 ): string {
-  if (type !== "rules" || !["quality-gates", "tdd-policy", "dependency-policy"].includes(id))
-    return content;
+  const contextual =
+    (type === "rules" &&
+      [
+        "quality-gates",
+        "tdd-policy",
+        "dependency-policy",
+        "architecture-policy",
+        "data-access-policy",
+      ].includes(id)) ||
+    (type === "skills" &&
+      ["nestjs-development", "prisma-data-access", "vite-frontend"].includes(id)) ||
+    (type === "agents" &&
+      ["technical-architect", "typescript-engineer", "nestjs-engineer", "prisma-engineer"].includes(
+        id,
+      ));
+  if (!contextual) return content;
   const signals = [
     profile.runtime.languages.length ? `- Languages: ${profile.runtime.languages.join(", ")}` : "",
     profile.frameworks.length ? `- Frameworks: ${profile.frameworks.join(", ")}` : "",
@@ -1908,6 +1922,24 @@ function personalizeBundledResource(
     profile.quality.formatter?.command
       ? `- Format command: \`${safeProjectSignal(profile.quality.formatter.command)}\``
       : "",
+    ...(profile.modules ?? []).map((module) => {
+      const parts = [
+        module.name
+          ? `${safeProjectSignal(module.name)} (${safeProjectSignal(module.path)})`
+          : safeProjectSignal(module.path),
+        module.frameworks.length ? `frameworks: ${module.frameworks.join(", ")}` : "",
+        ...(module.architecture ?? []).map((item) => `architecture: ${safeProjectSignal(item)}`),
+        ...(module.patterns ?? []).map((item) => `patterns: ${safeProjectSignal(item)}`),
+        module.testing
+          ? `tests: ${module.testing.name}${module.testing.command ? ` (${safeProjectSignal(module.testing.command)})` : ""}`
+          : "",
+        module.quality.linter
+          ? `linter: ${module.quality.linter.name}${module.quality.linter.command ? ` (${safeProjectSignal(module.quality.linter.command)})` : ""}`
+          : "",
+      ].filter(Boolean);
+      const evidence = (module.evidence ?? []).slice(0, 8).map(safeProjectSignal);
+      return `- Module ${parts.join("; ")}${evidence.length ? `; evidence: ${evidence.join(", ")}` : ""}`;
+    }),
   ].filter(Boolean);
   return signals.length
     ? `${content.trimEnd()}\n\n## Detected project context\n\n${signals.join("\n")}\n`
@@ -1930,11 +1962,21 @@ function safeProjectSignal(value: string): string {
 function readSelectedRecommendations(fs: FileSystem, aiw: string): string[] {
   if (!fs.exists(join(aiw, "recommendations.yml"))) return [];
   const content = fs.read(join(aiw, "recommendations.yml"));
-  return content
+  const selections = content
     .split(/^\s{2}- id: /m)
     .slice(1)
-    .filter((block) => block.includes("selected: true"))
-    .map((block) => block.split("\n", 1)[0].trim());
+    .flatMap((block) => {
+      const id = block.split("\n", 1)[0].trim();
+      const selectedCapability = /^\s{4}selected: true$/m.test(block) ? [id] : [];
+      const selectedResources =
+        block
+          .match(/^\s{4}selected_resources: \[([^\]]*)\]$/m)?.[1]
+          ?.split(",")
+          .map((resource) => resource.trim())
+          .filter(Boolean) ?? [];
+      return [...selectedCapability, ...selectedResources];
+    });
+  return [...new Set(selections)];
 }
 
 function parseApprovedPermissions(args: string[]): string[] {

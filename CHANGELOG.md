@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-12
+
+### Added
+
+- Guided `/ai-init` onboarding with model-cost guidance, parallel project analysis, monorepo-aware profiles, selectable resource blocks, and project-specific resource personalization.
+- NestJS, Prisma, and Vite capability recommendations with matching skills, agents, and data-access guidance.
+
+### Changed
+
+- Allow recommendation selection by individual resource, including an explicit select-all option.
+- Expand project profiles with workspace-level technologies, quality tools, test runners, architecture, patterns, and evidence.
+
+### Documentation
+
+- Specify onboarding flow, host capabilities, MCP recommendations, safety expectations, and acceptance criteria.
+
 ## [0.1.3] - 2026-09-12
 
 ### Fixed
@@ -50,7 +66,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - Path confinement, symlink protection, explicit permission gates, secret redaction, strict parsers, atomic migrations, and immutable execution checkpoints.
 
-[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/MultiLeaf/aiw/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/MultiLeaf/aiw/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/MultiLeaf/aiw/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.1

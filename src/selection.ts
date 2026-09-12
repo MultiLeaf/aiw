@@ -7,7 +7,14 @@ export async function selectRecommendations(
   answer: Answer,
   selectedIds?: string[],
 ): Promise<string[]> {
-  if (selectedIds) return selectedIds.filter((id) => items.some((item) => item.id === id));
+  const available = new Set(
+    items.flatMap((item) => [
+      item.id,
+      ...(item.resources ?? []).map(({ type, id }) => `${type}/${id}`),
+    ]),
+  );
+  if (selectedIds?.includes("all")) return items.map(({ id }) => id);
+  if (selectedIds) return [...new Set(selectedIds.filter((id) => available.has(id)))];
   const selected: string[] = [];
   for (const item of items) {
     const response = (await answer(`Install ${item.id}? [Y/n] `)).trim().toLowerCase();

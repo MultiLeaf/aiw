@@ -37,6 +37,49 @@ describe("capability recommendations", () => {
     );
   });
 
+  it("recommends stack-specific capabilities with workspace evidence", () => {
+    const monorepo: ProjectProfile = {
+      ...profile,
+      frameworks: ["nestjs", "prisma", "react", "vite"],
+      modules: [
+        {
+          path: "apps/api",
+          name: "api",
+          runtime: { languages: ["typescript"] },
+          frameworks: ["nestjs", "prisma"],
+          packageManager: "pnpm",
+          quality: {},
+          testing: { name: "jest", command: "pnpm --filter api test" },
+        },
+        {
+          path: "apps/web",
+          name: "web",
+          runtime: { languages: ["typescript"] },
+          frameworks: ["react", "vite"],
+          packageManager: "pnpm",
+          quality: {},
+          testing: { name: "vitest", command: "pnpm --filter web test" },
+        },
+      ],
+    };
+    const recommendations = recommendCapabilities(monorepo);
+
+    expect(recommendations.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([
+        "nestjs-backend",
+        "prisma-data-access",
+        "react-best-practices",
+        "vite-frontend",
+      ]),
+    );
+    expect(recommendations.find(({ id }) => id === "nestjs-backend")?.evidence).toContain(
+      "workspace:apps/api",
+    );
+    expect(recommendations.find(({ id }) => id === "vite-frontend")?.evidence).toContain(
+      "workspace:apps/web",
+    );
+  });
+
   it("does not recommend unrelated capabilities", () => {
     const empty: ProjectProfile = {
       runtime: { languages: [] },

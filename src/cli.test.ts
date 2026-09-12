@@ -19,6 +19,7 @@ import type { FileSystem } from "./types.js";
 import type { Interpreter } from "./interpreter.js";
 import { checksumPackage } from "./package-integrity.js";
 import { parseOwnership } from "./ownership.js";
+import { parseProjectProfile } from "./profile.js";
 import type { DashboardHandle } from "./dashboard.js";
 import type { LoadedPackageSource } from "./providers.js";
 
@@ -101,7 +102,7 @@ tasks:
     for (const command of [
       "scan",
       "recommend",
-      "recommend --select=id,id",
+      "recommend --select=all",
       "recommend --select=",
       "sync",
       "gate specification",
@@ -110,7 +111,7 @@ tasks:
       "trace",
     ])
       expect(aiInit).toContain(`npx --yes --package=@multileaf/ai-workflow -- aiw ${command}`);
-    expect(aiInit).toContain("Do not add unselected resources or overwrite existing files");
+    expect(aiInit).toContain("Install only selected resources and declared dependencies");
     expect(aiInit).toContain("All generated AI Workflow artifacts must be written in English");
     expect(result.output).toContain("only the ai-init skill");
   });
@@ -150,6 +151,52 @@ tasks:
       readFile(join(cwd, ".agents/rules/project-quality/project-quality.md"), "utf8"),
     ).resolves.toContain("eslint .");
     await expect(stat(join(cwd, ".agents/skills/security-review/SKILL.md"))).rejects.toThrow();
+  });
+
+  it("syncs an individual custom resource selection instead of its whole capability bundle", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "latest" } }),
+    );
+    await run(["scan"], cwd);
+    const profilePath = join(cwd, ".aiw/profile.yml");
+    const profile = await readFile(profilePath, "utf8");
+    await writeFile(
+      profilePath,
+      profile.replace(
+        "project_modules: []",
+        'project_modules: [{"path":".","architecture":["modular backend"],"patterns":["controller-service"],"evidence":["apps/api/src/modules"]}]',
+      ),
+    );
+    await run(["recommend"], cwd);
+
+    const selection = await run(
+      ["recommend", "--select=skills/verification,rules/tdd-policy,agents/test-engineer"],
+      cwd,
+    );
+    expect(selection.exitCode).toBe(0);
+    const recommendations = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
+    expect(recommendations).toContain(
+      "selected_resources: [skills/verification, agents/test-engineer]",
+    );
+    expect(recommendations).toContain(
+      "selected_resources: [rules/tdd-policy, agents/test-engineer]",
+    );
+
+    const sync = await run(["sync"], cwd);
+    expect(sync.exitCode).toBe(0);
+    await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/rules/tdd-policy/tdd-policy.md"))).resolves.toBeTruthy();
+    await expect(
+      stat(join(cwd, ".agents/agents/test-engineer/test-engineer.md")),
+    ).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/tdd-development/SKILL.md"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".agents/rules/tdd-policy/tdd-policy.md"))).resolves.toBeTruthy();
+    await expect(
+      readFile(join(cwd, ".agents/rules/tdd-policy/tdd-policy.md"), "utf8"),
+    ).resolves.toContain("patterns: controller-service");
   });
 
   it.each([
@@ -590,6 +637,53 @@ tasks:
     expect(profile).toContain("formatter_command: prettier .");
     expect(profile).toContain("typecheck_command: tsc --noEmit");
     expect(profile).toContain("testing_command: vitest");
+  });
+
+  it("persists separate profiles for monorepo modules during scan", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ workspaces: ["apps/*"] }));
+    await mkdir(join(cwd, "apps/api/src"), { recursive: true });
+    await writeFile(
+      join(cwd, "apps/api/package.json"),
+      JSON.stringify({
+        name: "api",
+        scripts: { test: "jest" },
+        dependencies: { "@nestjs/core": "1", "@prisma/client": "1" },
+        devDependencies: { prisma: "1", jest: "1" },
+      }),
+    );
+    await writeFile(join(cwd, "apps/api/src/main.ts"), "export {};");
+    await mkdir(join(cwd, "apps/web/src"), { recursive: true });
+    await writeFile(
+      join(cwd, "apps/web/package.json"),
+      JSON.stringify({
+        name: "web",
+        scripts: { test: "vitest run" },
+        dependencies: { react: "1" },
+        devDependencies: { vite: "1", vitest: "1" },
+      }),
+    );
+    await writeFile(join(cwd, "apps/web/src/main.tsx"), "export {};");
+
+    const result = await run(["scan"], cwd);
+    expect(result.exitCode).toBe(0);
+    const serialized = await readFile(join(cwd, ".aiw/profile.yml"), "utf8");
+    const profile = parseProjectProfile(serialized);
+    expect(profile.modules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "apps/api",
+          frameworks: ["nestjs", "prisma"],
+          testing: { name: "jest", command: "jest" },
+        }),
+        expect.objectContaining({
+          path: "apps/web",
+          frameworks: ["react", "vite"],
+          testing: { name: "vitest", command: "vitest run" },
+        }),
+      ]),
+    );
   });
 
   it("persists scoped inferred facts produced during the scan", async () => {
