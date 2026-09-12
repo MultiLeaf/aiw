@@ -98,9 +98,19 @@ tasks:
     await expect(stat(join(cwd, ".agents/hooks"))).rejects.toThrow();
     await expect(stat(join(cwd, ".context/adrs/INDEX.md"))).resolves.toBeTruthy();
     const aiInit = await readFile(join(cwd, ".agents/skills/ai-init/SKILL.md"), "utf8");
-    expect(aiInit).toContain("aiw recommend");
-    expect(aiInit).toContain("aiw sync");
-    expect(aiInit).toContain("If at least one capability is selected, run `aiw sync`");
+    for (const command of [
+      "scan",
+      "recommend",
+      "recommend --select=id,id",
+      "recommend --select=",
+      "sync",
+      "gate specification",
+      "gate plan",
+      "verify",
+      "trace",
+    ])
+      expect(aiInit).toContain(`npx --yes --package=@multileaf/ai-workflow -- aiw ${command}`);
+    expect(aiInit).toContain("Do not add unselected resources or overwrite existing files");
     expect(aiInit).toContain("All generated AI Workflow artifacts must be written in English");
     expect(result.output).toContain("only the ai-init skill");
   });

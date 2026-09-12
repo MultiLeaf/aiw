@@ -23,6 +23,7 @@
 - The user must select which capabilities to install.
 - Selected resources must be customized using confirmed project facts.
 - `/ai-init` must orchestrate scan → recommendations → user selection → selected-resource sync and summarize what it added.
+- The bootstrap must invoke CLI operations through the package runner; it cannot assume `aiw` is installed globally or in the consuming project's dependencies.
 
 ### Development workflow
 

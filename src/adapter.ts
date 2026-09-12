@@ -42,9 +42,9 @@ This skill is the bootstrap for AI Workflow. The installer intentionally install
 ## First-run setup
 
 1. Inspect the repository's existing AI instructions and project structure. Preserve user-authored files and do not expose secrets.
-2. Run \`aiw scan\`. Explain the detected facts and their evidence; ask the user to confirm uncertain inferences before they influence generated content.
-3. Run \`aiw recommend\`, then read \`.aiw/recommendations.yml\` and \`.aiw/profile.yml\`. Explain why each suggested skill, rule, agent, hook, or template fits and identify external permissions. Ask which capabilities to install, and ask separately before granting an external permission such as \`network:external\`.
-4. Record the user's choices with \`aiw recommend --select=id,id\`; use \`aiw recommend --select=\` when all recommendations are declined. If at least one capability is selected, run \`aiw sync\`; when the user separately approved external network access, pass \`--allow=network:external\`. Sync installs only selected resources and fills supported project rules with detected stack and quality-tool details. Do not add unselected resources or overwrite existing files.
+2. Run \`npx --yes --package=@multileaf/ai-workflow -- aiw scan\`. Explain the detected facts and their evidence; ask the user to confirm uncertain inferences before they influence generated content.
+3. Run \`npx --yes --package=@multileaf/ai-workflow -- aiw recommend\`, then read \`.aiw/recommendations.yml\` and \`.aiw/profile.yml\`. Explain why each suggested skill, rule, agent, hook, or template fits and identify external permissions. Ask which capabilities to install, and ask separately before granting an external permission such as \`network:external\`.
+4. Record the user's choices with \`npx --yes --package=@multileaf/ai-workflow -- aiw recommend --select=id,id\`; use \`npx --yes --package=@multileaf/ai-workflow -- aiw recommend --select=\` when all recommendations are declined. If at least one capability is selected, run \`npx --yes --package=@multileaf/ai-workflow -- aiw sync\`; when the user separately approved external network access, add \`--allow=network:external\`. Sync installs only selected resources and fills supported project rules with detected stack and quality-tool details. Do not add unselected resources or overwrite existing files.
 5. Review the installed resource list and the generated project-specific files with the user. Ask before changing project policy or tailoring any other skill/rule.
 6. Introduce the selected workflow gates: brainstorming → specification → architecture decision when needed → implementation plan → implementation with tests → verification → traceability → review. Use only gates supported by the resources the user chose.
 
@@ -53,10 +53,10 @@ If the user declines all recommendations, leave the project with only the bootst
 ## For each feature request after setup
 
 - Start with the brainstorming skill when scope, users, constraints, or assumptions are unclear.
-- Create and complete a specification with stable requirement IDs and Given/When/Then acceptance criteria; pass \`aiw gate specification\` before planning.
-- Record consequential architecture choices as ADRs. Create an implementation plan that links tasks to requirements, tests, risks, and validation commands; pass \`aiw gate plan\` before coding.
+- Create and complete a specification with stable requirement IDs and Given/When/Then acceptance criteria; pass \`npx --yes --package=@multileaf/ai-workflow -- aiw gate specification\` before planning.
+- Record consequential architecture choices as ADRs. Create an implementation plan that links tasks to requirements, tests, risks, and validation commands; pass \`npx --yes --package=@multileaf/ai-workflow -- aiw gate plan\` before coding.
 - Follow the TDD policy and project quality rules. Use specialist agents for requirements, architecture, implementation, tests, security, documentation, and review when useful.
-- Run the declared checks, then \`aiw verify\`, \`aiw trace\`, and the review gate. Do not claim completion without evidence.
+- Run the declared checks, then \`npx --yes --package=@multileaf/ai-workflow -- aiw verify\`, \`npx --yes --package=@multileaf/ai-workflow -- aiw trace\`, and the review gate. Do not claim completion without evidence.
 
 ## Language policy
 

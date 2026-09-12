@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-12
+
+### Fixed
+
+- Invoke AI Workflow through `npx` in the generated `ai-init` instructions so fresh projects do not need a globally installed `aiw` binary.
+
 ## [0.1.2] - 2026-09-12
 
 ### Fixed
@@ -44,7 +50,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - Path confinement, symlink protection, explicit permission gates, secret redaction, strict parsers, atomic migrations, and immutable execution checkpoints.
 
-[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/MultiLeaf/aiw/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/MultiLeaf/aiw/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.1
 [0.1.0]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.0
