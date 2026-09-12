@@ -10,7 +10,7 @@ Deterministic detectors → Detected project profile → Relevant context select
 
 ## Deterministic layer
 
-Detectors establish observable facts: files, dependencies, versions, package managers, scripts, frameworks, quality tools, tests, CI, workspaces, ignored paths, and configuration files. Each fact includes its source and detection method.
+Detectors establish observable facts: files, dependencies, versions, package managers, scripts, frameworks, quality tools, tests, CI, workspaces, ignored paths, and configuration files. The scanner applies root and nested `.gitignore` rules with Git-compatible anchoring, globstar, escaping, directory, and negation behavior. Mandatory exclusions for secrets and AIW/dependency/build state take precedence over project negations. Each fact includes its source and detection method.
 
 ```yaml
 fact: tool.eslint
@@ -25,6 +25,8 @@ confidence: 1.0
 The interpreter handles architecture conventions, naming patterns, testing style, implicit policies, documentation consistency, contradictions, and capability recommendations. It receives filtered context rather than the entire repository.
 
 The runtime exposes a provider-neutral `AiProvider` interface. Provider adapters receive an English system instruction, a scoped prompt, a token ceiling, and a JSON response requirement. The interpreter validates and normalizes that response into evidence facts; provider output cannot choose evidence state or cite a file outside the supplied context.
+
+Before sending context, AIW redacts common credential assignments such as cloud access keys, API keys, tokens, passwords, and client secrets across shell, JSON, and YAML forms. It also masks bearer credentials, recognizable GitHub/Slack/Google/OpenAI tokens, and private-key blocks. Content that cannot be read as UTF-8 is omitted. Redaction is defense in depth; sensitive files are still excluded and unusual credential formats may require project-specific handling.
 
 ```yaml
 fact: architecture.style

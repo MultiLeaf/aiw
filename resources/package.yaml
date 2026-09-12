@@ -19,15 +19,52 @@ resources:
     - { id: project-init, version: 0.1.0, path: skills/project-init.md }
     - { id: brainstorming, version: 0.1.0, path: skills/brainstorming.md }
     - { id: requirements-specification, version: 0.1.0, path: skills/requirements-specification.md }
+    - { id: technical-design, version: 0.1.0, path: skills/technical-design.md }
+    - { id: implementation-planning, version: 0.1.0, path: skills/implementation-planning.md }
+    - { id: tdd-development, version: 0.1.0, path: skills/tdd-development.md }
+    - { id: verification, version: 0.1.0, path: skills/verification.md }
+    - { id: code-review, version: 0.1.0, path: skills/code-review.md }
+    - { id: security-review, version: 0.1.0, path: skills/security-review.md }
+    - { id: documentation-maintenance, version: 0.1.0, path: skills/documentation-maintenance.md }
+    - { id: adapter-development, version: 0.1.0, path: skills/adapter-development.md }
+    - { id: skill-authoring, version: 0.1.0, path: skills/skill-authoring.md }
   rules:
     - { id: language-policy, version: 0.1.0, path: rules/language-policy.md }
     - { id: tdd-policy, version: 0.1.0, path: rules/tdd-policy.md }
+    - { id: architecture-policy, version: 0.1.0, path: rules/architecture-policy.md }
+    - { id: quality-gates, version: 0.1.0, path: rules/quality-gates.md }
+    - { id: security-policy, version: 0.1.0, path: rules/security-policy.md }
+    - { id: dependency-policy, version: 0.1.0, path: rules/dependency-policy.md }
+    - { id: generated-files, version: 0.1.0, path: rules/generated-files.md }
+    - { id: documentation-policy, version: 0.1.0, path: rules/documentation-policy.md }
+    - { id: self-validation, version: 0.1.0, path: rules/self-validation.md }
+    - { id: completion-validation, version: 0.1.0, path: rules/completion-validation.md }
   agents:
     - { id: requirements-analyst, version: 0.1.0, path: agents/requirements-analyst.md }
+    - { id: technical-architect, version: 0.1.0, path: agents/technical-architect.md }
+    - { id: typescript-engineer, version: 0.1.0, path: agents/typescript-engineer.md }
+    - { id: test-engineer, version: 0.1.0, path: agents/test-engineer.md }
+    - { id: quality-reviewer, version: 0.1.0, path: agents/quality-reviewer.md }
+    - { id: security-reviewer, version: 0.1.0, path: agents/security-reviewer.md }
+    - { id: adapter-engineer, version: 0.1.0, path: agents/adapter-engineer.md }
+    - { id: documentation-writer, version: 0.1.0, path: agents/documentation-writer.md }
   hooks:
     - { id: pre-implementation, version: 0.1.0, path: hooks/pre-implementation.md }
+    - { id: post-implementation, version: 0.1.0, path: hooks/post-implementation.md }
+    - { id: pre-commit, version: 0.1.0, path: hooks/pre-commit.md }
+    - { id: post-change, version: 0.1.0, path: hooks/post-change.md }
+    - { id: pre-release, version: 0.1.0, path: hooks/pre-release.md }
   templates:
     - { id: specification, version: 0.1.0, path: templates/specification.md }
+    - { id: brainstorm, version: 0.1.0, path: templates/brainstorm.md }
+    - { id: technical-design, version: 0.1.0, path: templates/technical-design.md }
+    - { id: decision-record, version: 0.1.0, path: templates/decision-record.md }
+    - { id: implementation-plan, version: 0.1.0, path: templates/implementation-plan.md }
+    - { id: task, version: 0.1.0, path: templates/task.md }
+    - { id: test-plan, version: 0.1.0, path: templates/test-plan.md }
+    - { id: verification-report, version: 0.1.0, path: templates/verification-report.md }
+    - { id: security-review, version: 0.1.0, path: templates/security-review.md }
+    - { id: migration-report, version: 0.1.0, path: templates/migration-report.md }
 provides:
   skills: [project-init, brainstorming, requirements-specification, technical-design, implementation-planning, tdd-development, verification, code-review, security-review, documentation-maintenance, adapter-development, skill-authoring]
   rules: [language-policy, tdd-policy, architecture-policy, quality-gates, security-policy, dependency-policy, generated-files, documentation-policy, self-validation, completion-validation]

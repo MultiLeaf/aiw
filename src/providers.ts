@@ -7,6 +7,7 @@ export type PackageSource = { provider: "local" | "git"; source: string };
 export type LoadedPackageSource = PackageSource & {
   root: string;
   manifest: string;
+  manifestBytes?: Uint8Array;
   release(): void;
 };
 export interface PackageProvider {
@@ -28,11 +29,13 @@ export const localProvider: PackageProvider = {
 
 export const gitProvider: PackageProvider = {
   canResolve: (source) =>
-    source.startsWith("git+") ||
+    /^git\+(?:https?|ssh|git|file):\/\//i.test(source) ||
     source.startsWith("git@") ||
     source.startsWith("file://") ||
-    /^https?:\/\//.test(source) ||
-    source.endsWith(".git"),
+    /^ssh:\/\//i.test(source) ||
+    /^git:\/\//i.test(source) ||
+    /^https?:\/\//i.test(source) ||
+    (source.endsWith(".git") && !/^[a-z][a-z\d+.-]*:\/\//i.test(source)),
   normalize: (source) => ({ provider: "git", source }),
 };
 
@@ -40,6 +43,23 @@ export function resolveProvider(source: string, root: string): PackageSource {
   const provider = [gitProvider, localProvider].find((candidate) => candidate.canResolve(source));
   if (!provider) throw new Error(`Unsupported package source: ${source}`);
   return provider.normalize(source, root);
+}
+
+export function requiresExternalNetwork(source: PackageSource): boolean {
+  if (source.provider !== "git") return false;
+  const normalized = source.source.startsWith("git+") ? source.source.slice(4) : source.source;
+  if (/^file:\/\//i.test(normalized)) return false;
+  if (
+    isAbsolute(normalized) ||
+    normalized.startsWith("./") ||
+    normalized.startsWith("../") ||
+    normalized.startsWith(".\\") ||
+    normalized.startsWith("..\\") ||
+    /^[a-z]:[\\/]/i.test(normalized)
+  )
+    return false;
+  // Any remaining Git transport/reference is treated as external unless it is an explicit file path.
+  return true;
 }
 
 export const nodePackageSourceLoader: PackageSourceLoader = {
@@ -53,10 +73,12 @@ export const nodePackageSourceLoader: PackageSourceLoader = {
       const manifestPath = isDirectory ? join(packageRoot, "package.yaml") : normalized.source;
       if (!existsSync(manifestPath))
         throw new Error(`Package manifest does not exist: ${manifestPath}`);
+      const manifestBytes = readFileSync(manifestPath);
       return {
         ...normalized,
         root: packageRoot,
-        manifest: readFileSync(manifestPath, "utf8"),
+        manifest: manifestBytes.toString("utf8"),
+        manifestBytes,
         release(): void {},
       };
     }
@@ -70,10 +92,12 @@ export const nodePackageSourceLoader: PackageSourceLoader = {
       });
       const manifestPath = join(checkout, "package.yaml");
       if (!existsSync(manifestPath)) throw new Error("Git package does not contain package.yaml.");
+      const manifestBytes = readFileSync(manifestPath);
       return {
         ...normalized,
         root: checkout,
-        manifest: readFileSync(manifestPath, "utf8"),
+        manifest: manifestBytes.toString("utf8"),
+        manifestBytes,
         release: () => rmSync(checkout, { recursive: true, force: true }),
       };
     } catch (error) {

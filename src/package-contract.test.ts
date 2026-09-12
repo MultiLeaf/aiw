@@ -51,14 +51,27 @@ resources:
           .map(([key, value]) => `${key}: ${value}`)
           .join(", ")} }\n`,
       ),
-    ).toThrow("require id, version, and path");
+    ).toThrow("resources.skills[0]");
   });
 
-  it("rejects packages without provenance and permissions", () => {
+  it("rejects incomplete package structure rather than returning a partial contract", () => {
     expect(() =>
       validatePackageContract(
-        "schema: 1\nid: demo\nversion: 1.0.0\nprovider: local\nsource: .\nresources:\ndependencies: []\n",
+        "schema: 1\nid: demo\nversion: 1.0.0\nprovider: local\nsource: .\nresources: {}\ndependencies: []\n",
       ),
-    ).toThrow("permissions");
+    ).toThrow("resource section 'skills' is required");
+  });
+
+  it("rejects duplicate YAML keys, unknown fields, and escaping resource paths", () => {
+    const valid = `schema: 1\nid: demo\nversion: 1.0.0\nprovider: local\nsource: .\ndependencies: []\npermissions: []\nprovenance:\n  source: .\nresources:\n  skills:\n    - { id: skill, version: 1.0.0, path: skill.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n`;
+    expect(() =>
+      validatePackageContract(valid.replace("id: demo", "id: demo\nid: duplicate")),
+    ).toThrow("YAML is invalid");
+    expect(() =>
+      validatePackageContract(valid.replace("id: demo", "id: demo\nextra: value")),
+    ).toThrow("not supported");
+    expect(() =>
+      validatePackageContract(valid.replace("path: skill.md", "path: ../outside.md")),
+    ).toThrow("normalized relative path");
   });
 });

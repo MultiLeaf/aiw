@@ -19,32 +19,33 @@ const pkg: PackageContract = {
   permissions: [],
   provenance: { source: "./resources" },
 };
+const integrity = `sha256-${"a".repeat(64)}`;
 
 describe("lockfile resolution", () => {
   it("resolves exact package metadata with integrity", () => {
-    expect(resolvePackage(pkg)).toMatchObject({
+    expect(resolvePackage(pkg, integrity)).toMatchObject({
       id: "demo/package",
       version: "1.0.0",
-      integrity: "sha256-demo/package@1.0.0",
+      integrity,
       permissions: [],
     });
   });
 
   it("serializes packages deterministically regardless of input order", () => {
-    const first = resolvePackage(pkg);
+    const first = resolvePackage(pkg, integrity);
     const second = { ...first, id: "another/package" };
     expect(serializeLock([first, second])).toBe(serializeLock([second, first]));
   });
 
   it("produces the same lockfile for the same resolved package set", () => {
-    const first = serializeLock([resolvePackage(pkg)]);
-    const second = serializeLock([resolvePackage({ ...pkg })]);
+    const first = serializeLock([resolvePackage(pkg, integrity)]);
+    const second = serializeLock([resolvePackage({ ...pkg }, integrity)]);
     expect(first).toBe(second);
   });
 
   it("strictly parses current and legacy lock entries", () => {
-    const serialized = serializeLock([resolvePackage(pkg)]);
-    expect(parseLock(serialized)).toEqual([resolvePackage(pkg)]);
+    const serialized = serializeLock([resolvePackage(pkg, integrity)]);
+    expect(parseLock(serialized)).toEqual([resolvePackage(pkg, integrity)]);
     expect(
       parseLock(serialized.replace("    permissions: []\n", ""))[0].permissions,
     ).toBeUndefined();
@@ -56,5 +57,8 @@ describe("lockfile resolution", () => {
     expect(() =>
       parseLock(serialized.replace("permissions: []", "permissions: [, filesystem:read]")),
     ).toThrow("permissions");
+    expect(() =>
+      parseLock(serialized.replace(new RegExp(`sha256-${"a".repeat(64)}`), "sha256-invalid")),
+    ).toThrow("integrity");
   });
 });

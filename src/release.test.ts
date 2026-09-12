@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { execPath } from "node:process";
+import { join, resolve } from "node:path";
 
 describe("release package", () => {
   it("declares stable public package metadata", async () => {
@@ -21,9 +24,21 @@ describe("release package", () => {
   });
 
   it("keeps tests and fixtures out of the compiled distribution", async () => {
-    const files = await readdir(resolve("dist"), { recursive: true });
-    expect(files.some((path) => path.includes("fixtures"))).toBe(false);
-    expect(files.some((path) => /\.test\.(?:js|d\.ts)$/.test(path))).toBe(false);
+    const outputDirectory = await mkdtemp(join(tmpdir(), "aiw-release-dist-"));
+    try {
+      const compile = spawnSync(
+        execPath,
+        [resolve("node_modules/typescript/bin/tsc"), "--outDir", outputDirectory],
+        { cwd: resolve("."), encoding: "utf8" },
+      );
+      expect(compile.status, `${compile.stdout}\n${compile.stderr}`).toBe(0);
+
+      const files = await readdir(outputDirectory, { recursive: true });
+      expect(files.some((path) => path.includes("fixtures"))).toBe(false);
+      expect(files.some((path) => /\.test\.(?:js|d\.ts)$/.test(path))).toBe(false);
+    } finally {
+      await rm(outputDirectory, { recursive: true, force: true });
+    }
   });
 
   it("publishes tagged releases through a least-privilege provenance workflow", async () => {

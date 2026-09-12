@@ -39,7 +39,12 @@ export function serializePermissionReview(pkg: PackageContract): string {
 }
 
 export function assertPackagePermissions(pkg: PackageContract, approved: string[]): void {
-  const review = reviewPackagePermissions(pkg, approved);
-  if (!review.allowed)
-    throw new Error(`Package permissions require approval: ${review.unapproved.join(", ")}`);
+  assertPermissions(pkg.permissions, approved);
+}
+
+export function assertPermissions(permissions: string[], approved: string[]): void {
+  assertKnownPermissions(permissions);
+  const unapproved = permissions.filter((permission) => !approved.includes(permission));
+  if (unapproved.length)
+    throw new Error(`Package permissions require approval: ${unapproved.join(", ")}`);
 }

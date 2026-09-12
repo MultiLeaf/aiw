@@ -1,6 +1,18 @@
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
-import { detectTarget, generateAiInit, isTarget, renderAiInitPath } from "./adapter.js";
+import {
+  detectTarget,
+  isTarget,
+  renderAiInit,
+  renderAiInitPath,
+  renderResourcePath,
+} from "./adapter.js";
+import { loadBootstrapResources } from "./bootstrap-resources.js";
+import {
+  assertSafeProjectPath,
+  withSafeProjectWrites,
+  writeProjectFilesAtomically,
+} from "./files.js";
 import { parseProjectProfile, profileProject } from "./profile.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
@@ -13,7 +25,13 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { generateProjectResources } from "./generator.js";
 import { detectDrift } from "./drift.js";
-import { parseManifest } from "./manifest.js";
+import { parseManifest, serializeManifest } from "./manifest.js";
+import {
+  createOwnedFile,
+  parseOwnership,
+  serializeOwnership,
+  type OwnershipMetadata,
+} from "./ownership.js";
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
 import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
@@ -21,13 +39,18 @@ import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./
 import { scanProject } from "./scanner.js";
 import {
   assertKnownPermissions,
+  assertPermissions,
   assertPackagePermissions,
   serializePermissionReview,
 } from "./package-audit.js";
 import { planPackageUpdate } from "./package-updates.js";
 import { searchRegistry, serializeRegistry, type RegistryPackage } from "./registry.js";
-import { checksumPackage, verifyPackageProvenance } from "./package-integrity.js";
-import { nodePackageSourceLoader, resolveProvider } from "./providers.js";
+import {
+  checksumPackage,
+  checksumPackageSnapshot,
+  verifyPackageProvenance,
+} from "./package-integrity.js";
+import { nodePackageSourceLoader, requiresExternalNetwork, resolveProvider } from "./providers.js";
 import { serializeSelfValidationEvidence, validateTicketId } from "./self-validation.js";
 import {
   enforceOrganizationPolicy,
@@ -55,11 +78,15 @@ import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
 import {
-  parseMigrationSnapshots,
+  type MigrationSnapshot,
+  type ResourceMigration,
+  type MigrationDiagnostic,
+  parseMigrationCheckpoint,
   planNeutralResourceMigration,
   readResourceBytes,
   serializeMigrationPreview,
-  serializeMigrationSnapshots,
+  serializeMigrationCheckpoint,
+  validateNeutralResourceDocument,
   writeResourceBytes,
 } from "./migration.js";
 import {
@@ -98,6 +125,7 @@ export async function runCommand(
 ): Promise<CommandResult> {
   const aiw = join(root, WORKFLOW_DIRECTORY);
   try {
+    fs = withSafeProjectWrites(fs, root);
     const command = args[0] ?? "help";
     if (command === "ui") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -165,26 +193,115 @@ export async function runCommand(
       const requestedTarget = flag >= 0 ? args[flag + 1] : undefined;
       const target = requestedTarget || detectTarget(root, fs) || "codex";
       if (!isTarget(target)) throw new Error(`Unsupported target: ${target}`);
-      if (fs.exists(join(aiw, "manifest.yml"))) {
-        const manifest = fs.read(join(aiw, "manifest.yml"));
+      const manifestPath = join(aiw, "manifest.yml");
+      assertSafeProjectPath(fs, root, manifestPath);
+      if (fs.pathType?.(manifestPath) === "file") {
+        const manifest = fs.read(manifestPath);
         const active = manifest.match(/^\s*active:\s*(.+)$/m)?.[1]?.trim() ?? "unknown";
         return {
           exitCode: 0,
           output: `AI Workflow is already installed for target: ${active}. Existing state preserved.`,
         };
       }
-      fs.mkdir(aiw);
-      BASE_DIRECTORIES.forEach((dir) => fs.mkdir(join(aiw, dir)));
-      fs.mkdir(join(root, ".context/adrs"));
-      fs.write(join(root, ".context/adrs/INDEX.md"), "# Architecture Decision Records\n\n");
-      fs.write(
-        join(aiw, "manifest.yml"),
+      const bootstrapResources = loadBootstrapResources(target);
+      const desiredResources = new Map<string, string>();
+      const ownershipMetadata = new Map<string, OwnershipMetadata>();
+      bootstrapResources.forEach(({ type, id, path, content }) => {
+        const targetPath = join(root, path);
+        const neutralPath = join(root, renderResourcePath("universal", type, id));
+        desiredResources.set(targetPath, content);
+        desiredResources.set(neutralPath, content);
+        ownershipMetadata.set(neutralPath, {
+          kind: "neutral-resource",
+          target: "universal",
+          resourceType: type,
+          resourceId: id,
+        });
+        if (targetPath !== neutralPath)
+          ownershipMetadata.set(targetPath, {
+            kind: "target-resource",
+            target,
+            resourceType: type,
+            resourceId: id,
+          });
+      });
+      const conflicts: string[] = [];
+      const pendingWrites = new Map<string, string>();
+      const inspectDesiredFile = (path: string, content: string, allowExisting = false): void => {
+        assertSafeProjectPath(fs, root, path);
+        const type = fs.pathType?.(path);
+        if (type === "missing") {
+          pendingWrites.set(path, content);
+          return;
+        }
+        if (type === "file" && (allowExisting || fs.read(path) === content)) return;
+        conflicts.push(path);
+      };
+
+      for (const [path, content] of desiredResources) inspectDesiredFile(path, content);
+      if (conflicts.length)
+        return {
+          exitCode: 1,
+          error: `Installation found existing target resources: ${conflicts.join(", ")}. Review and move them before retrying.`,
+        };
+
+      const aiInitPath = join(root, renderAiInitPath(target));
+      ownershipMetadata.set(aiInitPath, {
+        kind: "ai-init",
+        target,
+        resourceType: "skills",
+        resourceId: "ai-init",
+      });
+      inspectDesiredFile(aiInitPath, renderAiInit(target));
+      if (conflicts.length)
+        return {
+          exitCode: 1,
+          error: `Installation would overwrite an existing file: ${conflicts.join(", ")}. Move it or merge its contents, then retry.`,
+        };
+
+      inspectDesiredFile(join(aiw, "profile.yml"), "schema: 1\nstatus: pending-scan\n");
+      inspectDesiredFile(join(aiw, "lock.yml"), "schema: 1\npackages:\n");
+      inspectDesiredFile(manifestPath, "");
+      const adrIndex = join(root, ".context/adrs/INDEX.md");
+      assertSafeProjectPath(fs, root, adrIndex);
+      if (fs.pathType?.(adrIndex) === "missing")
+        pendingWrites.set(adrIndex, "# Architecture Decision Records\n\n");
+
+      const ownershipPath = join(aiw, "ownership.yml");
+      assertSafeProjectPath(fs, root, ownershipPath);
+      if (fs.exists(ownershipPath)) conflicts.push(ownershipPath);
+      if (conflicts.length)
+        return {
+          exitCode: 1,
+          error: `Installation found conflicting project state: ${conflicts.join(", ")}. Review and move it before retrying.`,
+        };
+      const ownedPaths = new Set([...desiredResources.keys(), aiInitPath]);
+      if (pendingWrites.has(adrIndex)) ownedPaths.add(adrIndex);
+      const ownedFiles = [...ownedPaths]
+        .filter((path) => pendingWrites.has(path))
+        .map((path) =>
+          createOwnedFile(
+            relative(root, path).split(sep).join("/"),
+            pendingWrites.get(path)!,
+            ownershipMetadata.get(path) ?? { kind: "supporting-file" },
+          ),
+        );
+      pendingWrites.set(ownershipPath, serializeOwnership(ownedFiles));
+      pendingWrites.delete(manifestPath);
+      pendingWrites.set(
+        manifestPath,
         `schema: 1\nproject:\n  name: ${root.split("/").pop()}\ntarget:\n  active: ${target}\npolicies:\n  artifact_language: en\n`,
       );
-      fs.write(join(aiw, "profile.yml"), "schema: 1\nstatus: pending-scan\n");
-      fs.write(join(aiw, "lock.yml"), "schema: 1\npackages:\n");
-      generateAiInit(root, target, fs);
-      return { exitCode: 0, output: `AI Workflow installed for target: ${target}` };
+      writeProjectFilesAtomically(
+        fs,
+        root,
+        [...pendingWrites].map(([path, content]) => ({ path, content })),
+        [...BASE_DIRECTORIES.map((directory) => join(aiw, directory)), join(root, ".context/adrs")],
+      );
+      return {
+        exitCode: 0,
+        output: `AI Workflow installed for target: ${target}; activated ${bootstrapResources.length} bundled workflow resources. Run the ai-init skill to scan the project, review recommendations, and begin the SDD gates.`,
+      };
     }
     if (command === "telemetry") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -300,142 +417,353 @@ export async function runCommand(
       const target = args[1];
       if (!target) return { exitCode: 1, error: "Usage: aiw target <target>" };
       if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      const manifestPath = join(aiw, "manifest.yml");
+      if (!fs.exists(manifestPath)) return { exitCode: 1, error: "Run `aiw install` first." };
       const dryRun = args.includes("--dry-run");
       const targetPath = join(root, renderAiInitPath(target));
       const neutralAiInit = join(aiw, "resources/skills/ai-init.md");
-      const manifestPath = join(aiw, "manifest.yml");
-      const previousTarget =
-        fs
-          .read(manifestPath)
-          .match(/^\s*active:\s*(.+)$/m)?.[1]
-          ?.trim() ?? "universal";
-      const previousTargetPath = isTarget(previousTarget)
-        ? join(root, renderAiInitPath(previousTarget))
-        : undefined;
-      const universalConflict =
-        target === "universal" &&
-        previousTargetPath !== undefined &&
-        fs.exists(previousTargetPath) &&
-        fs.exists(neutralAiInit) &&
-        fs.read(previousTargetPath) !== fs.read(neutralAiInit);
-      const resourceMigrations = planNeutralResourceMigration(
-        join(aiw, "resources"),
-        fs.exists(join(aiw, "resources")) ? (fs.listFiles?.(join(aiw, "resources")) ?? []) : [],
-        target,
-      );
-      const resourceConflicts = resourceMigrations.filter(({ source, destination }) => {
-        const absoluteDestination = join(root, destination);
-        return (
-          source !== absoluteDestination &&
-          fs.exists(absoluteDestination) &&
-          Buffer.compare(
-            Buffer.from(readResourceBytes(fs, source)),
-            Buffer.from(readResourceBytes(fs, absoluteDestination)),
-          ) !== 0
-        );
-      });
-      if (dryRun) {
-        const existing = resourceMigrations
-          .filter(({ destination }) => fs.exists(join(root, destination)))
-          .map(({ destination }) => destination);
-        const conflictPaths = resourceConflicts.map(({ destination }) => destination);
-        if (universalConflict) conflictPaths.push(renderAiInitPath(target));
-        return {
-          exitCode: 0,
-          output: `${serializeMigrationPreview(target, resourceMigrations, existing)}${conflictPaths.map((path) => `conflict: ${path}\n`).join("")}`,
-        };
-      }
-      if (
-        universalConflict ||
-        (target !== "universal" &&
-          fs.exists(neutralAiInit) &&
-          fs.exists(targetPath) &&
-          fs.read(neutralAiInit) !== fs.read(targetPath)) ||
-        resourceConflicts.length > 0
-      )
+      assertSafeProjectPath(fs, root, manifestPath);
+      const manifest = parseManifest(fs.read(manifestPath));
+      const previousTarget = manifest.target.active;
+      const previousTargetPath = join(root, renderAiInitPath(previousTarget));
+      const inventoryPath = join(aiw, "ownership.yml");
+      if (!fs.exists(inventoryPath))
         return {
           exitCode: 1,
-          error: `Migration conflict at ${resourceConflicts[0] ? join(root, resourceConflicts[0].destination) : targetPath}. Use --dry-run to inspect.`,
+          error: "AIW ownership inventory is required for safe target migration.",
         };
-      const removePrevious =
-        previousTarget !== "universal" &&
-        previousTargetPath !== undefined &&
-        previousTargetPath !== targetPath &&
-        fs.exists(previousTargetPath);
-      if (removePrevious && !fs.remove)
-        return { exitCode: 1, error: "Filesystem cannot remove the previous target resource." };
-      const destinationExisted = fs.exists(targetPath);
-      const resourceSnapshots = resourceMigrations
-        .filter(({ source, destination }) => source !== join(root, destination))
-        .map(({ destination }) => {
-          const path = join(root, destination);
-          return {
-            path,
-            existed: fs.exists(path),
-            contentBase64: fs.exists(path)
-              ? Buffer.from(readResourceBytes(fs, path)).toString("base64")
-              : "",
-          };
+      assertSafeProjectPath(fs, root, inventoryPath);
+      if (fs.pathType?.(inventoryPath) !== "file")
+        return { exitCode: 1, error: "AIW ownership inventory is not a regular project file." };
+      const inventory = parseOwnership(fs.read(inventoryPath));
+      const ownedByPath = new Map(inventory.map((entry) => [entry.path, entry]));
+      const resourceRoot = join(aiw, "resources");
+      if (fs.exists(resourceRoot)) assertSafeProjectPath(fs, root, resourceRoot);
+      const relativeFiles = fs.exists(resourceRoot)
+        ? (fs.listFiles?.(resourceRoot) ?? []).filter((path) => path !== "skills/ai-init.md")
+        : [];
+      const plan = planNeutralResourceMigration(resourceRoot, relativeFiles ?? [], target);
+      const diagnostics: MigrationDiagnostic[] = [...plan.diagnostics];
+      if (fs.exists(resourceRoot) && !fs.listFiles)
+        diagnostics.push({
+          path: ".aiw/resources",
+          reason: "filesystem cannot enumerate neutral resources safely",
         });
-      fs.write(
-        join(aiw, "checkpoints/migration-backup.yml"),
-        `previous_target: ${previousTarget}\nprevious_path: ${previousTargetPath ?? "none"}\nprevious_content_base64: ${previousTargetPath && fs.exists(previousTargetPath) ? Buffer.from(fs.read(previousTargetPath)).toString("base64") : ""}\npath: ${targetPath}\ndestination_existed: ${destinationExisted}\ncontent_base64: ${destinationExisted ? Buffer.from(fs.read(targetPath)).toString("base64") : ""}\nresources_base64: ${serializeMigrationSnapshots(resourceSnapshots)}\n`,
-      );
-      if (target !== "universal" || !fs.exists(neutralAiInit)) generateAiInit(root, target, fs);
-      if (fs.exists(neutralAiInit)) fs.write(targetPath, fs.read(neutralAiInit));
-      for (const migration of resourceMigrations) {
-        const destination = join(root, migration.destination);
-        if (migration.source !== destination)
-          writeResourceBytes(fs, destination, readResourceBytes(fs, migration.source));
+      const migrations: ResourceMigration[] = [];
+      const migrationBytes = new Map<string, Uint8Array>();
+      for (const migration of plan.migrations) {
+        const relativeSource = relative(resourceRoot, migration.source).split(sep).join("/");
+        try {
+          assertSafeProjectPath(fs, root, migration.source);
+          if (!fs.exists(migration.source) || fs.pathType?.(migration.source) !== "file") {
+            diagnostics.push({
+              path: relativeSource,
+              reason: "resource is missing or is not a regular file",
+            });
+            continue;
+          }
+          const bytes = readResourceBytes(fs, migration.source);
+          const reason = validateNeutralResourceDocument(relativeSource, bytes);
+          if (reason) {
+            diagnostics.push({ path: relativeSource, reason });
+            continue;
+          }
+          migrations.push(migration);
+          migrationBytes.set(migration.source, bytes);
+        } catch {
+          diagnostics.push({ path: relativeSource, reason: "resource cannot be read safely" });
+        }
       }
-      if (removePrevious && previousTargetPath) fs.remove?.(previousTargetPath);
-      fs.write(manifestPath, fs.read(manifestPath).replace(/active: .*\n/, `active: ${target}\n`));
+
+      const conflicts = new Set<string>();
+      const removals = new Set<string>();
+      const fileChanges = new Map<string, Uint8Array | undefined>();
+      const resourceDestinations = new Set<string>();
+      for (const migration of migrations) {
+        const destination = join(root, migration.destination);
+        resourceDestinations.add(destination);
+        const desiredBytes = migrationBytes.get(migration.source)!;
+        inspectMigrationDestination(destination, desiredBytes);
+      }
+      const hasNeutralAiInit = fs.exists(neutralAiInit);
+      let aiInitBytes: Uint8Array = Buffer.from(renderAiInit(target), "utf8");
+      if (hasNeutralAiInit) {
+        try {
+          assertSafeProjectPath(fs, root, neutralAiInit);
+          if (fs.pathType?.(neutralAiInit) !== "file")
+            diagnostics.push({
+              path: ".aiw/resources/skills/ai-init.md",
+              reason: "resource is not a regular file",
+            });
+          else aiInitBytes = readResourceBytes(fs, neutralAiInit);
+        } catch {
+          diagnostics.push({
+            path: ".aiw/resources/skills/ai-init.md",
+            reason: "resource cannot be read safely",
+          });
+        }
+      }
+      const aiInitDiagnostic = validateNeutralResourceDocument(
+        "skills/ai-init/SKILL.md",
+        aiInitBytes,
+      );
+      if (hasNeutralAiInit && aiInitDiagnostic)
+        diagnostics.push({ path: ".aiw/resources/skills/ai-init.md", reason: aiInitDiagnostic });
+      const targetAiPath = targetPath;
+      resourceDestinations.add(targetAiPath);
+      inspectMigrationDestination(targetAiPath, aiInitBytes);
+
+      const previousTargetEntries =
+        previousTarget === "universal"
+          ? []
+          : inventory.filter(
+              (entry) =>
+                (entry.kind === "target-resource" || entry.kind === "ai-init") &&
+                entry.target === previousTarget,
+            );
+      const oldTargetPaths = new Set(previousTargetEntries.map(({ path }) => resolve(root, path)));
+      if (previousTarget !== "universal") {
+        for (const migration of migrations) {
+          const oldPath = join(
+            root,
+            renderResourcePath(previousTarget, migration.type, migration.id),
+          );
+          oldTargetPaths.add(oldPath);
+          if (oldPath !== join(root, migration.destination)) inspectOwnedRemoval(oldPath);
+        }
+        if (previousTargetPath !== targetPath) inspectOwnedRemoval(previousTargetPath);
+      }
+      for (const oldPath of oldTargetPaths) {
+        if (resourceDestinations.has(oldPath)) continue;
+        if (fs.exists(oldPath)) inspectOwnedRemoval(oldPath);
+        else removals.add(relative(root, oldPath).split(sep).join("/"));
+      }
+
+      const existingDestinations = [...resourceDestinations]
+        .filter((path) => fs.exists(path))
+        .map((path) => relative(root, path).split(sep).join("/"));
+      const conflictPaths = [...conflicts].map((path) => relative(root, path).split(sep).join("/"));
+      const removalPaths = [...removals];
+      const previewActions = [
+        target === "universal" && hasNeutralAiInit
+          ? "keep: .aiw/resources/skills/ai-init.md (neutral source)"
+          : `${fs.exists(targetAiPath) ? "update" : "add"}: ${relative(root, targetAiPath).split(sep).join("/")}`,
+        ...(hasNeutralAiInit && target !== "universal"
+          ? ["keep: .aiw/resources/skills/ai-init.md (neutral source)"]
+          : []),
+      ];
+      const preview = serializeMigrationPreview(
+        target,
+        migrations,
+        existingDestinations,
+        removalPaths,
+        diagnostics,
+        conflictPaths,
+        previewActions,
+      );
+      if (dryRun)
+        return { exitCode: diagnostics.length || conflicts.size ? 1 : 0, output: preview };
+      if (diagnostics.length || conflicts.size)
+        return {
+          exitCode: 1,
+          error: `Migration blocked. Review the dry-run diagnostics:\n${preview}`,
+        };
+      if ([...fileChanges.values()].some((value) => value === undefined) && !fs.remove)
+        return { exitCode: 1, error: "Filesystem cannot remove obsolete target resources." };
+
+      const nextInventory = new Map(inventory.map((entry) => [entry.path, entry]));
+      for (const relativePath of removals) nextInventory.delete(relativePath);
+      for (const [path, bytes] of fileChanges) {
+        if (bytes === undefined) continue;
+        const relativePath = relative(root, path).split(sep).join("/");
+        const matchingMigration = migrations.find(
+          (entry) => join(root, entry.destination) === path,
+        );
+        const metadata =
+          path === targetAiPath
+            ? {
+                kind: "ai-init" as const,
+                target,
+                resourceType: "skills" as const,
+                resourceId: "ai-init",
+              }
+            : matchingMigration
+              ? {
+                  kind: "target-resource" as const,
+                  target,
+                  resourceType: matchingMigration.type,
+                  resourceId: matchingMigration.id,
+                }
+              : {};
+        nextInventory.set(relativePath, createOwnedFile(relativePath, bytes, metadata));
+      }
+      const inventoryBytes = Buffer.from(serializeOwnership([...nextInventory.values()]), "utf8");
+      fileChanges.set(inventoryPath, inventoryBytes);
+      fileChanges.set(
+        manifestPath,
+        Buffer.from(serializeManifest({ ...manifest, target: { active: target } }), "utf8"),
+      );
+
+      const changes = [...fileChanges].map(([path, content]) => ({ path, content }));
+      const snapshots = snapshotProjectFiles(
+        fs,
+        root,
+        changes.map(({ path }) => path),
+      );
+      const backupPath = join(aiw, "checkpoints/migration-backup.yml");
+      assertSafeProjectPath(fs, root, backupPath);
+      const previousBackup = fs.exists(backupPath) ? readResourceBytes(fs, backupPath) : undefined;
+      const postMigrationSnapshots = expectedMigrationSnapshots(root, changes);
+      const backupContent = serializeMigrationCheckpoint(snapshots, postMigrationSnapshots);
+      fs.write(backupPath, backupContent);
+      try {
+        applyProjectFileChanges(fs, root, changes);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("automatic rollback was incomplete"))
+          throw error;
+        try {
+          if (previousBackup) writeResourceBytes(fs, backupPath, previousBackup);
+          else if (fs.exists(backupPath)) fs.remove?.(backupPath);
+        } catch {
+          throw new Error("Migration failed and its prior checkpoint could not be restored.", {
+            cause: error,
+          });
+        }
+        throw error;
+      }
       return {
         exitCode: 0,
-        output: `Target changed to ${target}; rendered ${resourceMigrations.length} neutral resources.`,
+        output: `Target changed to ${target}; rendered ${migrations.length} neutral resources and removed ${removals.size} obsolete resources.`,
       };
+
+      function inspectMigrationDestination(destination: string, desired: Uint8Array): void {
+        try {
+          assertSafeProjectPath(fs, root, destination);
+          if (!fs.exists(destination)) {
+            fileChanges.set(destination, desired);
+            return;
+          }
+          if (fs.pathType?.(destination) !== "file") {
+            conflicts.add(destination);
+            return;
+          }
+          const currentBytes = readResourceBytes(fs, destination);
+          const currentChecksum = `sha256-${checksumPackage(currentBytes)}`;
+          const relativeDestination = relative(root, destination).split(sep).join("/");
+          const owner = ownedByPath.get(relativeDestination);
+          if (Buffer.compare(Buffer.from(currentBytes), Buffer.from(desired)) === 0) {
+            if (owner && owner.checksum !== currentChecksum) conflicts.add(destination);
+            return;
+          }
+          if (!owner || owner.checksum !== currentChecksum) {
+            conflicts.add(destination);
+            return;
+          }
+          fileChanges.set(destination, desired);
+        } catch {
+          conflicts.add(destination);
+        }
+      }
+
+      function inspectOwnedRemoval(path: string): void {
+        try {
+          assertSafeProjectPath(fs, root, path);
+          if (!fs.exists(path)) {
+            removals.add(relative(root, path).split(sep).join("/"));
+            return;
+          }
+          if (fs.pathType?.(path) !== "file") {
+            conflicts.add(path);
+            return;
+          }
+          const relativePath = relative(root, path).split(sep).join("/");
+          const owner = ownedByPath.get(relativePath);
+          const actual = `sha256-${checksumPackage(readResourceBytes(fs, path))}`;
+          if (!owner || owner.checksum !== actual) {
+            conflicts.add(path);
+            return;
+          }
+          removals.add(relativePath);
+          fileChanges.set(path, undefined);
+        } catch {
+          conflicts.add(path);
+        }
+      }
     }
     if (command === "rollback") {
       const backup = join(aiw, "checkpoints/migration-backup.yml");
+      assertSafeProjectPath(fs, root, backup);
       if (!fs.exists(backup)) return { exitCode: 1, error: "No migration backup is available." };
       const content = fs.read(backup);
-      const path = content.match(/^path: (.+)$/m)?.[1];
-      const encoded = content.match(/^content_base64: (.*)$/m)?.[1];
-      const previousTarget = content.match(/^previous_target: (.+)$/m)?.[1];
-      const previousPath = content.match(/^previous_path: (.+)$/m)?.[1];
-      const previousEncoded = content.match(/^previous_content_base64: (.*)$/m)?.[1];
-      const destinationExisted = content.match(/^destination_existed: (true|false)$/m)?.[1];
-      const resourcesEncoded = content.match(/^resources_base64: (.+)$/m)?.[1];
-      if (!path || encoded === undefined)
-        return { exitCode: 1, error: "Migration backup is invalid." };
-      if (!fs.remove)
-        return { exitCode: 1, error: "Filesystem cannot consume the migration checkpoint." };
-      if (destinationExisted === "false") {
-        if (fs.exists(path) && !fs.remove)
-          return { exitCode: 1, error: "Filesystem cannot remove the migrated target resource." };
-        if (fs.exists(path)) fs.remove?.(path);
-      } else fs.write(path, Buffer.from(encoded, "base64").toString("utf8"));
-      if (previousPath && previousPath !== "none" && previousEncoded)
-        fs.write(previousPath, Buffer.from(previousEncoded, "base64").toString("utf8"));
-      for (const snapshot of resourcesEncoded ? parseMigrationSnapshots(resourcesEncoded) : []) {
-        if (snapshot.existed)
-          writeResourceBytes(fs, snapshot.path, Buffer.from(snapshot.contentBase64, "base64"));
-        else {
-          if (fs.exists(snapshot.path) && !fs.remove)
-            return { exitCode: 1, error: "Filesystem cannot remove migrated resources." };
-          if (fs.exists(snapshot.path)) fs.remove?.(snapshot.path);
+      if (fs.pathType?.(backup) !== "file")
+        return { exitCode: 1, error: "Migration backup is not a regular project file." };
+      const checkpoint = parseMigrationCheckpoint(content);
+      const { snapshots, postMigrationSnapshots } = checkpoint;
+      const backupRelative = relative(root, backup).split(sep).join("/");
+      if (snapshots.some(({ path }) => path === backupRelative))
+        return { exitCode: 1, error: "Migration backup cannot contain itself as a snapshot." };
+      if (!postMigrationSnapshots)
+        return {
+          exitCode: 1,
+          error:
+            "Migration backup does not include validated post-migration state; refusing unsafe rollback.",
+        };
+      if (
+        postMigrationSnapshots.length !== snapshots.length ||
+        postMigrationSnapshots.some((snapshot, index) => snapshot.path !== snapshots[index]?.path)
+      )
+        return { exitCode: 1, error: "Migration backup post-migration state is invalid." };
+      const conflicts: string[] = [];
+      const restorable: MigrationSnapshot[] = [];
+      for (const [index, snapshot] of snapshots.entries()) {
+        const path = resolve(root, snapshot.path);
+        try {
+          assertSafeProjectPath(fs, root, path);
+          const expected = postMigrationSnapshots?.[index];
+          if (!expected || migrationSnapshotMatches(fs, path, expected)) restorable.push(snapshot);
+          else conflicts.push(snapshot.path);
+        } catch {
+          conflicts.push(snapshot.path);
         }
       }
-      const manifestPath = join(aiw, "manifest.yml");
-      if (previousTarget && fs.exists(manifestPath))
-        fs.write(
-          manifestPath,
-          fs.read(manifestPath).replace(/active: .*\n/, `active: ${previousTarget}\n`),
+      if (
+        restorable.some(
+          (snapshot) => !snapshot.existed && fs.exists(resolve(root, snapshot.path)),
+        ) &&
+        !fs.remove
+      )
+        return { exitCode: 1, error: "Filesystem cannot remove obsolete migration resources." };
+      const rollbackChanges: ProjectFileChange[] = restorable.map((snapshot) => ({
+        path: resolve(root, snapshot.path),
+        content: snapshot.existed ? Buffer.from(snapshot.contentBase64, "base64") : undefined,
+      }));
+      if (conflicts.length) {
+        const remaining = snapshots.filter((snapshot) => conflicts.includes(snapshot.path));
+        const remainingPostMigration = postMigrationSnapshots.filter((snapshot) =>
+          conflicts.includes(snapshot.path),
         );
-      fs.remove(backup);
-      return { exitCode: 0, output: `Migration rolled back: ${path}` };
+        rollbackChanges.push({
+          path: backup,
+          content: Buffer.from(
+            serializeMigrationCheckpoint(remaining, remainingPostMigration),
+            "utf8",
+          ),
+        });
+      } else {
+        rollbackChanges.push({ path: backup, content: undefined });
+      }
+      applyProjectFileChanges(fs, root, rollbackChanges);
+      if (conflicts.length) {
+        return {
+          exitCode: 1,
+          error: `Migration rollback preserved modified/conflicting files: ${[...new Set(conflicts)].sort().join(", ")}`,
+        };
+      }
+      return {
+        exitCode: 0,
+        output:
+          "Migration rolled back; prior resources, ownership, and target state were restored.",
+      };
     }
     if (command === "confirm") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -620,12 +948,13 @@ export async function runCommand(
       }
     }
     if (command === "doctor") {
-      const required = ["manifest.yml", "profile.yml", "lock.yml"];
+      const required = ["manifest.yml", "profile.yml", "lock.yml", "ownership.yml"];
       const missing = required.filter((file) => !fs.exists(join(aiw, file)));
       if (missing.length)
         return { exitCode: 1, error: `Missing AI Workflow files: ${missing.join(", ")}` };
       try {
         parseManifest(fs.read(join(aiw, "manifest.yml")));
+        parseOwnership(fs.read(join(aiw, "ownership.yml")));
         if (fs.exists(join(aiw, "team-preset.yml")))
           parseTeamPreset(fs.read(join(aiw, "team-preset.yml")));
         if (fs.exists(join(aiw, "registries.yml")))
@@ -646,9 +975,21 @@ export async function runCommand(
       return { exitCode: 0, output: "AI Workflow state repaired." };
     }
     if (command === "uninstall") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "AI Workflow is not installed." };
-      const files = [
+      const manifestPath = join(aiw, "manifest.yml");
+      assertSafeProjectPath(fs, root, manifestPath);
+      if (!fs.exists(manifestPath)) return { exitCode: 1, error: "AI Workflow is not installed." };
+      const ownershipPath = join(aiw, "ownership.yml");
+      assertSafeProjectPath(fs, root, ownershipPath);
+      if (!fs.exists(ownershipPath))
+        return {
+          exitCode: 1,
+          error:
+            "AIW ownership inventory is missing; refusing to remove resources whose ownership cannot be verified.",
+        };
+      if (fs.pathType?.(ownershipPath) !== "file")
+        throw new Error("AIW ownership inventory is not a regular in-project file.");
+      const ownedFiles = parseOwnership(fs.read(ownershipPath));
+      const stateFiles = [
         "manifest.yml",
         "profile.yml",
         "lock.yml",
@@ -657,17 +998,63 @@ export async function runCommand(
         "team-preset.yml",
         "registries.yml",
         "telemetry.yml",
+        "checkpoints/migration-backup.yml",
       ];
       const dryRun = args.includes("--dry-run");
       if (!dryRun && !fs.remove)
         return { exitCode: 1, error: "Filesystem cannot remove AIW-owned files." };
-      if (!dryRun)
-        files
-          .filter((file) => fs.exists(join(aiw, file)))
-          .forEach((file) => fs.remove?.(join(aiw, file)));
+      const removable: string[] = [];
+      const conflicts: string[] = [];
+      for (const file of ownedFiles) {
+        const path = resolve(root, file.path);
+        try {
+          assertSafeProjectPath(fs, root, path);
+          if (!fs.exists(path)) continue;
+          if (fs.pathType?.(path) !== "file") {
+            conflicts.push(file.path);
+            continue;
+          }
+          const actual = `sha256-${checksumPackage(fs.readBytes?.(path) ?? fs.read(path))}`;
+          if (actual === file.checksum) removable.push(path);
+          else conflicts.push(file.path);
+        } catch {
+          conflicts.push(file.path);
+        }
+      }
+      const statePaths: string[] = [];
+      for (const file of stateFiles) {
+        const path = join(aiw, file);
+        if (!fs.exists(path)) continue;
+        assertSafeProjectPath(fs, root, path);
+        if (fs.pathType?.(path) !== "file") conflicts.push(`${WORKFLOW_DIRECTORY}/${file}`);
+        else statePaths.push(path);
+      }
+      const uniqueConflicts = [...new Set(conflicts)].sort();
+      const allRemovable = [...new Set([...removable, ...statePaths, ownershipPath])];
+      const relativeRemovable = allRemovable
+        .map((path) => relative(root, path).split(sep).join("/"))
+        .sort();
+      if (dryRun) {
+        const report = [`Would remove: ${relativeRemovable.join(", ") || "none"}`];
+        if (uniqueConflicts.length)
+          report.push(`Would preserve modified/conflicting files: ${uniqueConflicts.join(", ")}`);
+        return { exitCode: uniqueConflicts.length ? 1 : 0, output: report.join("\n") };
+      }
+      removable.forEach((path) => fs.remove?.(path));
+      statePaths
+        .filter((path) => !path.endsWith(`${sep}manifest.yml`))
+        .forEach((path) => fs.remove?.(path));
+      if (statePaths.includes(manifestPath)) fs.remove?.(manifestPath);
+      fs.remove?.(ownershipPath);
+      const removed = relativeRemovable.filter((path) => !uniqueConflicts.includes(path));
       return {
-        exitCode: 0,
-        output: dryRun ? `Would remove: ${files.join(", ")}` : "AI Workflow-owned files removed.",
+        exitCode: uniqueConflicts.length ? 1 : 0,
+        output: [
+          `AI Workflow-owned files removed: ${removed.join(", ") || "none"}.`,
+          ...(uniqueConflicts.length
+            ? [`Preserved modified/conflicting files: ${uniqueConflicts.join(", ")}`]
+            : []),
+        ].join("\n"),
       };
     }
     if (command === "brainstorm") {
@@ -826,16 +1213,29 @@ export async function runCommand(
       const sourceArg = args.find((arg) => arg.startsWith("--source="));
       if (!packageArg && !sourceArg)
         return { exitCode: 1, error: "Usage: aiw resolve --package=path | --source=source" };
+      const approvedPermissions = parseApprovedPermissions(args);
       if (sourceArg) {
         const source = resolveProvider(sourceArg.slice(9), root);
-        enforceConfiguredOrganizationPolicy(fs, aiw, { ...source, permissions: [] });
+        const networkPermissions = requiresExternalNetwork(source) ? ["network:external"] : [];
+        enforceConfiguredOrganizationPolicy(fs, aiw, {
+          ...source,
+          permissions: networkPermissions,
+        });
+        assertPermissions(networkPermissions, approvedPermissions);
       }
       const loaded = sourceArg
         ? (services.packageSources ?? nodePackageSourceLoader).load(sourceArg.slice(9), root)
         : undefined;
       try {
+        const manifestPath = packageArg ? resolve(root, packageArg.slice(10)) : undefined;
+        const directManifestBytes = loaded ? undefined : fs.readBytes?.(manifestPath!);
+        const manifestContent =
+          loaded?.manifest ??
+          (directManifestBytes
+            ? Buffer.from(directManifestBytes).toString("utf8")
+            : fs.read(manifestPath!));
         const pkg = validatePackageContract(
-          loaded?.manifest ?? fs.read(join(root, packageArg!.slice(10))),
+          manifestContent,
           loaded ? (path): boolean => fs.exists(join(loaded.root, path)) : undefined,
         );
         const resolved = loaded
@@ -847,8 +1247,27 @@ export async function runCommand(
             }
           : pkg;
         enforceConfiguredOrganizationPolicy(fs, aiw, resolved);
-        assertPackagePermissions(resolved, parseApprovedPermissions(args));
-        fs.write(join(aiw, "lock.yml"), serializeLock([resolvePackage(resolved)]));
+        assertPackagePermissions(resolved, approvedPermissions);
+        const packageRoot = loaded?.root ?? dirname(manifestPath!);
+        const manifestBytes = loaded
+          ? (loaded.manifestBytes ?? Buffer.from(loaded.manifest, "utf8"))
+          : (directManifestBytes ?? Buffer.from(manifestContent, "utf8"));
+        const integrity = checksumPackageSnapshot(
+          manifestBytes,
+          resolved,
+          packageRoot,
+          fs,
+          loaded ? "package.yaml" : basename(manifestPath!),
+        );
+        const lockPath = join(aiw, "lock.yml");
+        const locked = fs.exists(lockPath) ? parseLock(fs.read(lockPath)) : [];
+        fs.write(
+          lockPath,
+          serializeLock([
+            ...locked.filter(({ id }) => id !== resolved.id),
+            resolvePackage(resolved, integrity),
+          ]),
+        );
         return { exitCode: 0, output: `Package resolved: ${resolved.id}@${resolved.version}` };
       } finally {
         loaded?.release();
@@ -941,7 +1360,12 @@ export async function runCommand(
       const packageArg = args.find((arg) => arg.startsWith("--package="));
       if (!packageArg)
         return { exitCode: 1, error: "Usage: aiw update --package=path --target=target" };
-      const pkg = validatePackageContract(fs.read(join(root, packageArg.slice(10))));
+      const manifestPath = resolve(root, packageArg.slice(10));
+      const manifestBytes = fs.readBytes?.(manifestPath);
+      const manifestContent = manifestBytes
+        ? Buffer.from(manifestBytes).toString("utf8")
+        : fs.read(manifestPath);
+      const pkg = validatePackageContract(manifestContent);
       enforceConfiguredOrganizationPolicy(fs, aiw, pkg);
       assertPackagePermissions(pkg, parseApprovedPermissions(args));
       const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
@@ -949,6 +1373,17 @@ export async function runCommand(
       const lock = fs.exists(join(aiw, "lock.yml")) ? fs.read(join(aiw, "lock.yml")) : "";
       const lockedPackages = lock ? parseLock(lock) : [];
       const current = lockedPackages.find(({ id }) => id === pkg.id);
+      const integrity = checksumPackageSnapshot(
+        manifestBytes ?? Buffer.from(manifestContent, "utf8"),
+        pkg,
+        dirname(manifestPath),
+        fs,
+        basename(manifestPath),
+      );
+      if (current?.version === pkg.version && current.integrity !== integrity)
+        throw new Error(
+          `Package integrity mismatch for ${pkg.id}@${pkg.version}; package bytes changed.`,
+        );
       const plan = planPackageUpdate(
         current ? { id: pkg.id, version: current.version } : undefined,
         pkg,
@@ -960,7 +1395,10 @@ export async function runCommand(
       if (plan.status !== "update")
         return { exitCode: 1, error: plan.reason ?? `Update blocked: ${plan.status}.` };
       const existingPackages = lockedPackages.filter(({ id }) => id !== pkg.id);
-      fs.write(join(aiw, "lock.yml"), serializeLock([...existingPackages, resolvePackage(pkg)]));
+      fs.write(
+        join(aiw, "lock.yml"),
+        serializeLock([...existingPackages, resolvePackage(pkg, integrity)]),
+      );
       return { exitCode: 0, output: `Package updated: ${pkg.id}@${pkg.version}` };
     }
     if (command === "registry") {
@@ -1193,6 +1631,95 @@ function safeProjectFile(root: string, path: string, fs: FileSystem): string {
 function isInsidePath(root: string, destination: string): boolean {
   const path = relative(root, destination);
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
+
+type ProjectFileChange = { path: string; content: Uint8Array | undefined };
+
+function snapshotProjectFiles(fs: FileSystem, root: string, paths: string[]): MigrationSnapshot[] {
+  const snapshots: MigrationSnapshot[] = [];
+  for (const path of [...new Set(paths)]) {
+    assertSafeProjectPath(fs, root, path);
+    const type = fs.pathType?.(path);
+    if (type === "missing") {
+      snapshots.push({
+        path: relative(root, path).split(sep).join("/"),
+        existed: false,
+        contentBase64: "",
+      });
+      continue;
+    }
+    if (type !== "file")
+      throw new Error(`Migration path is not a regular project file: ${relative(root, path)}`);
+    snapshots.push({
+      path: relative(root, path).split(sep).join("/"),
+      existed: true,
+      contentBase64: Buffer.from(readResourceBytes(fs, path)).toString("base64"),
+    });
+  }
+  return snapshots;
+}
+
+function expectedMigrationSnapshots(
+  root: string,
+  changes: ProjectFileChange[],
+): MigrationSnapshot[] {
+  return [...new Map(changes.map((change) => [change.path, change])).values()].map(
+    ({ path, content }) => ({
+      path: relative(root, path).split(sep).join("/"),
+      existed: content !== undefined,
+      contentBase64: content ? Buffer.from(content).toString("base64") : "",
+    }),
+  );
+}
+
+function migrationSnapshotMatches(
+  fs: FileSystem,
+  path: string,
+  expected: MigrationSnapshot,
+): boolean {
+  const type = fs.pathType?.(path);
+  if (!expected.existed) return type === "missing";
+  if (type !== "file") return false;
+  return Buffer.from(readResourceBytes(fs, path)).equals(
+    Buffer.from(expected.contentBase64, "base64"),
+  );
+}
+
+function applyProjectFileChanges(fs: FileSystem, root: string, changes: ProjectFileChange[]): void {
+  const ordered = [...new Map(changes.map((change) => [change.path, change])).values()];
+  if (ordered.some(({ content }) => content === undefined) && !fs.remove)
+    throw new Error("Filesystem cannot remove obsolete migration resources.");
+  const snapshots = snapshotProjectFiles(
+    fs,
+    root,
+    ordered.map(({ path }) => path),
+  );
+  try {
+    for (const change of ordered) {
+      if (change.content === undefined) {
+        if (fs.exists(change.path)) fs.remove?.(change.path);
+      } else {
+        writeResourceBytes(fs, change.path, change.content);
+      }
+    }
+  } catch (error) {
+    let rollbackFailed = false;
+    for (const snapshot of [...snapshots].reverse()) {
+      const path = resolve(root, snapshot.path);
+      try {
+        if (snapshot.existed)
+          writeResourceBytes(fs, path, Buffer.from(snapshot.contentBase64, "base64"));
+        else if (fs.exists(path)) fs.remove?.(path);
+      } catch {
+        rollbackFailed = true;
+      }
+    }
+    if (rollbackFailed)
+      throw new Error("Migration failed and automatic rollback was incomplete; use aiw rollback.", {
+        cause: error,
+      });
+    throw error;
+  }
 }
 
 function parsePrivateRegistryPackages(payload: unknown, registryUrl: string): RegistryPackage[] {

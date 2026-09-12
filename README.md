@@ -19,7 +19,7 @@ AI-assisted development often relies on implicit prompts, duplicated configurati
 
 ## Installation
 
-The published package declares Node.js 18 or newer. Development uses Node.js 24 because the current lint toolchain requires a newer runtime; the oldest declared runtime is not part of this repository's release validation matrix yet.
+The published package supports Node.js 18 or newer. Full development checks require Node.js 20.19 or newer for the current lint and test toolchain; CI runs on Node.js 20 and release validation runs on Node.js 24. Node.js 18 remains the declared runtime floor but is not currently in the release validation matrix.
 
 ```bash
 npx @multileaf/ai-workflow install --target codex
@@ -40,8 +40,15 @@ For a Codex installation, the base layout is:
 ```text
 .agents/
 └── skills/
-    └── ai-init/
-        └── SKILL.md
+    ├── ai-init/SKILL.md
+    ├── brainstorming/SKILL.md
+    ├── requirements-specification/SKILL.md
+    ├── tdd-development/SKILL.md
+    └── ...
+.agents/agents/       # specialist agent definitions
+.agents/hooks/        # lifecycle guidance and compatibility resources
+.agents/rules/        # quality, security, and project rules
+.agents/templates/    # SDD artifact templates
 .context/
 └── adrs/
     └── INDEX.md
@@ -59,6 +66,8 @@ For a Codex installation, the base layout is:
 ```
 
 `.aiw/` stores the provider-neutral manifest, profile, lockfile, checkpoints, and generated working artifacts. ADRs are stored under `.context/adrs/`. The initial `ai-init` resource is rendered directly to the selected target; installed neutral package resources can be rendered through adapters to paths such as `.claude/skills`, `.cursor/rules`, or `.github/copilot-instructions.md`.
+
+The installer activates the bundled workflow package for the selected target, including its skills, rules, agents, hooks, and templates. `ai-init` guides the agent through scanning, recommendations, user selection, synchronization, and the SDD gates. Existing conflicting target resources stop first installation with an actionable error; review or move those files before retrying. Hook resources are rendered according to each adapter's native or compatibility support.
 
 The installer does not modify `.gitignore`. Add `.aiw/generated/` yourself if generated specifications, plans, and artifacts should remain local. Versioned files under `.aiw/checkpoints/` are designed to remain reviewable project history.
 
@@ -225,7 +234,7 @@ npx @multileaf/ai-workflow resolve \
   --package=node_modules/@multileaf/ai-workflow/resources/package.yaml
 ```
 
-The registry can combine local packages, configured private registries, and Vercel Skills metadata. Vercel operations invoke the external `npx skills` CLI and therefore require network access outside AI Workflow's package-permission gate. Lock entries record the provider, reported version, source, permissions, and available integrity metadata. Local entries may use a synthetic identity value, while an upstream provider may report `latest` or unknown integrity.
+The registry can combine local packages, configured private registries, and Vercel Skills metadata. Vercel operations invoke the external `npx skills` CLI and therefore require network access outside AI Workflow's package-permission gate. Lock entries record the provider, reported version, source, permissions, and available integrity metadata. Local package entries contain a SHA-256 digest of the manifest and declared resource bytes; upstream providers may use their own integrity format.
 
 ## Switching AI targets
 
@@ -236,7 +245,7 @@ npx @multileaf/ai-workflow target claude --dry-run
 npx @multileaf/ai-workflow target claude
 ```
 
-Migration provides a deterministic dry-run, writes a rollback checkpoint, and handles the active `ai-init` transition. Neutral package resources are rendered to the destination adapter. Review the dry-run and back up custom target files first: conflict detection and cleanup do not yet cover every custom destination or every obsolete compatibility file. If needed:
+Migration provides a deterministic dry-run, reports malformed neutral resources and conflicts, writes a rollback checkpoint, and handles the active `ai-init` transition. Neutral package resources are rendered to the destination adapter. It removes obsolete target files only when `.aiw/ownership.yml` proves AIW created them and their bytes are unchanged; unowned or modified files are preserved and reported. Older installations without ownership records cannot safely clean up legacy target files, so review the dry-run and resolve conflicts before migrating. If needed:
 
 ```bash
 npx @multileaf/ai-workflow rollback
@@ -250,10 +259,12 @@ Use `capabilities --target=<target>` to inspect aggregate supported resource typ
 npx @multileaf/ai-workflow status
 npx @multileaf/ai-workflow doctor
 npx @multileaf/ai-workflow repair
+npx @multileaf/ai-workflow uninstall --dry-run
+npx @multileaf/ai-workflow uninstall
 npx @multileaf/ai-workflow ui
 ```
 
-The local dashboard binds only to `127.0.0.1`, reads project state from `.aiw/`, and requires the exact `MIGRATE` confirmation before changing targets. `doctor` checks the required installation structure, manifest schema, and active target. `repair` recreates a defined subset of required directories and files; it does not repair arbitrary malformed profile or lock content, and a missing profile may still require reinstallation or regeneration.
+Install records hashes for the neutral and target resources it creates in `.aiw/ownership.yml`. Uninstall's dry-run lists files it would remove and modified or unsafe files it would preserve. Uninstall deletes only resources whose current bytes still match the inventory, removes the migration rollback checkpoint, then removes AIW state; modified resources are preserved and reported. For older installations without an ownership inventory, uninstall refuses to delete target resources because their ownership cannot be established. The local dashboard binds only to `127.0.0.1`, reads project state from `.aiw/`, and requires the exact `MIGRATE` confirmation before changing targets. `doctor` checks the required installation structure, ownership inventory, manifest schema, and active target. `repair` recreates a defined subset of required directories and files; it does not repair arbitrary malformed profile or lock content, and a missing profile may still require reinstallation or regeneration.
 
 ## Multi-agent orchestration
 

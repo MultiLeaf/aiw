@@ -4,5 +4,5 @@ packages:
     version: 0.1.0
     provider: local
     source: ./resources
-    integrity: sha256-multileaf/aiw-self-hosting@0.1.0
+    integrity: sha256-a73fa1be2b3bedf1db8ae05cdf2a3e4c96a673335978fb4098a22fd1c2d4691d
     permissions: []

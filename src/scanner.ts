@@ -1,3 +1,4 @@
+import ignore, { type Ignore } from "ignore";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 
@@ -16,55 +17,57 @@ const DEFAULT_IGNORES = new Set([
 ]);
 const SENSITIVE_NAMES = /^(\.env(?:\..*)?|.*\.(pem|key|p12|pfx|secret))$/i;
 
-function matchesIgnore(path: string, patterns: string[]): boolean {
-  const name = basename(path);
-  return patterns.some((pattern) => {
-    const normalized = pattern.replace(/^\//, "").replace(/\/$/, "");
-    if (normalized.includes("*")) {
-      const expression = new RegExp(`^${normalized.split("*").map(escapeRegExp).join(".*")}$`);
-      return expression.test(path) || expression.test(name);
-    }
-    return path === normalized || path.startsWith(`${normalized}/`) || name === normalized;
-  });
+type IgnoreScope = { root: string; matcher: Ignore };
+
+function isIgnoredByProjectRules(
+  absolute: string,
+  isDirectory: boolean,
+  scopes: IgnoreScope[],
+): boolean {
+  let ignored = false;
+  for (const scope of scopes) {
+    const scopedPath = relative(scope.root, absolute).split("\\").join("/");
+    if (!scopedPath || scopedPath === ".." || scopedPath.startsWith("../")) continue;
+    const result = scope.matcher.test(isDirectory ? `${scopedPath}/` : scopedPath);
+    if (result.ignored) ignored = true;
+    else if (result.unignored) ignored = false;
+  }
+  return ignored;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-async function ignoredPatterns(root: string): Promise<string[]> {
+async function addIgnoreFile(directory: string, scopes: IgnoreScope[]): Promise<IgnoreScope[]> {
   try {
-    const content = await readFile(resolve(root, ".gitignore"), "utf8");
-    return content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"));
-  } catch {
-    return [];
+    const content = await readFile(resolve(directory, ".gitignore"), "utf8");
+    return [...scopes, { root: directory, matcher: ignore().add(content) }];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return scopes;
+    throw error;
   }
 }
 
 async function collect(
   root: string,
   current: string,
-  patterns: string[],
+  inheritedScopes: IgnoreScope[],
   files: string[],
 ): Promise<void> {
+  const scopes = await addIgnoreFile(current, inheritedScopes);
   const entries = await readdir(current, { withFileTypes: true });
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const absolute = resolve(current, entry.name);
     const relativePath = relative(root, absolute).split("\\").join("/");
+    const isDirectory = entry.isDirectory();
     if (
       DEFAULT_IGNORES.has(entry.name) ||
       SENSITIVE_NAMES.test(entry.name) ||
-      matchesIgnore(relativePath, patterns)
+      isIgnoredByProjectRules(absolute, isDirectory, scopes)
     )
       continue;
     if (entry.isSymbolicLink()) {
       const link = await lstat(absolute);
       if (link.isSymbolicLink()) continue;
     }
-    if (entry.isDirectory()) await collect(root, absolute, patterns, files);
+    if (isDirectory) await collect(root, absolute, scopes, files);
     else if (entry.isFile()) files.push(relativePath);
   }
 }
@@ -87,6 +90,6 @@ function detectEvidence(files: string[]): ProjectEvidence[] {
 export async function scanProject(root: string): Promise<ProjectScan> {
   const projectRoot = resolve(root);
   const files: string[] = [];
-  await collect(projectRoot, projectRoot, await ignoredPatterns(projectRoot), files);
+  await collect(projectRoot, projectRoot, [], files);
   return { files, evidence: detectEvidence(files) };
 }

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nodePackageSourceLoader, resolveProvider } from "./providers.js";
+import { nodePackageSourceLoader, requiresExternalNetwork, resolveProvider } from "./providers.js";
 
 async function packageFixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "aiw-provider-test-"));
@@ -31,8 +31,23 @@ describe("package providers", () => {
     });
   });
 
+  it.each([
+    ["git+https://github.com/example/pkg.git", true],
+    ["https://github.com/example/pkg.git", true],
+    ["ssh://git@example.test/example/pkg.git", true],
+    ["git@example.test:example/pkg.git", true],
+    ["file:///tmp/pkg.git", false],
+    ["git+file:///tmp/pkg.git", false],
+    ["./packages/local.git", false],
+  ])("classifies source %s for network consent", (input, expected) => {
+    expect(requiresExternalNetwork(resolveProvider(input, "/project"))).toBe(expected);
+  });
+
   it("rejects unsupported source protocols", () => {
     expect(() => resolveProvider("npm:example", "/project")).toThrow("Unsupported package source");
+    expect(() => resolveProvider("git+exec://example.test/pkg.git", "/project")).toThrow(
+      "Unsupported package source",
+    );
   });
 
   it("loads a local package directory without requiring cleanup", async () => {

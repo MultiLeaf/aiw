@@ -1,3 +1,5 @@
+import { parseDocument } from "yaml";
+
 export const RESOURCE_TYPES = ["skills", "rules", "agents", "hooks", "templates"] as const;
 export type ResourceType = (typeof RESOURCE_TYPES)[number];
 
@@ -19,113 +21,174 @@ export type PackageContract = {
   targets?: string[];
 };
 
+const TOP_LEVEL_KEYS = new Set([
+  "schema",
+  "id",
+  "version",
+  "description",
+  "language",
+  "provider",
+  "source",
+  "engines",
+  "dependencies",
+  "permissions",
+  "policies",
+  "provenance",
+  "targets",
+  "resources",
+  "provides",
+]);
+
 export function validatePackageContract(
   content: string,
   resourceExists: (path: string) => boolean = () => true,
 ): PackageContract {
-  const required = [
-    "schema",
-    "id",
-    "version",
-    "provider",
-    "source",
-    "resources",
-    "dependencies",
-    "permissions",
-    "provenance",
-  ];
-  for (const field of required) {
-    if (!new RegExp(`^${field}:`, "m").test(content))
-      throw new Error(`Package field '${field}' is required.`);
+  const document = parseDocument(content, { uniqueKeys: true, strict: true });
+  if (document.errors.length)
+    throw new Error(`Package manifest YAML is invalid: ${document.errors[0].message}`);
+  const value: unknown = document.toJS();
+  const root = record(value, "manifest");
+  for (const key of Object.keys(root)) {
+    if (!TOP_LEVEL_KEYS.has(key)) throw new Error(`Package field '${key}' is not supported.`);
   }
-  const schema = scalar(content, "schema");
-  if (schema !== "1") throw new Error("Package schema must be version 1.");
-  const resources = Object.fromEntries(
-    RESOURCE_TYPES.map((type) => [type, parseResources(content, type)]),
-  ) as Record<ResourceType, PackageResource[]>;
+  const schema = root.schema;
+  if (schema !== 1) throw new Error("Package field 'schema' must be version 1.");
+  const id = requiredString(root, "id");
+  const version = requiredString(root, "version");
+  const provider = requiredString(root, "provider");
+  const source = requiredString(root, "source");
+  optionalString(root, "description", "manifest");
+  optionalString(root, "language", "manifest");
+  const rawResources = record(root.resources, "resources");
+  for (const key of Object.keys(rawResources)) {
+    if (!(RESOURCE_TYPES as readonly string[]).includes(key))
+      throw new Error(`Package resource section '${key}' is not supported.`);
+  }
+  const resources = {} as Record<ResourceType, PackageResource[]>;
   for (const type of RESOURCE_TYPES) {
-    const section = resourceSection(content, type);
-    const entries = section.match(/-\s*\{[^}]*\}/g) ?? [];
-    if (entries.length !== resources[type].length)
-      throw new Error(`Package resource entries in '${type}' require id, version, and path.`);
-    for (const resource of resources[type]) {
+    if (!(type in rawResources))
+      throw new Error(`Package resource section '${type}' is required (use [] when empty).`);
+    const entries = array(rawResources[type], `resources.${type}`);
+    resources[type] = entries.map((entry, index) => {
+      const item = record(entry, `resources.${type}[${index}]`);
+      assertKeys(item, new Set(["id", "version", "path"]), `resources.${type}[${index}]`);
+      const resource = {
+        id: requiredString(item, "id", `resources.${type}[${index}]`),
+        version: requiredString(item, "version", `resources.${type}[${index}]`),
+        path: requiredString(item, "path", `resources.${type}[${index}]`),
+      };
+      validateResourcePath(resource.path, `resources.${type}[${index}].path`);
       if (!resourceExists(resource.path))
         throw new Error(`Package resource path does not exist: ${resource.path}`);
-    }
+      return resource;
+    });
+    if (
+      new Set(resources[type].map(({ id: resourceId }) => resourceId)).size !==
+      resources[type].length
+    )
+      throw new Error(`Package resource identifiers in '${type}' must be unique.`);
   }
-  if (
-    !resources.skills.length &&
-    !resources.rules.length &&
-    !resources.agents.length &&
-    !resources.hooks.length &&
-    !resources.templates.length
-  )
+  if (!RESOURCE_TYPES.some((type) => resources[type].length))
     throw new Error("Package resources must contain at least one resource.");
+
+  const provenance = record(root.provenance, "provenance");
+  assertKeys(provenance, new Set(["source", "checksum"]), "provenance");
+  const provenanceSource = requiredString(provenance, "source", "provenance");
+  const checksum = optionalString(provenance, "checksum", "provenance");
+  const policies =
+    root.policies === undefined
+      ? undefined
+      : array(root.policies, "policies").map((entry, index) => {
+          const policy = record(entry, `policies[${index}]`);
+          assertKeys(policy, new Set(["id", "value"]), `policies[${index}]`);
+          return {
+            id: requiredString(policy, "id", `policies[${index}]`),
+            value: requiredString(policy, "value", `policies[${index}]`),
+          };
+        });
+  const engines = root.engines === undefined ? undefined : stringRecord(root.engines, "engines");
+  const provides = root.provides === undefined ? undefined : parseProvides(root.provides);
+  const targets = root.targets === undefined ? undefined : stringArray(root.targets, "targets");
   return {
     schema: 1,
-    id: scalar(content, "id"),
-    version: scalar(content, "version"),
-    provider: scalar(content, "provider"),
-    source: scalar(content, "source"),
+    id,
+    version,
+    provider,
+    source,
     resources,
-    dependencies: list(content, "dependencies"),
-    permissions: list(content, "permissions"),
-    provenance: {
-      source: nestedScalar(content, "source") || scalar(content, "source"),
-      ...(nestedScalar(content, "checksum") ? { checksum: nestedScalar(content, "checksum") } : {}),
-    },
-    policies: parsePolicies(content),
-    ...(nestedScalar(content, "ai_workflow")
-      ? { engines: { ai_workflow: nestedScalar(content, "ai_workflow") } }
-      : {}),
-    ...(list(content, "targets").length ? { targets: list(content, "targets") } : {}),
+    dependencies: stringArray(root.dependencies, "dependencies"),
+    permissions: stringArray(root.permissions, "permissions"),
+    provenance: { source: provenanceSource, ...(checksum ? { checksum } : {}) },
+    ...(policies ? { policies } : {}),
+    ...(engines ? { engines } : {}),
+    ...(provides ? { provides } : {}),
+    ...(targets ? { targets } : {}),
   };
 }
 
-function resourceSection(content: string, type: ResourceType): string {
-  return content.match(new RegExp(`^  ${type}:\\n([\\s\\S]*?)(?=^\\w|\\s*$)`, "m"))?.[1] ?? "";
+export function validateResourcePath(path: string, field = "resource path"): void {
+  if (
+    path.startsWith("/") ||
+    path.includes("\\") ||
+    path.includes(":") ||
+    path.split("/").some((part) => !part || part === "." || part === "..")
+  )
+    throw new Error(`Package field '${field}' must be a normalized relative path.`);
 }
 
-function parsePolicies(content: string): PackagePolicy[] {
-  const section = content.match(/policies:\n((?:\s{2}- .*\n?)+)/)?.[1] ?? "";
-  return [...section.matchAll(/id:\s*([^,]+),\s*value:\s*([^ }]+)/g)].map((match) => ({
-    id: match[1].trim(),
-    value: match[2].trim(),
-  }));
+function record(value: unknown, field: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`Package field '${field}' must be a mapping.`);
+  return value as Record<string, unknown>;
 }
-
-function scalar(content: string, key: string): string {
-  return (
-    content
-      .match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1]
-      ?.replaceAll('"', "")
-      .trim() ?? ""
+function array(value: unknown, field: string): unknown[] {
+  if (!Array.isArray(value))
+    throw new Error(`Package field '${field}' must be a list (use [] when empty).`);
+  return value;
+}
+function requiredString(value: Record<string, unknown>, key: string, parent = "manifest"): string {
+  const result = value[key];
+  if (typeof result !== "string" || !result.trim())
+    throw new Error(
+      `Package field '${parent === "manifest" ? key : `${parent}.${key}`}' must be a non-empty string.`,
+    );
+  return result.trim();
+}
+function optionalString(
+  value: Record<string, unknown>,
+  key: string,
+  parent: string,
+): string | undefined {
+  if (value[key] === undefined) return undefined;
+  return requiredString(value, key, parent);
+}
+function stringArray(value: unknown, field: string): string[] {
+  return array(value, field).map((entry, index) => {
+    if (typeof entry !== "string" || !entry.trim())
+      throw new Error(`Package field '${field}[${index}]' must be a non-empty string.`);
+    return entry.trim();
+  });
+}
+function stringRecord(value: unknown, field: string): Record<string, string> {
+  const result = record(value, field);
+  return Object.fromEntries(
+    Object.entries(result).map(([key, entry]) => {
+      if (typeof entry !== "string" || !entry.trim())
+        throw new Error(`Package field '${field}.${key}' must be a non-empty string.`);
+      return [key, entry.trim()];
+    }),
   );
 }
-
-function nestedScalar(content: string, key: string): string {
-  return (
-    content
-      .match(new RegExp(`^\\s{2,}${key}:\\s*(.+)$`, "m"))?.[1]
-      ?.replaceAll('"', "")
-      .trim() ?? ""
-  );
+function parseProvides(value: unknown): Record<ResourceType, string[]> {
+  const result = record(value, "provides");
+  for (const key of Object.keys(result))
+    if (!(RESOURCE_TYPES as readonly string[]).includes(key))
+      throw new Error(`Package provides section '${key}' is not supported.`);
+  return Object.fromEntries(
+    Object.entries(result).map(([key, entries]) => [key, stringArray(entries, `provides.${key}`)]),
+  ) as Record<ResourceType, string[]>;
 }
-
-function list(content: string, key: string): string[] {
-  const value = scalar(content, key);
-  return value === "[]"
-    ? []
-    : value
-        .replace(/^\[|\]$/g, "")
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-}
-
-function parseResources(content: string, type: ResourceType): PackageResource[] {
-  const section = resourceSection(content, type);
-  return [...section.matchAll(/id:\s*([\w-]+), version:\s*([\d.]+), path:\s*([^ }]+)/g)].map(
-    (match) => ({ id: match[1], version: match[2], path: match[3] }),
-  );
+function assertKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
+  for (const key of Object.keys(value))
+    if (!allowed.has(key)) throw new Error(`Package field '${field}.${key}' is not supported.`);
 }

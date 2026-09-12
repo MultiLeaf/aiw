@@ -42,14 +42,57 @@ function safeFile(file: string): boolean {
 function redactSecrets(content: string): string {
   return content
     .replace(
-      /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g,
+      /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,
       "[REDACTED]",
     )
     .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]")
     .replace(
-      /\b(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password)\b(\s*[=:]\s*)["']?[^\s,"'}]+/gi,
-      "$1$2[REDACTED]",
-    );
+      /(^|[,{;\s])(["']?)([A-Za-z_][A-Za-z0-9_.-]*)(["']?)(\s*[:=]\s*)(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s,;}\]#]+))/gm,
+      (
+        match,
+        boundary: string,
+        opening: string,
+        key: string,
+        closing: string,
+        operator: string,
+        doubleQuoted: string | undefined,
+        singleQuoted: string | undefined,
+      ) => {
+        if (!isSensitiveKey(key)) return match;
+        if (doubleQuoted !== undefined)
+          return `${boundary}${opening}${key}${closing}${operator}"[REDACTED]"`;
+        if (singleQuoted !== undefined)
+          return `${boundary}${opening}${key}${closing}${operator}'[REDACTED]'`;
+        return `${boundary}${opening}${key}${closing}${operator}[REDACTED]`;
+      },
+    )
+    .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}\b/gi, "[REDACTED]")
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/gi, "[REDACTED]")
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, "[REDACTED]")
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]")
+    .replace(/\bAKIA[A-Z0-9]{16}\b/g, "[REDACTED]");
+}
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[.-]/g, "_");
+  const parts = normalized.split("_");
+  return (
+    parts.some((part) =>
+      [
+        "secret",
+        "token",
+        "password",
+        "passwd",
+        "credential",
+        "credentials",
+        "authorization",
+      ].includes(part),
+    ) ||
+    /(^|_)(api|access|private|client)_?key(_|$)/.test(normalized) ||
+    /^(aws|azure|gcp|google|cloud|openai|anthropic|stripe|github|gitlab|slack|npm|docker|twilio|sendgrid)(?:_.*)?_(?:key|id)$/.test(
+      normalized,
+    )
+  );
 }
 
 function isBinary(content: string): boolean {
@@ -135,7 +178,8 @@ function parseFacts(output: string, allowedFiles: Set<string>): EvidenceFact[] {
 export function createProjectInterpreter(
   root: string,
   provider: AiProvider,
-  contextReader: ContextReader = (path) => readFile(path, "utf8"),
+  contextReader: ContextReader = async (path) =>
+    new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path)),
 ): Interpreter {
   const projectRoot = resolve(root);
   return {
@@ -150,15 +194,26 @@ export function createProjectInterpreter(
         } catch {
           // Injected context readers may provide virtual files in tests or adapters.
         }
-        const content = await contextReader(absolute);
+        let content: string;
+        try {
+          content = await contextReader(absolute);
+        } catch {
+          // Do not send content when decoding or reading it failed.
+          continue;
+        }
         if (isBinary(content)) continue;
-        sections.push(`## ${file}\n${redactSecrets(content)}`);
+        try {
+          sections.push(`## ${file}\n${redactSecrets(content)}`);
+        } catch {
+          // Secret filtering is fail-closed: a failing filter excludes the whole file.
+        }
       }
       if (sections.length === 0) return [];
+      const safeProfile = redactSecrets(JSON.stringify(scoped.profile));
       const output = await provider.generate({
         system:
           "Interpret project conventions from only the supplied context. Return JSON with a facts array. Each fact must have key, string value, confidence from 0 to 1, and evidence entries with source and reason. Do not infer secrets or repeat credentials.",
-        prompt: `Detected profile:\n${JSON.stringify(scoped.profile)}\n\nScoped project context:\n${sections.join("\n\n")}`,
+        prompt: `Detected profile:\n${safeProfile}\n\nScoped project context:\n${sections.join("\n\n")}`,
         maxTokens: scoped.maxTokens,
         responseFormat: "json",
       });

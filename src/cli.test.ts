@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./cli.js";
+import { nodeFileSystem } from "./files.js";
+import { runCommand } from "./workflow.js";
+import type { FileSystem } from "./types.js";
 import type { Interpreter } from "./interpreter.js";
 import { checksumPackage } from "./package-integrity.js";
+import { parseOwnership } from "./ownership.js";
 import type { DashboardHandle } from "./dashboard.js";
+import type { LoadedPackageSource } from "./providers.js";
 
 async function project(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aiw-test-"));
@@ -66,10 +81,63 @@ tasks:
     expect(result.exitCode).toBe(0);
     await expect(stat(join(cwd, ".aiw", "manifest.yml"))).resolves.toBeTruthy();
     await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
+    await expect(
+      stat(join(cwd, ".aiw/resources/skills/brainstorming/SKILL.md")),
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(join(cwd, ".agents/agents/requirements-analyst/requirements-analyst.md")),
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(join(cwd, ".agents/hooks/pre-implementation/pre-implementation.md")),
+    ).resolves.toBeTruthy();
     await expect(stat(join(cwd, ".context/adrs/INDEX.md"))).resolves.toBeTruthy();
-    await expect(readFile(join(cwd, ".agents/skills/ai-init/SKILL.md"), "utf8")).resolves.toContain(
-      "All generated AI Workflow artifacts must be written in English",
-    );
+    const aiInit = await readFile(join(cwd, ".agents/skills/ai-init/SKILL.md"), "utf8");
+    expect(aiInit).toContain("aiw recommend");
+    expect(aiInit).toContain("aiw gate <stage>");
+    expect(aiInit).toContain("All generated AI Workflow artifacts must be written in English");
+    expect(result.output).toContain("activated");
+  });
+
+  it.each(["existing", "dangling"] as const)(
+    "rejects a %s symlink in an install destination before writing outside the project",
+    async (linkTarget) => {
+      const cwd = await project();
+      const outside = `${cwd}-outside`;
+      if (linkTarget === "existing") await mkdir(outside);
+      await symlink(outside, join(cwd, ".agents"), "dir");
+
+      const result = await run(["install", "--target", "codex"], cwd);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.error).toContain("symbolic link");
+      await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
+      if (linkTarget === "existing") await expect(readdir(outside)).resolves.toEqual([]);
+      else await expect(stat(outside)).rejects.toThrow();
+      await rm(outside, { recursive: true, force: true });
+    },
+  );
+
+  it("rolls back files and directories after a first-install write fails, then permits retry", async () => {
+    const cwd = await project();
+    let writeCount = 0;
+    const failingFs: FileSystem = {
+      ...nodeFileSystem,
+      createExclusive: (path, content) => {
+        writeCount += 1;
+        if (writeCount === 3) throw new Error("injected install write failure");
+        return nodeFileSystem.createExclusive?.(path, content) ?? false;
+      },
+    };
+
+    const failed = await runCommand(["install", "--target", "codex"], cwd, failingFs);
+
+    expect(failed.exitCode).toBe(1);
+    expect(failed.error).toContain("injected install write failure");
+    await expect(readdir(cwd)).resolves.toEqual([]);
+    const retry = await run(["install", "--target", "codex"], cwd);
+    expect(retry.exitCode).toBe(0);
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).resolves.toBeTruthy();
   });
 
   it("detects an existing target when no target override is provided", async () => {
@@ -82,6 +150,20 @@ tasks:
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: claude",
     );
+  });
+
+  it("does not overwrite an existing packaged target resource during first install", async () => {
+    const cwd = await project();
+    const resource = join(cwd, ".agents/skills/brainstorming/SKILL.md");
+    await mkdir(join(cwd, ".agents/skills/brainstorming"), { recursive: true });
+    await writeFile(resource, "my custom brainstorming workflow\n");
+
+    const result = await run(["install", "--target", "codex"], cwd);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("existing target resources");
+    await expect(readFile(resource, "utf8")).resolves.toBe("my custom brainstorming workflow\n");
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
   });
 
   it.each([
@@ -97,9 +179,20 @@ tasks:
 
     expect(result.exitCode).toBe(0);
     const skill = await readFile(join(cwd, path), "utf8");
-    expect(skill).toContain(target === "copilot" ? "# AI Init" : "name: ai-init");
+    expect(skill).toContain(
+      target === "copilot" ? "# AI Workflow Initialization" : "name: ai-init",
+    );
     expect(skill).toContain("Analyze the repository safely");
     expect(skill).toContain("All generated AI Workflow artifacts must be written in English");
+    const ownedPaths = parseOwnership(await readFile(join(cwd, ".aiw/ownership.yml"), "utf8")).map(
+      ({ path }) => path,
+    );
+    for (const type of ["skills", "rules", "agents", "hooks", "templates"])
+      expect(ownedPaths.some((owned) => owned.includes(`/${type}/`))).toBe(true);
+    expect(ownedPaths.some((owned) => owned.startsWith(".aiw/resources/"))).toBe(true);
+    expect((await run(["uninstall"], cwd)).exitCode).toBe(0);
+    await expect(stat(join(cwd, path))).rejects.toThrow();
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
   });
 
   it("makes repeated installation idempotent and preserves existing state", async () => {
@@ -491,20 +584,98 @@ tasks:
     await expect(stat(join(cwd, ".github/skills/ai-init/SKILL.md"))).rejects.toThrow();
   });
 
-  it("blocks a conflicting universal resource without overwriting it", async () => {
+  it("uses a changed neutral ai-init as source when migrating to universal", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
     const neutral = join(cwd, ".aiw/resources/skills/ai-init.md");
     await mkdir(join(cwd, ".aiw/resources/skills"), { recursive: true });
     await writeFile(neutral, "# Conflicting neutral content\n");
     const result = await run(["target", "universal"], cwd);
-    expect(result.exitCode).toBe(1);
-    expect(result.error).toContain("Migration conflict");
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Target changed to universal");
     await expect(readFile(neutral, "utf8")).resolves.toBe("# Conflicting neutral content\n");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: universal",
+    );
+    await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).rejects.toThrow();
+  });
+
+  it("blocks malformed neutral inputs before writing any target resources", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "universal"], cwd);
+    const unsupported = join(cwd, ".aiw/resources/skills/broken/notes.md");
+    const malformed = join(cwd, ".aiw/resources/rules/broken/broken.md");
+    await mkdir(join(unsupported, ".."), { recursive: true });
+    await mkdir(join(malformed, ".."), { recursive: true });
+    await writeFile(unsupported, "unsupported private-token-value\n");
+    await writeFile(malformed, "malformed private-token-value\n");
+    const preview = await run(["target", "claude", "--dry-run"], cwd);
+    expect(preview.exitCode).toBe(1);
+    expect(preview.output).toContain("invalid: skills/broken/notes.md");
+    expect(preview.output).toContain("invalid: rules/broken/broken.md");
+    expect(preview.output).not.toContain("private-token-value");
+    const result = await run(["target", "claude"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Migration blocked");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: universal",
+    );
+    await expect(stat(join(cwd, ".claude/skills/brainstorming/SKILL.md"))).rejects.toThrow();
+  });
+
+  it("blocks removal of modified old-target resources", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const edited = join(cwd, ".agents/skills/brainstorming/SKILL.md");
+    await writeFile(edited, "# User customization\n");
+    const result = await run(["target", "claude"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("conflict: .agents/skills/brainstorming/SKILL.md");
+    await expect(readFile(edited, "utf8")).resolves.toBe("# User customization\n");
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: codex",
     );
-    expect((await run(["rollback"], cwd)).error).toContain("No migration backup");
+    await expect(stat(join(cwd, ".claude/skills/brainstorming/SKILL.md"))).rejects.toThrow();
+  });
+
+  it.each([
+    ["destination write", "write", ".claude/skills/brainstorming/SKILL.md"],
+    ["ownership write", "write", ".aiw/ownership.yml"],
+    ["manifest write", "write", ".aiw/manifest.yml"],
+    ["obsolete resource removal", "remove", ".agents/skills/brainstorming/SKILL.md"],
+  ] as const)("rolls back after an injected %s failure", async (_stage, operation, suffix) => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const manifest = await readFile(join(cwd, ".aiw/manifest.yml"), "utf8");
+    const ownership = await readFile(join(cwd, ".aiw/ownership.yml"), "utf8");
+    let triggered = false;
+    const matches = (path: string): boolean => path.replaceAll("\\", "/").endsWith(suffix);
+    const failingFs: FileSystem = {
+      ...nodeFileSystem,
+      writeBytes(path, bytes): void {
+        if (!triggered && operation === "write" && matches(path)) {
+          triggered = true;
+          throw new Error("injected migration mutation failure");
+        }
+        nodeFileSystem.writeBytes?.(path, bytes);
+      },
+      remove(path): void {
+        if (!triggered && operation === "remove" && matches(path)) {
+          triggered = true;
+          throw new Error("injected migration mutation failure");
+        }
+        nodeFileSystem.remove?.(path);
+      },
+    };
+    const result = await runCommand(["target", "claude"], cwd, failingFs);
+    expect(triggered).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("injected migration mutation failure");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toBe(manifest);
+    await expect(readFile(join(cwd, ".aiw/ownership.yml"), "utf8")).resolves.toBe(ownership);
+    await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".claude/skills/brainstorming/SKILL.md"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".aiw/checkpoints/migration-backup.yml"))).rejects.toThrow();
   });
 
   it("renders all neutral resource categories when changing target", async () => {
@@ -520,13 +691,18 @@ tasks:
     ];
     for (const [source] of fixtures) {
       await mkdir(join(resources, source, ".."), { recursive: true });
-      await writeFile(join(resources, source), `content:${source}\n`);
+      await writeFile(join(resources, source), `# ${source}\n\nMigration fixture.\n`);
     }
     const result = await run(["target", "claude"], cwd);
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("rendered 5 neutral resources");
+    expect(result.output).toContain("rendered");
     for (const [source, destination] of fixtures)
-      await expect(readFile(join(cwd, destination), "utf8")).resolves.toBe(`content:${source}\n`);
+      await expect(readFile(join(cwd, destination), "utf8")).resolves.toBe(
+        `# ${source}\n\nMigration fixture.\n`,
+      );
+    await expect(
+      readFile(join(cwd, ".claude/skills/brainstorming/SKILL.md"), "utf8"),
+    ).resolves.toContain("Brainstorming");
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: claude",
     );
@@ -543,7 +719,7 @@ tasks:
     await run(["install", "--target", "universal"], cwd);
     const source = join(cwd, ".aiw/resources/templates/binary/binary.md");
     const destination = join(cwd, ".claude/aiw/templates/binary.md");
-    const bytes = Buffer.from([0x42, 0x00, 0xff, 0x43, 0x0a]);
+    const bytes = Buffer.from("# Binary Resource\r\n\r\nUTF-8 text: ñ\r\n", "utf8");
     await mkdir(join(source, ".."), { recursive: true });
     await writeFile(source, bytes);
     await mkdir(join(destination, ".."), { recursive: true });
@@ -560,16 +736,16 @@ tasks:
     const preview = await run(["target", "cursor", "--dry-run"], cwd);
     expect(preview.exitCode).toBe(0);
     expect(preview.output).toContain("Migration preview for cursor");
-    expect(preview.output).toContain("remove: previous target ai-init");
+    expect(preview.output).toContain("keep: .aiw/resources/skills/ai-init.md (neutral source)");
     const { writeFile } = await import("node:fs/promises");
     await mkdir(join(cwd, ".cursor/skills/ai-init"), { recursive: true });
     await writeFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "# Manual content\n");
     const result = await run(["target", "cursor"], cwd);
     expect(result.exitCode).toBe(1);
-    expect(result.error).toContain("Migration conflict");
+    expect(result.error).toContain("Migration blocked");
   });
 
-  it("restores a target resource from a migration backup", async () => {
+  it("preserves user changes to an unowned target file during rollback", async () => {
     const cwd = await project();
     await run(["install", "--target", "universal"], cwd);
     const neutral = join(cwd, ".aiw/resources/skills/ai-init.md");
@@ -581,10 +757,30 @@ tasks:
     await writeFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "# Changed\n");
     expect((await run(["rollback"], cwd)).exitCode).toBe(0);
     await expect(readFile(join(cwd, ".cursor/skills/ai-init/SKILL.md"), "utf8")).resolves.toBe(
-      "# Original\n",
+      "# Changed\n",
     );
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
       "active: universal",
+    );
+  });
+
+  it("preserves edited migration paths while restoring untouched rollback paths", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const previous = join(cwd, ".agents/skills/ai-init/SKILL.md");
+    const original = await readFile(previous, "utf8");
+    const destination = join(cwd, ".claude/skills/ai-init/SKILL.md");
+    expect((await run(["target", "claude"], cwd)).exitCode).toBe(0);
+    await writeFile(destination, "# User changed destination\n");
+
+    const result = await run(["rollback"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Migration rollback preserved modified/conflicting files");
+    expect(result.error).toContain(".claude/skills/ai-init/SKILL.md");
+    await expect(readFile(destination, "utf8")).resolves.toBe("# User changed destination\n");
+    await expect(readFile(previous, "utf8")).resolves.toBe(original);
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toContain(
+      "active: codex",
     );
   });
 
@@ -605,6 +801,44 @@ tasks:
     await writeFile(recreated, "# User recreated\n");
     expect((await run(["rollback"], cwd)).error).toContain("No migration backup");
     await expect(readFile(recreated, "utf8")).resolves.toBe("# User recreated\n");
+  });
+
+  it("keeps the migrated state and checkpoint if a rollback mutation fails", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    expect((await run(["target", "claude"], cwd)).exitCode).toBe(0);
+    const backupPath = join(cwd, ".aiw/checkpoints/migration-backup.yml");
+    const backup = await readFile(backupPath, "utf8");
+    const manifest = await readFile(join(cwd, ".aiw/manifest.yml"), "utf8");
+    const ownership = await readFile(join(cwd, ".aiw/ownership.yml"), "utf8");
+    const claudeSkill = join(cwd, ".claude/skills/ai-init/SKILL.md");
+    const codexSkill = join(cwd, ".agents/skills/ai-init/SKILL.md");
+    const claudeContent = await readFile(claudeSkill, "utf8");
+    let triggered = false;
+    const failingFs: FileSystem = {
+      ...nodeFileSystem,
+      writeBytes(path, bytes): void {
+        if (!triggered && path.replaceAll("\\", "/").endsWith(".agents/skills/ai-init/SKILL.md")) {
+          triggered = true;
+          throw new Error("injected rollback write failure");
+        }
+        nodeFileSystem.writeBytes?.(path, bytes);
+      },
+    };
+
+    const failed = await runCommand(["rollback"], cwd, failingFs);
+
+    expect(triggered).toBe(true);
+    expect(failed.exitCode).toBe(1);
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toBe(manifest);
+    await expect(readFile(join(cwd, ".aiw/ownership.yml"), "utf8")).resolves.toBe(ownership);
+    await expect(readFile(backupPath, "utf8")).resolves.toBe(backup);
+    await expect(readFile(claudeSkill, "utf8")).resolves.toBe(claudeContent);
+    await expect(stat(codexSkill)).rejects.toThrow();
+
+    expect((await run(["rollback"], cwd)).exitCode).toBe(0);
+    await expect(readFile(codexSkill, "utf8")).resolves.toContain("aiw gate");
+    await expect(stat(claudeSkill)).rejects.toThrow();
   });
 
   it("rejects unsupported targets without changing the manifest", async () => {
@@ -900,14 +1134,13 @@ tasks:
   it("resolves a package and generates an exact lockfile", async () => {
     const cwd = await project();
     await run(["install"], cwd);
-    const { copyFile } = await import("node:fs/promises");
-    await copyFile(join(process.cwd(), "resources/package.yaml"), join(cwd, "package.yaml"));
-    const result = await run(["resolve", "--package=package.yaml"], cwd);
+    await cp(join(process.cwd(), "resources"), join(cwd, "resources"), { recursive: true });
+    const result = await run(["resolve", "--package=resources/package.yaml"], cwd);
 
     expect(result.exitCode).toBe(0);
     const lock = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
     expect(lock).toContain("id: multileaf/aiw-self-hosting");
-    expect(lock).toContain("integrity: sha256-multileaf/aiw-self-hosting@0.1.0");
+    expect(lock).toMatch(/integrity: sha256-[a-f0-9]{64}/);
   });
 
   it("resolves a package from a local provider source", async () => {
@@ -925,6 +1158,134 @@ tasks:
     const lock = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
     expect(lock).toContain("provider: local");
     expect(lock).toContain(`source: ${packageRoot}`);
+  });
+
+  it("merges resolved packages and leaves the lock untouched when it is malformed", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const manifest = (id: string, file: string): string =>
+      `schema: 1\nid: ${id}\nversion: 1.0.0\nprovider: local\nsource: .\ndependencies: []\npermissions: []\nprovenance:\n  source: .\nresources:\n  skills:\n    - { id: skill, version: 1.0.0, path: ${file} }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n`;
+    await writeFile(join(cwd, "a.md"), "A\n");
+    await writeFile(join(cwd, "b.md"), "B\n");
+    await writeFile(join(cwd, "a.yaml"), manifest("demo/a", "a.md"));
+    await writeFile(join(cwd, "b.yaml"), manifest("demo/b", "b.md"));
+    expect((await run(["resolve", "--package=a.yaml"], cwd)).exitCode).toBe(0);
+    const original = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
+    expect((await run(["resolve", "--package=b.yaml"], cwd)).exitCode).toBe(0);
+    const merged = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
+    expect(merged).toContain("id: demo/a");
+    expect(merged).toContain("id: demo/b");
+    expect(merged).toContain(original.match(/integrity: [^\n]+/)?.[0] ?? "missing-integrity");
+
+    await writeFile(join(cwd, ".aiw/lock.yml"), "broken lock\n");
+    const malformed = await run(["resolve", "--package=a.yaml"], cwd);
+    expect(malformed.exitCode).toBe(1);
+    expect(await readFile(join(cwd, ".aiw/lock.yml"), "utf8")).toBe("broken lock\n");
+  });
+
+  it("requires network approval before loading remote sources and still checks manifest permissions", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const packageRoot = join(cwd, "remote-package");
+    await mkdir(join(packageRoot, "skills/example"), { recursive: true });
+    await writeFile(join(packageRoot, "skills/example/SKILL.md"), "# Example\n");
+    let loads = 0;
+    let releases = 0;
+    const source = "git+https://example.test/package.git";
+    const services = {
+      packageSources: {
+        load: (requestedSource: string): LoadedPackageSource => {
+          loads += 1;
+          return {
+            provider: "git" as const,
+            source: requestedSource,
+            root: packageRoot,
+            manifest:
+              "schema: 1\nid: example/remote\nversion: 1.0.0\nprovider: placeholder\nsource: placeholder\ndependencies: []\npermissions: [process:execute]\nprovenance:\n  source: placeholder\nresources:\n  skills:\n    - { id: example, version: 1.0.0, path: skills/example/SKILL.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n",
+            release: (): void => {
+              releases += 1;
+            },
+          };
+        },
+      },
+    };
+
+    const deniedBeforeLoad = await run(["resolve", `--source=${source}`], cwd, services);
+    expect(deniedBeforeLoad.exitCode).toBe(1);
+    expect(deniedBeforeLoad.error).toContain("network:external");
+    expect(loads).toBe(0);
+
+    const deniedManifestPermission = await run(
+      ["resolve", `--source=${source}`, "--allow=network:external"],
+      cwd,
+      services,
+    );
+    expect(deniedManifestPermission.error).toContain("process:execute");
+    expect(loads).toBe(1);
+    expect(releases).toBe(1);
+
+    const approved = await run(
+      ["resolve", `--source=${source}`, "--allow=network:external", "--allow=process:execute"],
+      cwd,
+      services,
+    );
+    expect(approved.exitCode).toBe(0);
+    expect(loads).toBe(2);
+    expect(releases).toBe(2);
+  });
+
+  it("does not require network consent for a local file Git source", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const packageRoot = join(cwd, "file-package");
+    await mkdir(join(packageRoot, "skills/example"), { recursive: true });
+    await writeFile(join(packageRoot, "skills/example/SKILL.md"), "# Example\n");
+    let loads = 0;
+    const result = await run(["resolve", `--source=file://${packageRoot}`], cwd, {
+      packageSources: {
+        load: (source: string): LoadedPackageSource => {
+          loads += 1;
+          return {
+            provider: "git",
+            source,
+            root: packageRoot,
+            manifest:
+              "schema: 1\nid: example/file\nversion: 1.0.0\nprovider: placeholder\nsource: placeholder\ndependencies: []\npermissions: []\nprovenance:\n  source: placeholder\nresources:\n  skills:\n    - { id: example, version: 1.0.0, path: skills/example/SKILL.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n",
+            release: (): void => {},
+          };
+        },
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(loads).toBe(1);
+  });
+
+  it("enforces organization network denials before loading an approved remote source", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, "organization.yml"),
+      "schema: 1\nname: Example Org\napproved_sources: [git:git+https://example.test/package.git]\ndenied_permissions: [network:external]\n",
+    );
+    await run(["organization-policy", "--file=organization.yml"], cwd);
+    let loads = 0;
+
+    const result = await run(
+      ["resolve", "--source=git+https://example.test/package.git", "--allow=network:external"],
+      cwd,
+      {
+        packageSources: {
+          load: (): never => {
+            loads += 1;
+            throw new Error("Source loader must not run when organization policy denies network.");
+          },
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("denied by Example Org: network:external");
+    expect(loads).toBe(0);
   });
 
   it("audits package permissions and rejects unknown permissions atomically", async () => {
@@ -1173,7 +1534,15 @@ resources:
   templates: []
 `;
     await writeFile(packagePath, packageContent("1.0.0"));
+    await writeFile(join(cwd, "skill.md"), "# Demo skill\n");
     await run(["resolve", "--package=package.yaml"], cwd);
+    const lockedV1 = await readFile(join(cwd, ".aiw/lock.yml"), "utf8");
+    await writeFile(join(cwd, "skill.md"), "# Edited without a version change\n");
+    const tampered = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
+    expect(tampered.exitCode).toBe(1);
+    expect(tampered.error).toContain("integrity mismatch");
+    expect(await readFile(join(cwd, ".aiw/lock.yml"), "utf8")).toBe(lockedV1);
+    await writeFile(join(cwd, "skill.md"), "# Demo skill\n");
     await writeFile(packagePath, packageContent("2.0.0"));
     const updated = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
     expect(updated.exitCode).toBe(0);
@@ -1197,7 +1566,7 @@ resources:
     );
     await writeFile(
       join(cwd, ".aiw/lock.yml"),
-      `${await readFile(join(cwd, ".aiw/lock.yml"), "utf8")}  - id: demo/base\n    version: 1.0.0\n    provider: local\n    source: ./base\n    integrity: sha256-demo/base@1.0.0\n`,
+      `${await readFile(join(cwd, ".aiw/lock.yml"), "utf8")}  - id: demo/base\n    version: 1.0.0\n    provider: local\n    source: ./base\n    integrity: sha256-${"b".repeat(64)}\n`,
     );
     const conflict = await run(["update", "--package=package.yaml", "--target=codex"], cwd);
     expect(conflict.exitCode).toBe(1);
@@ -1209,12 +1578,13 @@ resources:
     await run(["install", "--target", "codex"], cwd);
     await writeFile(
       join(cwd, ".aiw/lock.yml"),
-      "schema: 1\npackages:\n  - id: demo/package\n    version: 1.0.0\n    provider: local\n    source: ./package\n    integrity: sha256-old\n    permissions: []\n  - id: unrelated/package\n    version: 1.0.0\n    provider: local\n    source: ./unrelated\n    integrity: sha256-unrelated\n    permissions: [filesystem:read, network:external]\n",
+      `schema: 1\npackages:\n  - id: demo/package\n    version: 1.0.0\n    provider: local\n    source: ./package\n    integrity: sha256-${"a".repeat(64)}\n    permissions: []\n  - id: unrelated/package\n    version: 1.0.0\n    provider: local\n    source: ./unrelated\n    integrity: sha256-${"b".repeat(64)}\n    permissions: [filesystem:read, network:external]\n`,
     );
     await writeFile(
       join(cwd, "package.yaml"),
       "schema: 1\nid: demo/package\nversion: 2.0.0\nprovider: local\nsource: ./package\ndependencies: []\npermissions: []\nprovenance:\n  source: ./package\nresources:\n  skills:\n    - { id: demo-skill, version: 2.0.0, path: skill.md }\n  rules: []\n  agents: []\n  hooks: []\n  templates: []\n",
     );
+    await writeFile(join(cwd, "skill.md"), "# Demo skill\n");
 
     expect((await run(["update", "--package=package.yaml", "--target=codex"], cwd)).exitCode).toBe(
       0,
@@ -1240,14 +1610,14 @@ resources:
     expect((await run(["policy-check", "--package=package.yaml"], cwd, services)).exitCode).toBe(0);
     await writeFile(
       join(cwd, ".aiw/lock.yml"),
-      "schema: 1\npackages:\n  - id: unknown/package\n    version: 1.0.0\n    provider: git\n    source: https://unapproved.example.test/package.git\n    integrity: sha256-test\n",
+      `schema: 1\npackages:\n  - id: unknown/package\n    version: 1.0.0\n    provider: git\n    source: https://unapproved.example.test/package.git\n    integrity: sha256-${"c".repeat(64)}\n`,
     );
     const unapprovedLock = await run(["policy-check", "--package=package.yaml"], cwd, services);
     expect(unapprovedLock.exitCode).toBe(1);
     expect(unapprovedLock.error).toContain("not approved");
     await writeFile(
       join(cwd, ".aiw/lock.yml"),
-      "schema: 1\npackages:\n  - id: unknown/package\n    version: 1.0.0\n    provider: local\n    source: ./resources\n    integrity: sha256-test\n    permissions: [process:execute]\n",
+      `schema: 1\npackages:\n  - id: unknown/package\n    version: 1.0.0\n    provider: local\n    source: ./resources\n    integrity: sha256-${"d".repeat(64)}\n    permissions: [process:execute]\n`,
     );
     const deniedLock = await run(["policy-check", "--package=package.yaml"], cwd, services);
     expect(deniedLock.exitCode).toBe(1);
@@ -1470,6 +1840,75 @@ resources:
     const removed = await run(["uninstall"], cwd);
     expect(removed.output).toContain("removed");
     await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".aiw/resources/skills/brainstorming/SKILL.md"))).rejects.toThrow();
+  });
+
+  it("removes the migration checkpoint during uninstall and prevents rollback resurrection", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    expect((await run(["target", "claude"], cwd)).exitCode).toBe(0);
+    const checkpoint = join(cwd, ".aiw/checkpoints/migration-backup.yml");
+    await expect(stat(checkpoint)).resolves.toBeTruthy();
+    const dryRun = await run(["uninstall", "--dry-run"], cwd);
+    expect(dryRun.output).toContain(".aiw/checkpoints/migration-backup.yml");
+    expect((await run(["uninstall"], cwd)).exitCode).toBe(0);
+    await expect(stat(checkpoint)).rejects.toThrow();
+    expect((await run(["rollback"], cwd)).exitCode).toBe(1);
+    expect((await run(["rollback"], cwd)).error).toContain("No migration backup");
+  });
+
+  it("preserves and reports an edited installed resource during uninstall", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const editedResource = join(cwd, ".agents/skills/brainstorming/SKILL.md");
+    await writeFile(editedResource, "user-edited skill\n");
+    const before = await readFile(join(cwd, ".aiw/manifest.yml"), "utf8");
+    const dryRun = await run(["uninstall", "--dry-run"], cwd);
+    expect(dryRun.exitCode).toBe(1);
+    expect(dryRun.output).toContain("Would preserve modified/conflicting files");
+    expect(dryRun.output).toContain(".agents/skills/brainstorming/SKILL.md");
+    await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toBe(before);
+
+    const result = await run(["uninstall"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain("Preserved modified/conflicting files");
+    await expect(readFile(editedResource, "utf8")).resolves.toBe("user-edited skill\n");
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
+  });
+
+  it("refuses unsafe ownership inventory paths before uninstall mutates state", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    const inventoryPath = join(cwd, ".aiw/ownership.yml");
+    const inventory = await readFile(inventoryPath, "utf8");
+    await writeFile(
+      inventoryPath,
+      inventory.replace(/path: \.agents\/skills\/[^\n]+/, "path: ../../outside.txt"),
+    );
+    const result = await run(["uninstall"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("project-relative");
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
+  });
+
+  it("does not follow or remove a symlink substituted for an owned resource", async () => {
+    const cwd = await project();
+    const outsideRoot = await project();
+    const outside = join(outsideRoot, "outside.md");
+    await writeFile(outside, "outside user content\n");
+    await run(["install", "--target", "codex"], cwd);
+    const owned = join(cwd, ".agents/skills/brainstorming/SKILL.md");
+    await rm(owned);
+    await symlink(outside, owned);
+
+    const result = await run(["uninstall"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain(".agents/skills/brainstorming/SKILL.md");
+    await expect(readFile(outside, "utf8")).resolves.toBe("outside user content\n");
+    await expect(stat(owned)).resolves.toBeTruthy();
+    await rm(outsideRoot, { recursive: true, force: true });
   });
 
   it("does not remove unrelated project files during uninstall", async () => {

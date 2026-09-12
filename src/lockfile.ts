@@ -9,13 +9,15 @@ export type LockedPackage = {
   permissions?: string[];
 };
 
-export function resolvePackage(pkg: PackageContract): LockedPackage {
+export function resolvePackage(pkg: PackageContract, integrity: string): LockedPackage {
+  if (!/^sha256-[a-f0-9]{64}$/.test(integrity))
+    throw new Error("Resolved package integrity must be a SHA-256 snapshot digest.");
   return {
     id: pkg.id,
     version: pkg.version,
     provider: pkg.provider,
     source: pkg.source,
-    integrity: `sha256-${pkg.id}@${pkg.version}`,
+    integrity,
     permissions: [...pkg.permissions].sort(),
   };
 }
@@ -37,6 +39,8 @@ export function parseLock(content: string): LockedPackage[] {
     const provider = requiredLockValue(lines[index + 2], /^ {4}provider: (.+)$/, "provider");
     const source = requiredLockValue(lines[index + 3], /^ {4}source: (.+)$/, "source");
     const integrity = requiredLockValue(lines[index + 4], /^ {4}integrity: (.+)$/, "integrity");
+    if ((provider === "local" || provider === "git") && !/^sha256-[a-f0-9]{64}$/.test(integrity))
+      throw new Error(`Lockfile package integrity is invalid: ${id}`);
     index += 5;
     let permissions: string[] | undefined;
     if (lines[index]?.startsWith("    permissions:")) {
