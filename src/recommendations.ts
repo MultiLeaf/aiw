@@ -11,6 +11,7 @@ export type CapabilityRecommendation = {
   permissions: string[];
   conflicts: string[];
   resources: RecommendedResource[];
+  requires?: string[];
 };
 type Capability = Omit<CapabilityRecommendation, "confidence" | "evidence" | "conflicts"> & {
   matches: (profile: ProjectProfile) => { evidence: string[]; confidence: number } | undefined;
@@ -62,9 +63,27 @@ const CATALOG: Capability[] = [
       { type: "agents", id: "technical-architect" },
       { type: "templates", id: "implementation-plan" },
     ]),
+    requires: ["requirements-specification"],
     matches: (profile) =>
       hasProjectSignals(profile)
         ? { evidence: projectEvidence(profile), confidence: 0.88 }
+        : undefined,
+  },
+  {
+    id: "technical-design",
+    provider: "multileaf",
+    rationale:
+      "Architecture changes benefit from explicit alternatives, trade-offs, and decision records.",
+    permissions: [],
+    resources: local([
+      { type: "skills", id: "technical-design" },
+      { type: "agents", id: "technical-architect" },
+      { type: "templates", id: "technical-design" },
+      { type: "templates", id: "decision-record" },
+    ]),
+    matches: (profile) =>
+      hasProjectSignals(profile)
+        ? { evidence: projectEvidence(profile), confidence: 0.82 }
         : undefined,
   },
   {
@@ -77,6 +96,7 @@ const CATALOG: Capability[] = [
       { type: "skills", id: "code-review" },
       { type: "agents", id: "quality-reviewer" },
     ]),
+    requires: ["verification"],
     matches: (profile) =>
       profile.runtime.languages.length
         ? { evidence: projectEvidence(profile), confidence: 0.86 }
@@ -96,10 +116,29 @@ const CATALOG: Capability[] = [
       { type: "hooks", id: "post-implementation" },
       { type: "templates", id: "test-plan" },
     ]),
-    matches: (profile) =>
-      profile.testing
-        ? { evidence: [`testing:${profile.testing.name}`], confidence: 1 }
-        : undefined,
+    requires: ["verification"],
+    matches: (profile): { evidence: string[]; confidence: number } | undefined => {
+      const runners = [
+        ...(profile.testing ? [profile.testing] : []),
+        ...(profile.modules ?? []).flatMap((module) =>
+          module.testing ? [{ ...module.testing, module: module.path }] : [],
+        ),
+      ];
+      return runners.length
+        ? {
+            evidence: [
+              ...new Set(
+                runners.flatMap((runner) => [
+                  ...("module" in runner ? [`workspace:${runner.module}`] : []),
+                  `testing:${runner.name}`,
+                  ...(runner.command ? [`test-command:${runner.command}`] : []),
+                ]),
+              ),
+            ],
+            confidence: 1,
+          }
+        : undefined;
+    },
   },
   {
     id: "typescript-quality",
@@ -151,20 +190,21 @@ const CATALOG: Capability[] = [
         : undefined,
   },
   {
-    id: "vitest-testing",
+    id: "verification",
     provider: "multileaf",
     rationale:
-      "Vitest is configured and can be used by the verification skill and test specialist.",
+      "Verification guidance can use the project's detected test runner and quality commands.",
     permissions: [],
     resources: local([
       { type: "skills", id: "verification" },
-      { type: "agents", id: "test-engineer" },
+      { type: "agents", id: "quality-reviewer" },
       { type: "templates", id: "test-plan" },
       { type: "templates", id: "verification-report" },
     ]),
+    requires: ["implementation-planning"],
     matches: (profile) =>
-      profile.testing?.name === "vitest"
-        ? { evidence: ["testing:vitest"], confidence: 1 }
+      hasProjectSignals(profile)
+        ? { evidence: projectEvidence(profile), confidence: profile.testing ? 1 : 0.84 }
         : undefined,
   },
   {
@@ -255,10 +295,11 @@ export function recommendCapabilities(profile: ProjectProfile): CapabilityRecomm
 }
 
 export function resourcesForCapabilities(ids: string[]): RecommendedResource[] {
+  const normalizedIds = ids.map((id) => (id === "vitest-testing" ? "verification" : id));
   const selectedCapabilities = new Set(
-    CATALOG.filter(({ id }) => ids.includes(id)).map(({ id }) => id),
+    CATALOG.filter(({ id }) => normalizedIds.includes(id)).map(({ id }) => id),
   );
-  const selectedResources = new Set(ids.filter((id) => id.includes("/")));
+  const selectedResources = new Set(normalizedIds.filter((id) => id.includes("/")));
   const resources = CATALOG.flatMap(({ id, resources }) =>
     selectedCapabilities.has(id)
       ? resources
@@ -278,7 +319,7 @@ export function serializeRecommendations(
   return `schema: 1\nrecommendations:\n${items
     .map(
       (item) =>
-        `  - id: ${item.id}\n    provider: ${item.provider}\n    confidence: ${item.confidence}\n    selected: ${selected.includes(item.id)}\n    resources: [${item.resources.map(({ type, id }) => `${type}/${id}`).join(", ")}]\n    selected_resources: [${item.resources
+        `  - id: ${item.id}\n    provider: ${item.provider}\n    confidence: ${item.confidence}\n    selected: ${selected.includes(item.id)}\n    requires: [${(item.requires ?? []).join(", ")}]\n    resources: [${item.resources.map(({ type, id }) => `${type}/${id}`).join(", ")}]\n    selected_resources: [${item.resources
           .filter(({ type, id }) => selected.includes(`${type}/${id}`))
           .map(({ type, id }) => `${type}/${id}`)
           .join(

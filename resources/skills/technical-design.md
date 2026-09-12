@@ -7,3 +7,4 @@ description: Design modular technical solutions from approved requirements.
 
 Map requirements to components, interfaces, data flows, and validation strategy. Compare meaningful alternatives and record decisions with rationale, risks, and consequences. Prefer small cohesive modules, explicit contracts, dependency inversion, and reversible changes.
 
+Link each design and ADR to the affected requirements. Once decisions are recorded, hand off to `implementation-planning`.

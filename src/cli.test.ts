@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { run } from "./cli.js";
 import { nodeFileSystem } from "./files.js";
 import { runCommand } from "./workflow.js";
@@ -105,13 +105,18 @@ tasks:
       "recommend --select=all",
       "recommend --select=",
       "sync",
+      "gate brainstorming",
       "gate specification",
       "gate plan",
+      "gate verification",
       "verify",
       "trace",
     ])
       expect(aiInit).toContain(`npx --yes --package=@multileaf/ai-workflow -- aiw ${command}`);
     expect(aiInit).toContain("Install only selected resources and declared dependencies");
+    expect(aiInit).toContain("Present recommendations as concise tables grouped by category");
+    expect(aiInit).toContain("short project-specific reason for the recommendation");
+    expect(aiInit).toContain("Do not show a flat list without category headings");
     expect(aiInit).toContain("All generated AI Workflow artifacts must be written in English");
     expect(result.output).toContain("only the ai-init skill");
   });
@@ -178,9 +183,7 @@ tasks:
     );
     expect(selection.exitCode).toBe(0);
     const recommendations = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
-    expect(recommendations).toContain(
-      "selected_resources: [skills/verification, agents/test-engineer]",
-    );
+    expect(recommendations).toContain("selected_resources: [skills/verification]");
     expect(recommendations).toContain(
       "selected_resources: [rules/tdd-policy, agents/test-engineer]",
     );
@@ -1286,20 +1289,65 @@ tasks:
     await run(["install"], cwd);
     expect((await run(["gate", "plan"], cwd)).error).toContain("Quality gate blocked");
     await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
-      "REQ-001\nAcceptance criteria\nGiven a project\nWhen planned\nThen it is testable\n",
+      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+      "TASK-001\nRequirement: REQ-001\nCode: src/main.ts\nTests: src/main.test.ts\nValidation: npm test\nEvidence: test output\n",
     );
     expect((await run(["gate", "plan"], cwd)).output).toContain("Quality gate passed");
     expect((await run(["gate", "unknown"], cwd)).error).toContain("Usage");
+    expect((await run(["gate", "toString"], cwd)).error).toContain("Usage");
   });
 
   it("blocks existing but incomplete SDD artifacts with actionable feedback", async () => {
     const cwd = await project();
     await run(["install"], cwd);
     await run(["brainstorm"], cwd);
-    const result = await run(["gate", "specification"], cwd);
+    const result = await run(["gate", "brainstorming"], cwd);
     expect(result.exitCode).toBe(1);
     expect(result.error).toContain("Brainstorm section Goal must contain content");
+  });
+
+  it("validates specifications and verification reports at their matching gates", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
+    );
+    expect((await run(["gate", "specification"], cwd)).output).toContain("Quality gate passed");
+
+    await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw/generated/reports/verification-report.md"),
+      "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
+    );
+    expect((await run(["gate", "verification"], cwd)).output).toContain("Quality gate passed");
+  });
+
+  it("installs prerequisite workflow skills when a custom stage is selected", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "jest" }, devDependencies: { jest: "latest" } }),
+    );
+    const recommendation = await run(["recommend", "--select=skills/tdd-development"], cwd);
+    expect(recommendation.exitCode).toBe(0);
+    const persisted = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
+    expect(persisted).toContain(
+      "id: requirements-specification\n    provider: multileaf\n    confidence: 0.9\n    selected: true",
+    );
+    expect(persisted).toContain("id: implementation-planning");
+    expect(persisted).toContain("id: verification");
+
+    const sync = await run(["sync"], cwd);
+    expect(sync.exitCode).toBe(0);
+    for (const skill of [
+      "requirements-specification",
+      "implementation-planning",
+      "verification",
+      "tdd-development",
+    ])
+      await expect(stat(join(cwd, `.agents/skills/${skill}/SKILL.md`))).resolves.toBeTruthy();
   });
 
   it("resolves a package and generates an exact lockfile", async () => {
@@ -1864,11 +1912,63 @@ resources:
         },
       );
 
-      expect(result.exitCode).toBe(1);
-      expect(result.error).toContain("denied by Engineering");
+      if (command === "sync") {
+        expect(result.exitCode).toBe(0);
+        expect(result.output).toContain(
+          "Remote skill pending: Package permissions are denied by Engineering: network:external",
+        );
+        await expect(
+          stat(join(cwd, ".agents/skills/technical-design/SKILL.md")),
+        ).resolves.toBeTruthy();
+      } else {
+        expect(result.exitCode).toBe(1);
+        expect(result.error).toContain("denied by Engineering");
+      }
       expect(calls).toBe(0);
     },
   );
+
+  it("syncs selected local recommendations without network approval and preserves project files", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "latest" },
+        devDependencies: { typescript: "latest" },
+      }),
+    );
+    const existingFiles = [
+      ["README.md", "Project readme\n"],
+      ["src/main.ts", "export const preserved = true;\n"],
+      ["docs/architecture.md", "Project architecture\n"],
+    ] as const;
+    for (const [path, content] of existingFiles) {
+      await mkdir(dirname(join(cwd, path)), { recursive: true });
+      await writeFile(join(cwd, path), content);
+    }
+    await run(["recommend", "--select=all"], cwd);
+    let externalCalls = 0;
+    const result = await run(["sync"], cwd, {
+      externalSkills: {
+        execute: async () => {
+          externalCalls += 1;
+          return { stdout: "installed", exitCode: 0 };
+        },
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Synchronized");
+    expect(result.output).toContain("Remote skill pending: network:external was not approved");
+    expect(externalCalls).toBe(0);
+    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
+    await expect(
+      stat(join(cwd, ".agents/skills/vercel-react-best-practices/SKILL.md")),
+    ).rejects.toThrow();
+    for (const [path, content] of existingFiles)
+      await expect(readFile(join(cwd, path), "utf8")).resolves.toBe(content);
+  });
 
   it.each(["check", "update"])(
     "enforces organization policy before skills %s accesses an external provider",
@@ -2144,10 +2244,10 @@ resources:
       join(cwd, "package.json"),
       JSON.stringify({ devDependencies: { vitest: "latest", typescript: "latest" } }),
     );
-    const result = await run(["recommend", "--select=vitest-testing"], cwd);
+    const result = await run(["recommend", "--select=verification"], cwd);
     expect(result.exitCode).toBe(0);
     const output = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
-    expect(output).toContain("id: vitest-testing");
+    expect(output).toContain("id: verification");
     expect(output).toContain("selected: true");
     expect(output).toContain("resources: [skills/verification");
   });
@@ -2164,11 +2264,11 @@ resources:
     expect(preview.exitCode).toBe(0);
     expect(preview.output).toContain("without selection");
     const recommendations = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
-    expect(recommendations).toContain("id: vitest-testing");
+    expect(recommendations).toContain("id: verification");
     expect(recommendations).toContain("selected: false");
     await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).rejects.toThrow();
 
-    const selection = await run(["recommend", "--select=vitest-testing"], cwd);
+    const selection = await run(["recommend", "--select=verification"], cwd);
     expect(selection.exitCode).toBe(0);
     const sync = await run(["sync"], cwd);
     expect(sync.exitCode).toBe(0);
@@ -2182,7 +2282,7 @@ resources:
       join(cwd, "package.json"),
       JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "latest" } }),
     );
-    await run(["recommend", "--select=vitest-testing"], cwd);
+    await run(["recommend", "--select=verification"], cwd);
 
     const declined = await run(["recommend", "--select="], cwd);
     expect(declined.exitCode).toBe(0);

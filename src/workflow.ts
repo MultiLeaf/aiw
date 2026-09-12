@@ -890,6 +890,46 @@ export async function runCommand(
       const selectedArg = args.find((arg) => arg.startsWith("--select="))?.split("=", 2)[1];
       const selected =
         selectedArg?.split(",") ?? (command === "sync" ? readSelectedRecommendations(fs, aiw) : []);
+      if (command === "sync") {
+        const result = syncSelectedResources(fs, root, aiw, profile, selected);
+        if (result.error) return { exitCode: 1, error: result.error };
+        const messages = [result.output ?? "Selected bundled resources synchronized."];
+        if (selected.includes("react-best-practices")) {
+          const approvedPermissions = parseApprovedPermissions(args);
+          if (!approvedPermissions.includes("network:external")) {
+            messages.push(
+              "Remote skill pending: network:external was not approved. Bundled resources were installed; rerun sync with --allow=network:external only if you approve external access.",
+            );
+          } else {
+            try {
+              enforceConfiguredOrganizationPolicy(fs, aiw, {
+                provider: "vercel-skills",
+                source: "vercel-labs/agent-skills",
+                permissions: ["network:external"],
+              });
+              const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
+              await installVercelSkill(
+                services.externalSkills ?? nodeCommandExecutor,
+                "vercel-labs/agent-skills",
+                "vercel-react-best-practices",
+                target,
+              );
+              writeVercelSkillLock(
+                fs,
+                root,
+                aiw,
+                "vercel-labs/agent-skills",
+                "vercel-react-best-practices",
+              );
+              messages.push("Remote React best-practices skill installed.");
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : String(error);
+              messages.push(`Remote skill pending: ${reason}`);
+            }
+          }
+        }
+        return { exitCode: 0, output: messages.join(" ") };
+      }
       if (selected.includes("react-best-practices")) {
         const approvedPermissions = parseApprovedPermissions(args);
         if (!approvedPermissions.includes("network:external"))
@@ -917,12 +957,6 @@ export async function runCommand(
           "vercel-labs/agent-skills",
           "vercel-react-best-practices",
         );
-      }
-      if (command === "sync") {
-        const result = syncSelectedResources(fs, root, aiw, profile, selected);
-        return result.error
-          ? { exitCode: 1, error: result.error }
-          : { exitCode: 0, output: result.output };
       }
       const conflicts: string[] = [];
       generateProjectResources(profile, selected, (path, content) => {
@@ -1177,12 +1211,16 @@ export async function runCommand(
         return { exitCode: 1, error: "Run `aiw install` first." };
       const stage = args[1];
       const requirements: Record<QualityGateStage, string> = {
-        specification: "generated/specs/brainstorm.md",
-        plan: "generated/specs/specification.md",
-        verification: "generated/plans/implementation-plan.md",
+        brainstorming: "generated/specs/brainstorm.md",
+        specification: "generated/specs/specification.md",
+        plan: "generated/plans/implementation-plan.md",
+        verification: "generated/reports/verification-report.md",
       };
-      if (!stage || !(stage in requirements))
-        return { exitCode: 1, error: "Usage: aiw gate <specification|plan|verification>" };
+      if (!stage || !Object.hasOwn(requirements, stage))
+        return {
+          exitCode: 1,
+          error: "Usage: aiw gate <brainstorming|specification|plan|verification>",
+        };
       const gateStage = stage as QualityGateStage;
       const artifact = requirements[gateStage];
       if (!fs.exists(join(aiw, artifact)))

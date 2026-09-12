@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-12
+
+### Fixed
+
+- Connect SDD capability recommendations through explicit prerequisites so custom selections include required earlier workflow stages.
+- Recommend verification for supported project profiles and test runners, including test commands discovered in monorepo workspaces.
+- Align brainstorming, specification, planning, and verification gates with their matching artifacts; remove references to a nonexistent review gate command.
+- Clarify skill handoffs across brainstorming, requirements, design, planning, implementation, verification, and code review.
+- Correct the project profile path referenced by the project initialization skill.
+
 ## [0.1.4] - 2026-09-12
 
 ### Added
@@ -66,7 +76,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - Path confinement, symlink protection, explicit permission gates, secret redaction, strict parsers, atomic migrations, and immutable execution checkpoints.
 
-[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/MultiLeaf/aiw/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/MultiLeaf/aiw/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/MultiLeaf/aiw/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/MultiLeaf/aiw/compare/v0.1.1...v0.1.2

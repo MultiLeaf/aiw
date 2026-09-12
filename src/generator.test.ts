@@ -53,4 +53,39 @@ describe("project resource generator", () => {
     expect(contents.join("\n")).not.toContain("npm run lint");
     expect(contents.join("\n")).not.toContain("npm test");
   });
+
+  it("uses distinct test commands from monorepo workspaces", () => {
+    const contents: string[] = [];
+    const monorepo: ProjectProfile = {
+      ...profile,
+      testing: undefined,
+      modules: [
+        {
+          path: "apps/api",
+          runtime: { languages: ["typescript"] },
+          frameworks: ["nestjs"],
+          packageManager: "pnpm",
+          quality: {},
+          testing: { name: "jest", command: "pnpm --filter api test" },
+        },
+        {
+          path: "apps/web",
+          runtime: { languages: ["typescript"] },
+          frameworks: ["vite", "react"],
+          packageManager: "pnpm",
+          quality: {},
+          testing: { name: "vitest", command: "pnpm --filter web test" },
+        },
+      ],
+    };
+    generateProjectResources(monorepo, ["tdd-development"], (_path, content) =>
+      contents.push(content),
+    );
+    expect(contents.join("\n")).toContain(
+      "workspace apps/api test command `pnpm --filter api test`",
+    );
+    expect(contents.join("\n")).toContain(
+      "workspace apps/web test command `pnpm --filter web test`",
+    );
+  });
 });

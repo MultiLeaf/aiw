@@ -14,7 +14,7 @@ const items: CapabilityRecommendation[] = [
     resources: [],
   },
   {
-    id: "vitest-testing",
+    id: "verification",
     provider: "multileaf",
     confidence: 1,
     rationale: "Vitest",
@@ -33,13 +33,13 @@ describe("interactive recommendation selection", () => {
   });
 
   it("supports non-interactive selection", async () => {
-    const result = await selectRecommendations(items, async () => "n", ["vitest-testing"]);
-    expect(result).toEqual(["vitest-testing"]);
+    const result = await selectRecommendations(items, async () => "n", ["verification"]);
+    expect(result).toEqual(["verification"]);
   });
 
   it("selects every capability with the all shortcut", async () => {
     const result = await selectRecommendations(items, async () => "n", ["all"]);
-    expect(result).toEqual(["typescript-quality", "vitest-testing"]);
+    expect(result).toEqual(["typescript-quality", "verification"]);
   });
 
   it("accepts individual recommended resources for custom installation", async () => {
@@ -51,5 +51,43 @@ describe("interactive recommendation selection", () => {
     ];
     const result = await selectRecommendations(catalog, async () => "n", ["skills/verification"]);
     expect(result).toEqual(["skills/verification"]);
+  });
+
+  it("adds declared prerequisite capabilities for a selected stage", async () => {
+    const workflow: CapabilityRecommendation[] = [
+      {
+        ...items[0],
+        id: "requirements-specification",
+        resources: [{ type: "skills", id: "requirements-specification" }],
+      },
+      {
+        ...items[0],
+        id: "implementation-planning",
+        requires: ["requirements-specification"],
+        resources: [{ type: "skills", id: "implementation-planning" }],
+      },
+      { ...items[0], id: "verification", resources: [{ type: "skills", id: "verification" }] },
+      {
+        ...items[0],
+        id: "tdd-development",
+        requires: ["implementation-planning", "verification"],
+        resources: [{ type: "skills", id: "tdd-development" }],
+      },
+    ];
+    const result = await selectRecommendations(workflow, async () => "n", [
+      "skills/tdd-development",
+    ]);
+    expect(result).toEqual([
+      "skills/tdd-development",
+      "implementation-planning",
+      "requirements-specification",
+      "verification",
+    ]);
+  });
+
+  it("accepts the previous verification recommendation ID for saved project state", async () => {
+    const workflow = [{ ...items[0], id: "verification" }];
+    const result = await selectRecommendations(workflow, async () => "n", ["vitest-testing"]);
+    expect(result).toEqual(["verification"]);
   });
 });

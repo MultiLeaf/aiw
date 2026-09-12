@@ -43,6 +43,7 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **SDD-005** Implement verification skill. _Acceptance:_ missing evidence and untested requirements are reported.
 - [x] **SDD-006** Implement requirement-to-evidence traceability graph. _Acceptance:_ requirement → decision → task → code → test → evidence is queryable.
 - [x] **SDD-007** Add quality gates between workflow stages. _Acceptance:_ incomplete artifacts block progression with actionable feedback.
+- [x] **SDD-008** Connect workflow recommendations and quality gates to the SDD sequence. _Acceptance:_ selected later stages include declared prerequisites; verification is recommended for supported project profiles and test runners; each gate checks the matching artifact; review instructions do not refer to a nonexistent CLI gate.
 
 ## Adapters and migration — P1/P2
 

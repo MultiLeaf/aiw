@@ -122,49 +122,52 @@ flowchart TD
     D --> E[(.aiw/recommendations.yml)]
     E --> F{User confirms scope}
     F -->|Revise| B
-    F -->|Proceed| G[Brainstorm]
+    F -->|Proceed| G{Clarification needed?}
 
-    G --> H[(generated/specs/brainstorm.md)]
-    H --> I{Brainstorm gate}
-    I -->|Incomplete| G
-    I -->|Complete| J[Write specification]
+    G -->|Yes| H[Brainstorm]
+    H --> I[(generated/specs/brainstorm.md)]
+    I --> J{Brainstorm gate}
+    J -->|Incomplete| H
+    J -->|Complete| K[Write specification]
+    G -->|No| K
 
-    J --> K[(generated/specs/specification.md)]
-    K --> L{Specification gate}
-    L -->|Incomplete| J
-    L -->|Complete| M{Architecture decision needed?}
+    K --> L[(generated/specs/specification.md)]
+    L --> M{Specification gate}
+    M -->|Incomplete| K
+    M -->|Complete| N{Architecture decision needed?}
 
-    M -->|Yes| N[Create ADR]
-    N --> O[(.context/adrs/ADR-NNN-title.md)]
-    O --> P[Update ADR index]
-    P --> Q[(.context/adrs/INDEX.md)]
-    M -->|No| R[Create implementation plan]
-    Q --> R
+    N -->|Yes| O[Create ADR]
+    O --> P[(.context/adrs/ADR-NNN-title.md)]
+    P --> Q[Update ADR index]
+    Q --> R[(.context/adrs/INDEX.md)]
+    N -->|No| S[Create implementation plan]
+    R --> S
 
-    R --> S[(generated/plans/implementation-plan.md)]
-    S --> T{Plan gate}
-    T -->|Incomplete| R
-    T -->|Ready| U[Implement tasks with TDD]
+    S --> T[(generated/plans/implementation-plan.md)]
+    T --> U{Plan gate}
+    U -->|Incomplete| S
+    U -->|Ready| V[Implement tasks with TDD]
 
-    U --> V[Write code and tests]
-    V --> W[Run task validation commands]
-    W --> X{Validation passes?}
-    X -->|No| U
-    X -->|Yes| Y[Record completion evidence]
+    V --> W[Write code and tests]
+    W --> X[Run task validation commands]
+    X --> Y{Validation passes?}
+    Y -->|No| V
+    Y -->|Yes| Z[Record completion evidence]
 
-    Y --> Z[(generated/artifacts and checkpoint evidence)]
-    Z --> AA[Verify declared evidence]
-    AA --> AB{Verification gate}
-    AB -->|Missing evidence| U
-    AB -->|Complete| AC[Build traceability graph]
+    Z --> AA[(generated/artifacts and checkpoint evidence)]
+    AA --> AB[Write verification report]
+    AB --> AC{Verification gate}
+    AC -->|Missing evidence| V
+    AC -->|Complete| AD[Build traceability graph]
 
-    AC --> AD[Requirement → ADR → Task → Code → Test → Evidence]
-    AD --> AE[(generated artifacts and trace output)]
-    AE --> AF[Run repository self-validation]
-    AF --> AG[(.aiw/checkpoints/self-validation-TICKET.yml)]
-    AG --> AH{Review outcome}
-    AH -->|Changes required| U
-    AH -->|Accepted| AI[Commit and independent integration validation]
+    AD --> AE[Requirement → ADR → Task → Code → Test → Evidence]
+    AE --> AF[(generated artifacts and trace output)]
+    AF --> AG[Run code-review skill when installed]
+    AG --> AH{Review findings?}
+    AH -->|Changes required| V
+    AH -->|Clear| AI[Run repository self-validation]
+    AI --> AJ[(.aiw/checkpoints/self-validation-TICKET.yml)]
+    AJ --> AK[Commit and independent integration validation]
 
     B -. command history and evidence .-> LOGS[(.aiw/checkpoints/)]
     D -. command history and evidence .-> LOGS
@@ -180,7 +183,7 @@ npx @multileaf/ai-workflow scan
 npx @multileaf/ai-workflow recommend
 
 # In CI, provide comma-separated recommendation IDs detected for that project.
-npx @multileaf/ai-workflow recommend --select=typescript-quality,vitest-testing
+npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 
 # Create structured product artifacts.
 npx @multileaf/ai-workflow brainstorm --title="Feature name"
@@ -188,13 +191,18 @@ npx @multileaf/ai-workflow spec --title="Feature requirements"
 npx @multileaf/ai-workflow adr --id=001 --title="Technical decision"
 npx @multileaf/ai-workflow plan --title="Implementation plan"
 
-# Fill the generated scaffold sections before running their quality gates.
+# Optional, after creating a brainstorm artifact for an unclear request:
+npx @multileaf/ai-workflow gate brainstorming
+# After filling the specification and plan scaffolds shown above:
 npx @multileaf/ai-workflow gate specification
+npx @multileaf/ai-workflow gate plan
+# After writing .aiw/generated/reports/verification-report.md from the verification report template:
+npx @multileaf/ai-workflow gate verification
 npx @multileaf/ai-workflow verify
 npx @multileaf/ai-workflow trace
 ```
 
-Scaffold commands write deterministic files at fixed paths and a repeated invocation replaces that scaffold. Complete and review each artifact before advancing. Requirements use stable identifiers and Given/When/Then acceptance criteria. Plans link tasks to requirements, tests, risks, dependencies, and expected evidence. `gate` performs textual completeness checks, `verify` validates the expected verification fields rather than running a test command, and `trace` records declared links between requirements, decisions, tasks, code, tests, and evidence.
+Scaffold commands write deterministic files at fixed paths and a repeated invocation replaces that scaffold. Complete and review each artifact before advancing. Requirements use stable identifiers and Given/When/Then acceptance criteria. Plans link tasks to requirements, tests, risks, dependencies, and expected evidence. Each `gate` validates the artifact named by its stage. `verify` checks that the specification has acceptance criteria and the plan links requirements to validation; it does not execute project test commands. `trace` records declared links between requirements, decisions, tasks, code, tests, and evidence. Code review is performed with the `code-review` skill when installed; there is no separate review gate command.
 
 ## Project intelligence
 

@@ -1,4 +1,4 @@
-export type QualityGateStage = "specification" | "plan" | "verification";
+export type QualityGateStage = "brainstorming" | "specification" | "plan" | "verification";
 
 function section(content: string, heading: string): string | undefined {
   const match = content.match(
@@ -16,7 +16,7 @@ function requireSections(content: string, artifact: string, headings: string[]):
 }
 
 export function evaluateQualityGate(stage: QualityGateStage, content: string): string[] {
-  if (stage === "specification")
+  if (stage === "brainstorming")
     return requireSections(content, "Brainstorm", [
       "Goal",
       "Users",
@@ -25,7 +25,7 @@ export function evaluateQualityGate(stage: QualityGateStage, content: string): s
       "Non-goals",
     ]);
 
-  if (stage === "plan") {
+  if (stage === "specification") {
     const issues: string[] = [];
     if (!/REQ-\d+/.test(content)) issues.push("Specification must define a stable REQ-### ID.");
     if (!/Acceptance criteria/i.test(content))
@@ -39,12 +39,22 @@ export function evaluateQualityGate(stage: QualityGateStage, content: string): s
     return issues;
   }
 
-  const fields = ["Requirement", "Code", "Tests", "Validation", "Evidence"];
-  const issues = !/TASK-\d+/.test(content)
-    ? ["Implementation plan must define a TASK-### ID."]
-    : [];
-  for (const field of fields)
-    if (!new RegExp(`^[ \\t]*-?[ \\t]*${field}:[ \\t]*\\S+`, "im").test(content))
-      issues.push(`Implementation plan task must define ${field}.`);
-  return issues;
+  if (stage === "plan") {
+    const fields = ["Requirement", "Code", "Tests", "Validation", "Evidence"];
+    const issues = !/TASK-\d+/.test(content)
+      ? ["Implementation plan must define a TASK-### ID."]
+      : [];
+    for (const field of fields)
+      if (!new RegExp(`^[ \\t]*-?[ \\t]*${field}:[ \\t]*\\S+`, "im").test(content))
+        issues.push(`Implementation plan task must define ${field}.`);
+    return issues;
+  }
+
+  return requireSections(content, "Verification Report", [
+    "Requirements Checked",
+    "Checks Passed",
+    "Missing Evidence",
+    "Residual Risks",
+    "Decision",
+  ]);
 }

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { recommendCapabilities, serializeRecommendations } from "./recommendations.js";
+import {
+  recommendCapabilities,
+  resourcesForCapabilities,
+  serializeRecommendations,
+} from "./recommendations.js";
 import type { ProjectProfile } from "./profile.js";
 
 const profile: ProjectProfile = {
@@ -33,7 +37,67 @@ describe("capability recommendations", () => {
   it("recommends testing and quality capabilities for matching tools", () => {
     const ids = recommendCapabilities(profile).map((item) => item.id);
     expect(ids).toEqual(
-      expect.arrayContaining(["tdd-development", "typescript-quality", "vitest-testing"]),
+      expect.arrayContaining(["tdd-development", "typescript-quality", "verification"]),
+    );
+  });
+
+  it.each(["jest", "vitest", "playwright", "cypress"])(
+    "recommends verification for the %s runner",
+    (runner) => {
+      const recommendations = recommendCapabilities({ ...profile, testing: { name: runner } });
+      expect(recommendations.map(({ id }) => id)).toContain("verification");
+      expect(recommendations.find(({ id }) => id === "verification")?.evidence).toContain(
+        `testing:${runner}`,
+      );
+    },
+  );
+
+  it("recommends TDD from workspace-level test runners in monorepos", () => {
+    const monorepo = recommendCapabilities({
+      ...profile,
+      testing: undefined,
+      modules: [
+        {
+          path: "apps/api",
+          runtime: { languages: ["typescript"] },
+          frameworks: ["nestjs"],
+          packageManager: "pnpm",
+          quality: {},
+          testing: { name: "jest", command: "pnpm --filter api test" },
+        },
+      ],
+    });
+    expect(monorepo.map(({ id }) => id)).toContain("tdd-development");
+    expect(monorepo.find(({ id }) => id === "tdd-development")?.evidence).toContain(
+      "test-command:pnpm --filter api test",
+    );
+  });
+
+  it("declares workflow prerequisites and expands the selected skill's dependencies", () => {
+    const recommendations = recommendCapabilities(profile);
+    expect(recommendations.find(({ id }) => id === "implementation-planning")?.requires).toContain(
+      "requirements-specification",
+    );
+    expect(recommendations.find(({ id }) => id === "tdd-development")?.requires).toEqual([
+      "verification",
+    ]);
+    expect(recommendations.find(({ id }) => id === "verification")?.requires).toEqual([
+      "implementation-planning",
+    ]);
+    expect(
+      resourcesForCapabilities([
+        "skills/tdd-development",
+        "implementation-planning",
+        "requirements-specification",
+        "verification",
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        { type: "skills", id: "requirements-specification" },
+        { type: "skills", id: "implementation-planning" },
+        { type: "skills", id: "verification" },
+        { type: "skills", id: "tdd-development" },
+      ]),
     );
   });
 
@@ -94,8 +158,8 @@ describe("capability recommendations", () => {
   });
 
   it("serializes recommendations with explicit selection state", () => {
-    const output = serializeRecommendations(recommendCapabilities(profile), ["vitest-testing"]);
-    expect(output).toContain("id: vitest-testing");
+    const output = serializeRecommendations(recommendCapabilities(profile), ["verification"]);
+    expect(output).toContain("id: verification");
     expect(output).toContain("selected: true");
     expect(output).toContain("selected: false");
   });

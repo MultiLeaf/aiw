@@ -10,7 +10,21 @@ export function generateProjectResources(
 ): void {
   const linterCommand = safeInlineValue(profile.quality.linter?.command);
   const formatterCommand = safeInlineValue(profile.quality.formatter?.command);
-  const testCommand = safeInlineValue(profile.testing?.command);
+  const testCommands = [
+    ...(profile.testing?.command ? [{ scope: "project", command: profile.testing.command }] : []),
+    ...(profile.modules ?? []).flatMap((module) =>
+      module.testing?.command
+        ? [{ scope: `workspace ${module.path}`, command: module.testing.command }]
+        : [],
+    ),
+  ].map(({ scope, command }) => ({ scope, command: safeInlineValue(command) }));
+  const uniqueTestCommands = [
+    ...new Map(
+      testCommands
+        .filter(({ command }) => command)
+        .map(({ scope, command }) => [`${scope}:${command}`, { scope, command }]),
+    ).values(),
+  ];
   if (selected.includes("typescript-quality") || selected.includes("rules/project-quality"))
     write(
       resolveGeneratedPath("rules/project-quality.md"),
@@ -19,7 +33,7 @@ export function generateProjectResources(
   if (selected.includes("tdd-development") || selected.includes("rules/tdd-project-policy"))
     write(
       resolveGeneratedPath("rules/tdd-project-policy.md"),
-      `# TDD Project Policy\n\n${testCommand ? `- Run \`${testCommand}\` for verification.\n` : ""}- Write a failing behavioral test before implementation.\n- Refactor only after the test is green.\n`,
+      `# TDD Project Policy\n\n${uniqueTestCommands.map(({ scope, command }) => `- Run the ${scope} test command \`${command}\` for verification.`).join("\n")}${uniqueTestCommands.length ? "\n" : ""}- Write a failing behavioral test before implementation.\n- Refactor only after the test is green.\n`,
     );
   if (
     selected.includes("nextjs-development") ||
@@ -37,7 +51,7 @@ export function generateProjectResources(
     );
     write(
       resolveGeneratedPath("hooks/quality-check.md"),
-      `# Quality Check Hook\n\nRun the available project quality commands before completion.${linterCommand ? `\n\n- Linter: \`${linterCommand}\`` : ""}${formatterCommand ? `\n- Formatter: \`${formatterCommand}\`` : ""}${testCommand ? `\n- Tests: \`${testCommand}\`` : ""}\n`,
+      `# Quality Check Hook\n\nRun the available project quality commands before completion.${linterCommand ? `\n\n- Linter: \`${linterCommand}\`` : ""}${formatterCommand ? `\n- Formatter: \`${formatterCommand}\`` : ""}${uniqueTestCommands.map(({ scope, command }) => `\n- ${scope} tests: \`${command}\``).join("")}\n`,
     );
   }
 }
