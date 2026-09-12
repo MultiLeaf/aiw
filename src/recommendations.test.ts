@@ -23,7 +23,7 @@ describe("capability recommendations", () => {
     expect(react).toMatchObject({
       id: "react-best-practices",
       confidence: 1,
-      permissions: [],
+      permissions: ["network:external"],
       conflicts: [],
     });
     expect(react?.evidence).toContain("framework:react");

@@ -26,6 +26,8 @@ package/
 
 Packages may come from local paths, Git repositories, npm-compatible providers, Vercel Skills, or a future Multileaf registry.
 
+The package distributed by AI Workflow is a catalog, not an automatic project install. `aiw install` writes only the target-specific `ai-init` bootstrap and neutral state. `/ai-init` scans the project, recommends matching capabilities, asks which to activate, and `aiw sync` renders only the selected resources. Supported rules and project-quality guidance are personalized from detected project tools; existing or user-edited files are preserved and reported as conflicts.
+
 Local directories and Git repositories are resolved with `aiw resolve --source=<source>`. A local source may be a package directory or its `package.yaml`; relative paths are resolved from the project. Git sources support `git+https`, HTTPS, SSH, and `file://` URLs. Git packages are cloned into an isolated temporary checkout, validated before the lockfile is changed, and removed after resolution. The lockfile records the selected provider and normalized source rather than trusting those fields from the fetched manifest. The legacy `--package=<path>` form remains available for direct manifest resolution.
 
 Vercel Skills is exposed through `aiw skills search`, `inspect`, `install`, `check`, and `update`. AIW delegates to the official `npx skills` CLI with argument arrays, requires explicit `network:external` permission for network-mutating/check operations, and records installed skills and upstream integrity in `.aiw/lock.yml`. Update output is inspected for upstream failure text because some CLI releases may report failures with a successful process exit code.

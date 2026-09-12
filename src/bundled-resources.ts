@@ -9,7 +9,7 @@ const resourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../resour
 
 export type BootstrapResource = { type: ResourceType; id: string; path: string; content: string };
 
-export function loadBootstrapResources(target: Target): BootstrapResource[] {
+export function loadBundledResources(target: Target): BootstrapResource[] {
   const manifestPath = join(resourceRoot, "package.yaml");
   const manifest = readFileSync(manifestPath, "utf8");
   const contract = validatePackageContract(manifest, (path) => {

@@ -5,6 +5,7 @@
 ### Installation
 
 - The CLI must install with `npx @multileaf/ai-workflow install`.
+- Initial installation must add only the target-specific `ai-init` bootstrap and neutral state; optional skills, rules, agents, hooks, and templates must not be activated before project analysis and user selection.
 - Installation must support Codex, Claude Code, Cursor, Gemini CLI, GitHub Copilot, and a universal target over time.
 - Installation must be idempotent and preserve user overrides.
 - Installation must create a neutral `.aiw/` source of truth.
@@ -21,6 +22,7 @@
 - Recommendations must explain their evidence, capabilities, permissions, and conflicts.
 - The user must select which capabilities to install.
 - Selected resources must be customized using confirmed project facts.
+- `/ai-init` must orchestrate scan → recommendations → user selection → selected-resource sync and summarize what it added.
 
 ### Development workflow
 

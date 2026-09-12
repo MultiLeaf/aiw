@@ -26,6 +26,17 @@ async function project(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aiw-test-"));
 }
 
+async function syncCapabilities(cwd: string, ids: string[]): Promise<void> {
+  await writeFile(
+    join(cwd, "package.json"),
+    JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "latest" } }),
+  );
+  const recommendation = await run(["recommend", `--select=${ids.join(",")}`], cwd);
+  expect(recommendation.exitCode).toBe(0);
+  const result = await run(["sync"], cwd);
+  expect(result.exitCode).toBe(0);
+}
+
 describe("AI Workflow CLI", () => {
   it("previews and executes an orchestration plan through injected agent adapters", async () => {
     const cwd = await project();
@@ -74,29 +85,80 @@ tasks:
     ).resolves.toContain("status: passed");
   });
 
-  it("installs the neutral structure and the selected Codex target", async () => {
+  it("installs only ai-init and the neutral project structure", async () => {
     const cwd = await project();
     const result = await run(["install", "--target", "codex"], cwd);
 
     expect(result.exitCode).toBe(0);
     await expect(stat(join(cwd, ".aiw", "manifest.yml"))).resolves.toBeTruthy();
     await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
-    await expect(
-      stat(join(cwd, ".aiw/resources/skills/brainstorming/SKILL.md")),
-    ).resolves.toBeTruthy();
-    await expect(
-      stat(join(cwd, ".agents/agents/requirements-analyst/requirements-analyst.md")),
-    ).resolves.toBeTruthy();
-    await expect(
-      stat(join(cwd, ".agents/hooks/pre-implementation/pre-implementation.md")),
-    ).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".agents/agents"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".agents/rules"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".agents/hooks"))).rejects.toThrow();
     await expect(stat(join(cwd, ".context/adrs/INDEX.md"))).resolves.toBeTruthy();
     const aiInit = await readFile(join(cwd, ".agents/skills/ai-init/SKILL.md"), "utf8");
     expect(aiInit).toContain("aiw recommend");
-    expect(aiInit).toContain("aiw gate <stage>");
+    expect(aiInit).toContain("aiw sync");
+    expect(aiInit).toContain("If at least one capability is selected, run `aiw sync`");
     expect(aiInit).toContain("All generated AI Workflow artifacts must be written in English");
-    expect(result.output).toContain("activated");
+    expect(result.output).toContain("only the ai-init skill");
+  });
+
+  it("recommends and syncs only selected project capabilities into the active target", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        scripts: { test: "vitest run", lint: "eslint ." },
+        devDependencies: { typescript: "latest", vitest: "latest", eslint: "latest" },
+      }),
+    );
+    await mkdir(join(cwd, "src"));
+    await writeFile(join(cwd, "src/main.ts"), "export {}\n");
+
+    const recommendation = await run(
+      ["recommend", "--select=brainstorming,tdd-development,typescript-quality"],
+      cwd,
+    );
+    expect(recommendation.exitCode).toBe(0);
+    expect(recommendation.output).toContain("recommendations generated");
+    const sync = await run(["sync"], cwd);
+
+    expect(sync.exitCode).toBe(0);
+    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/tdd-development/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/rules/tdd-policy/tdd-policy.md"))).resolves.toBeTruthy();
+    await expect(
+      readFile(join(cwd, ".agents/rules/tdd-policy/tdd-policy.md"), "utf8"),
+    ).resolves.toContain("Test command: `vitest run`");
+    await expect(
+      stat(join(cwd, ".agents/agents/test-engineer/test-engineer.md")),
+    ).resolves.toBeTruthy();
+    await expect(
+      readFile(join(cwd, ".agents/rules/project-quality/project-quality.md"), "utf8"),
+    ).resolves.toContain("eslint .");
+    await expect(stat(join(cwd, ".agents/skills/security-review/SKILL.md"))).rejects.toThrow();
+  });
+
+  it.each([
+    ["codex", ".agents/skills/brainstorming/SKILL.md"],
+    ["claude", ".claude/skills/brainstorming/SKILL.md"],
+    ["cursor", ".cursor/skills/brainstorming/SKILL.md"],
+    ["gemini", ".gemini/skills/brainstorming/SKILL.md"],
+    ["copilot", ".github/skills/brainstorming/SKILL.md"],
+    ["universal", ".aiw/resources/skills/brainstorming/SKILL.md"],
+  ] as const)("syncs selected bundled resources through the %s adapter", async (target, path) => {
+    const cwd = await project();
+    await run(["install", "--target", target], cwd);
+    await syncCapabilities(cwd, ["brainstorming"]);
+
+    await expect(stat(join(cwd, path))).resolves.toBeTruthy();
+    await expect(
+      stat(join(cwd, ".aiw/resources/skills/brainstorming/SKILL.md")),
+    ).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/security-review/SKILL.md"))).rejects.toThrow();
   });
 
   it.each(["existing", "dangling"] as const)(
@@ -152,7 +214,7 @@ tasks:
     );
   });
 
-  it("does not overwrite an existing packaged target resource during first install", async () => {
+  it("leaves an existing optional resource alone during bootstrap install", async () => {
     const cwd = await project();
     const resource = join(cwd, ".agents/skills/brainstorming/SKILL.md");
     await mkdir(join(cwd, ".agents/skills/brainstorming"), { recursive: true });
@@ -160,10 +222,9 @@ tasks:
 
     const result = await run(["install", "--target", "codex"], cwd);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.error).toContain("existing target resources");
+    expect(result.exitCode).toBe(0);
     await expect(readFile(resource, "utf8")).resolves.toBe("my custom brainstorming workflow\n");
-    await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
+    await expect(stat(join(cwd, ".aiw/manifest.yml"))).resolves.toBeTruthy();
   });
 
   it.each([
@@ -182,14 +243,17 @@ tasks:
     expect(skill).toContain(
       target === "copilot" ? "# AI Workflow Initialization" : "name: ai-init",
     );
-    expect(skill).toContain("Analyze the repository safely");
+    expect(skill).toContain("This skill is the bootstrap for AI Workflow");
     expect(skill).toContain("All generated AI Workflow artifacts must be written in English");
     const ownedPaths = parseOwnership(await readFile(join(cwd, ".aiw/ownership.yml"), "utf8")).map(
       ({ path }) => path,
     );
-    for (const type of ["skills", "rules", "agents", "hooks", "templates"])
-      expect(ownedPaths.some((owned) => owned.includes(`/${type}/`))).toBe(true);
-    expect(ownedPaths.some((owned) => owned.startsWith(".aiw/resources/"))).toBe(true);
+    expect(ownedPaths).toContain(path);
+    expect(
+      ownedPaths.some((owned) =>
+        /\/(?:brainstorming|requirements-specification|tdd-development)\//.test(owned),
+      ),
+    ).toBe(false);
     expect((await run(["uninstall"], cwd)).exitCode).toBe(0);
     await expect(stat(join(cwd, path))).rejects.toThrow();
     await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
@@ -626,6 +690,7 @@ tasks:
   it("blocks removal of modified old-target resources", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
+    await syncCapabilities(cwd, ["brainstorming"]);
     const edited = join(cwd, ".agents/skills/brainstorming/SKILL.md");
     await writeFile(edited, "# User customization\n");
     const result = await run(["target", "claude"], cwd);
@@ -646,6 +711,7 @@ tasks:
   ] as const)("rolls back after an injected %s failure", async (_stage, operation, suffix) => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
+    await syncCapabilities(cwd, ["brainstorming"]);
     const manifest = await readFile(join(cwd, ".aiw/manifest.yml"), "utf8");
     const ownership = await readFile(join(cwd, ".aiw/ownership.yml"), "utf8");
     let triggered = false;
@@ -681,6 +747,7 @@ tasks:
   it("renders all neutral resource categories when changing target", async () => {
     const cwd = await project();
     await run(["install", "--target", "universal"], cwd);
+    await syncCapabilities(cwd, ["brainstorming"]);
     const resources = join(cwd, ".aiw/resources");
     const fixtures = [
       ["skills/review/SKILL.md", ".claude/skills/review/SKILL.md"],
@@ -1861,6 +1928,7 @@ resources:
   it("preserves and reports an edited installed resource during uninstall", async () => {
     const cwd = await project();
     await run(["install", "--target", "codex"], cwd);
+    await syncCapabilities(cwd, ["brainstorming"]);
     const editedResource = join(cwd, ".agents/skills/brainstorming/SKILL.md");
     await writeFile(editedResource, "user-edited skill\n");
     const before = await readFile(join(cwd, ".aiw/manifest.yml"), "utf8");
@@ -1884,13 +1952,13 @@ resources:
     const inventory = await readFile(inventoryPath, "utf8");
     await writeFile(
       inventoryPath,
-      inventory.replace(/path: \.agents\/skills\/[^\n]+/, "path: ../../outside.txt"),
+      inventory.replace(/path: \.agents\/skills\/ai-init\/SKILL\.md/, "path: ../../outside.txt"),
     );
     const result = await run(["uninstall"], cwd);
     expect(result.exitCode).toBe(1);
     expect(result.error).toContain("project-relative");
     await expect(stat(join(cwd, ".aiw/manifest.yml"))).resolves.toBeTruthy();
-    await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
   });
 
   it("does not follow or remove a symlink substituted for an owned resource", async () => {
@@ -1899,6 +1967,7 @@ resources:
     const outside = join(outsideRoot, "outside.md");
     await writeFile(outside, "outside user content\n");
     await run(["install", "--target", "codex"], cwd);
+    await syncCapabilities(cwd, ["brainstorming"]);
     const owned = join(cwd, ".agents/skills/brainstorming/SKILL.md");
     await rm(owned);
     await symlink(outside, owned);
@@ -1976,6 +2045,46 @@ resources:
     const output = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
     expect(output).toContain("id: vitest-testing");
     expect(output).toContain("selected: true");
+    expect(output).toContain("resources: [skills/verification");
+  });
+
+  it("previews recommendations without selecting resources in non-interactive mode", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "latest" } }),
+    );
+
+    const preview = await run(["recommend"], cwd);
+    expect(preview.exitCode).toBe(0);
+    expect(preview.output).toContain("without selection");
+    const recommendations = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
+    expect(recommendations).toContain("id: vitest-testing");
+    expect(recommendations).toContain("selected: false");
+    await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).rejects.toThrow();
+
+    const selection = await run(["recommend", "--select=vitest-testing"], cwd);
+    expect(selection.exitCode).toBe(0);
+    const sync = await run(["sync"], cwd);
+    expect(sync.exitCode).toBe(0);
+    await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).resolves.toBeTruthy();
+  });
+
+  it("allows declining every recommendation explicitly", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "latest" } }),
+    );
+    await run(["recommend", "--select=vitest-testing"], cwd);
+
+    const declined = await run(["recommend", "--select="], cwd);
+    expect(declined.exitCode).toBe(0);
+    const sync = await run(["sync"], cwd);
+    expect(sync.exitCode).toBe(0);
+    await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).rejects.toThrow();
   });
 
   it("generates project-specific resources through the CLI", async () => {

@@ -25,13 +25,15 @@ The published package supports Node.js 18 or newer. Full development checks requ
 npx @multileaf/ai-workflow install --target codex
 ```
 
+Then run `/ai-init` in Codex. The bootstrap scans the repository, explains project-specific recommendations, and waits for the user's selections before installing optional resources.
+
 Supported targets are `codex`, `claude`, `cursor`, `gemini`, `copilot`, and `universal`. Every command uses the same entry point:
 
 ```bash
 npx @multileaf/ai-workflow <command> <options>
 ```
 
-The initial installation creates workflow state and a target-specific `ai-init` skill. Run it in a repository that does not already use the reserved paths shown below: first installation currently writes the base ADR index and target `ai-init` file at those paths. Reinstallation detects existing AI Workflow state and preserves it.
+The initial installation creates workflow state and a target-specific `ai-init` skill. Run it in a repository that does not already use the reserved bootstrap paths shown below: first installation currently writes the base ADR index and target `ai-init` file at those paths. Reinstallation detects existing AI Workflow state and preserves it.
 
 ## What gets created
 
@@ -40,15 +42,7 @@ For a Codex installation, the base layout is:
 ```text
 .agents/
 └── skills/
-    ├── ai-init/SKILL.md
-    ├── brainstorming/SKILL.md
-    ├── requirements-specification/SKILL.md
-    ├── tdd-development/SKILL.md
-    └── ...
-.agents/agents/       # specialist agent definitions
-.agents/hooks/        # lifecycle guidance and compatibility resources
-.agents/rules/        # quality, security, and project rules
-.agents/templates/    # SDD artifact templates
+    └── ai-init/SKILL.md
 .context/
 └── adrs/
     └── INDEX.md
@@ -65,9 +59,9 @@ For a Codex installation, the base layout is:
 └── profile.yml
 ```
 
-`.aiw/` stores the provider-neutral manifest, profile, lockfile, checkpoints, and generated working artifacts. ADRs are stored under `.context/adrs/`. The initial `ai-init` resource is rendered directly to the selected target; installed neutral package resources can be rendered through adapters to paths such as `.claude/skills`, `.cursor/rules`, or `.github/copilot-instructions.md`.
+`.aiw/` stores the provider-neutral manifest, profile, lockfile, checkpoints, bootstrap skill, selected resources, and generated working artifacts. ADRs are stored under `.context/adrs/`. The installer intentionally adds only `ai-init` and the base project state.
 
-The installer activates the bundled workflow package for the selected target, including its skills, rules, agents, hooks, and templates. `ai-init` guides the agent through scanning, recommendations, user selection, synchronization, and the SDD gates. Existing conflicting target resources stop first installation with an actionable error; review or move those files before retrying. Hook resources are rendered according to each adapter's native or compatibility support.
+Run `/ai-init` in the selected coding agent to scan the project and review evidence-based recommendations for skills, rules, agents, hooks, and templates. AI Workflow installs only the resources the user selects, then generates project-specific quality guidance from the detected stack and tools. Existing user files are preserved; conflicts are reported instead of overwritten. Hook resources are rendered according to each adapter's native or compatibility support.
 
 The installer does not modify `.gitignore`. Add `.aiw/generated/` yourself if generated specifications, plans, and artifacts should remain local. Versioned files under `.aiw/checkpoints/` are designed to remain reviewable project history.
 

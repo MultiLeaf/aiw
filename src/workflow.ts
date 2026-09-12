@@ -7,19 +7,24 @@ import {
   renderAiInitPath,
   renderResourcePath,
 } from "./adapter.js";
-import { loadBootstrapResources } from "./bootstrap-resources.js";
+import { loadBundledResources } from "./bundled-resources.js";
 import {
   assertSafeProjectPath,
   withSafeProjectWrites,
   writeProjectFilesAtomically,
 } from "./files.js";
 import { parseProjectProfile, profileProject } from "./profile.js";
+import type { ProjectProfile } from "./profile.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
 import { applyOverrides, parseOverrides } from "./confirmation.js";
 import { mergeFacts } from "./intelligence.js";
 import { createInterpretationRequest } from "./interpreter.js";
-import { recommendCapabilities, serializeRecommendations } from "./recommendations.js";
+import {
+  recommendCapabilities,
+  resourcesForCapabilities,
+  serializeRecommendations,
+} from "./recommendations.js";
 import { selectRecommendations } from "./selection.js";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -203,28 +208,26 @@ export async function runCommand(
           output: `AI Workflow is already installed for target: ${active}. Existing state preserved.`,
         };
       }
-      const bootstrapResources = loadBootstrapResources(target);
-      const desiredResources = new Map<string, string>();
+      const aiInitPath = join(root, renderAiInitPath(target));
+      const neutralAiInitPath = join(aiw, "resources/skills/ai-init.md");
+      const aiInitContent = renderAiInit(target);
+      const desiredResources = new Map<string, string>([[aiInitPath, aiInitContent]]);
       const ownershipMetadata = new Map<string, OwnershipMetadata>();
-      bootstrapResources.forEach(({ type, id, path, content }) => {
-        const targetPath = join(root, path);
-        const neutralPath = join(root, renderResourcePath("universal", type, id));
-        desiredResources.set(targetPath, content);
-        desiredResources.set(neutralPath, content);
-        ownershipMetadata.set(neutralPath, {
+      ownershipMetadata.set(aiInitPath, {
+        kind: "ai-init",
+        target,
+        resourceType: "skills",
+        resourceId: "ai-init",
+      });
+      if (neutralAiInitPath !== aiInitPath) {
+        desiredResources.set(neutralAiInitPath, aiInitContent);
+        ownershipMetadata.set(neutralAiInitPath, {
           kind: "neutral-resource",
           target: "universal",
-          resourceType: type,
-          resourceId: id,
+          resourceType: "skills",
+          resourceId: "ai-init",
         });
-        if (targetPath !== neutralPath)
-          ownershipMetadata.set(targetPath, {
-            kind: "target-resource",
-            target,
-            resourceType: type,
-            resourceId: id,
-          });
-      });
+      }
       const conflicts: string[] = [];
       const pendingWrites = new Map<string, string>();
       const inspectDesiredFile = (path: string, content: string, allowExisting = false): void => {
@@ -239,20 +242,6 @@ export async function runCommand(
       };
 
       for (const [path, content] of desiredResources) inspectDesiredFile(path, content);
-      if (conflicts.length)
-        return {
-          exitCode: 1,
-          error: `Installation found existing target resources: ${conflicts.join(", ")}. Review and move them before retrying.`,
-        };
-
-      const aiInitPath = join(root, renderAiInitPath(target));
-      ownershipMetadata.set(aiInitPath, {
-        kind: "ai-init",
-        target,
-        resourceType: "skills",
-        resourceId: "ai-init",
-      });
-      inspectDesiredFile(aiInitPath, renderAiInit(target));
       if (conflicts.length)
         return {
           exitCode: 1,
@@ -275,7 +264,7 @@ export async function runCommand(
           exitCode: 1,
           error: `Installation found conflicting project state: ${conflicts.join(", ")}. Review and move it before retrying.`,
         };
-      const ownedPaths = new Set([...desiredResources.keys(), aiInitPath]);
+      const ownedPaths = new Set(desiredResources.keys());
       if (pendingWrites.has(adrIndex)) ownedPaths.add(adrIndex);
       const ownedFiles = [...ownedPaths]
         .filter((path) => pendingWrites.has(path))
@@ -300,7 +289,7 @@ export async function runCommand(
       );
       return {
         exitCode: 0,
-        output: `AI Workflow installed for target: ${target}; activated ${bootstrapResources.length} bundled workflow resources. Run the ai-init skill to scan the project, review recommendations, and begin the SDD gates.`,
+        output: `AI Workflow initialized for target: ${target} with only the ai-init skill. Run /ai-init to scan the project and choose which resources to install.`,
       };
     }
     if (command === "telemetry") {
@@ -511,7 +500,8 @@ export async function runCommand(
         diagnostics.push({ path: ".aiw/resources/skills/ai-init.md", reason: aiInitDiagnostic });
       const targetAiPath = targetPath;
       resourceDestinations.add(targetAiPath);
-      inspectMigrationDestination(targetAiPath, aiInitBytes);
+      if (targetAiPath === neutralAiInit) fileChanges.set(targetAiPath, aiInitBytes);
+      else inspectMigrationDestination(targetAiPath, aiInitBytes);
 
       const previousTargetEntries =
         previousTarget === "universal"
@@ -794,26 +784,34 @@ export async function runCommand(
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       const recommendations =
         services.recommender?.recommend(profile) ?? recommendCapabilities(profile);
-      const selectedArg = args.find((arg) => arg.startsWith("--select="))?.split("=", 2)[1];
-      if (!selectedArg && !stdin.isTTY) {
-        return {
-          exitCode: 1,
-          error:
-            "Interactive selection requires a TTY. Use --select=id,id in non-interactive environments.",
-        };
+      const selectedOption = args.find((arg) => arg.startsWith("--select="));
+      const selectedArg = selectedOption?.slice("--select=".length) ?? "";
+      let selection: string[];
+      if (selectedOption !== undefined)
+        selection = await selectRecommendations(
+          recommendations,
+          async () => "n",
+          selectedArg ? selectedArg.split(",") : [],
+        );
+      else if (!stdin.isTTY) selection = [];
+      else {
+        const terminal = createInterface({ input: stdin, output: stdout });
+        selection = await selectRecommendations(recommendations, (question) =>
+          terminal.question(question),
+        );
+        terminal.close();
       }
-      const terminal = createInterface({ input: stdin, output: stdout });
-      const selection = await selectRecommendations(
-        recommendations,
-        (question) => terminal.question(question),
-        selectedArg?.split(","),
-      );
-      terminal.close();
       fs.write(
         join(aiw, "recommendations.yml"),
         serializeRecommendations(recommendations, selection),
       );
-      return { exitCode: 0, output: `${recommendations.length} recommendations generated.` };
+      return {
+        exitCode: 0,
+        output:
+          selectedOption === undefined && !stdin.isTTY
+            ? `${recommendations.length} recommendations generated without selection; review .aiw/recommendations.yml, then record user choices with --select=id,id.`
+            : `${recommendations.length} recommendations generated.`,
+      };
     }
     if (command === "skills") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -919,6 +917,12 @@ export async function runCommand(
           "vercel-labs/agent-skills",
           "vercel-react-best-practices",
         );
+      }
+      if (command === "sync") {
+        const result = syncSelectedResources(fs, root, aiw, profile, selected);
+        return result.error
+          ? { exitCode: 1, error: result.error }
+          : { exitCode: 0, output: result.output };
       }
       const conflicts: string[] = [];
       generateProjectResources(profile, selected, (path, content) => {
@@ -1764,6 +1768,163 @@ function containsCredential(
   if (!value || typeof value !== "object" || visited.has(value)) return false;
   visited.add(value);
   return Object.values(value).some((entry) => containsCredential(entry, credential, visited));
+}
+
+function syncSelectedResources(
+  fs: FileSystem,
+  root: string,
+  aiw: string,
+  profile: ProjectProfile,
+  selected: string[],
+): { output?: string; error?: string } {
+  const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
+  const resourceSelections = resourcesForCapabilities(selected);
+  const bundled = loadBundledResources(target);
+  const bundleByKey = new Map(
+    bundled.map((resource) => [`${resource.type}/${resource.id}`, resource]),
+  );
+  const desired = new Map<string, { content: string; metadata: OwnershipMetadata }>();
+  const generatedFiles = new Map<string, string>();
+
+  const addOwned = (path: string, content: string, metadata: OwnershipMetadata): void => {
+    const previous = desired.get(path);
+    if (previous && previous.content !== content)
+      throw new Error(`Selected resources render conflicting content at ${path}`);
+    desired.set(path, { content, metadata });
+  };
+  const addResource = (
+    type: "skills" | "rules" | "agents" | "hooks" | "templates",
+    id: string,
+    content: string,
+  ): void => {
+    const neutralPath = join(root, renderResourcePath("universal", type, id));
+    const targetPath = join(root, renderResourcePath(target, type, id));
+    addOwned(neutralPath, content, {
+      kind: "neutral-resource",
+      target: "universal",
+      resourceType: type,
+      resourceId: id,
+    });
+    if (targetPath !== neutralPath)
+      addOwned(targetPath, content, {
+        kind: "target-resource",
+        target,
+        resourceType: type,
+        resourceId: id,
+      });
+  };
+
+  for (const reference of resourceSelections) {
+    const key = `${reference.type}/${reference.id}`;
+    const resource = bundleByKey.get(key);
+    if (!resource) return { error: `Bundled resource is unavailable: ${key}` };
+    addResource(
+      reference.type,
+      reference.id,
+      personalizeBundledResource(reference.type, reference.id, resource.content, profile),
+    );
+  }
+
+  generateProjectResources(profile, selected, (path, content) => {
+    generatedFiles.set(join(aiw, path), content);
+    const rule = path.match(/^generated\/rules\/(project-quality|tdd-project-policy)\.md$/);
+    if (rule) addResource("rules", rule[1], content);
+  });
+
+  const ownershipPath = join(aiw, "ownership.yml");
+  if (fs.pathType?.(ownershipPath) !== "file")
+    return {
+      error: "AI Workflow ownership inventory is missing or unsafe; reinstall before syncing.",
+    };
+  const inventory = parseOwnership(fs.read(ownershipPath));
+  const nextInventory = new Map(inventory.map((entry) => [entry.path, entry]));
+  const changes: ProjectFileChange[] = [];
+  const conflicts: string[] = [];
+
+  for (const [path, { content, metadata }] of desired) {
+    assertSafeProjectPath(fs, root, path);
+    const relativePath = relative(root, path).split(sep).join("/");
+    const type = fs.pathType?.(path);
+    const owned = nextInventory.get(relativePath);
+    if (type === "missing") {
+      changes.push({ path, content: Buffer.from(content, "utf8") });
+      nextInventory.set(relativePath, createOwnedFile(relativePath, content, metadata));
+      continue;
+    }
+    if (type !== "file" || !owned) {
+      conflicts.push(relativePath);
+      continue;
+    }
+    const actual = fs.read(path);
+    if (createOwnedFile(relativePath, actual).checksum !== owned.checksum) {
+      conflicts.push(relativePath);
+      continue;
+    }
+    if (actual !== content) changes.push({ path, content: Buffer.from(content, "utf8") });
+    nextInventory.set(relativePath, createOwnedFile(relativePath, content, metadata));
+  }
+
+  for (const [path, content] of generatedFiles) {
+    assertSafeProjectPath(fs, root, path);
+    const type = fs.pathType?.(path);
+    if (type === "missing") changes.push({ path, content: Buffer.from(content, "utf8") });
+    else if (type !== "file" || fs.read(path) !== content)
+      conflicts.push(relative(root, path).split(sep).join("/"));
+  }
+
+  if (conflicts.length)
+    return {
+      error: `Sync preserved existing or modified project resources: ${[...new Set(conflicts)].sort().join(", ")}`,
+    };
+  const nextOwnership = serializeOwnership([...nextInventory.values()]);
+  if (fs.read(ownershipPath) !== nextOwnership)
+    changes.push({ path: ownershipPath, content: Buffer.from(nextOwnership, "utf8") });
+  if (changes.length) applyProjectFileChanges(fs, root, changes);
+  return {
+    output: `Synchronized ${resourceSelections.length} selected bundled resources for ${target} and generated ${generatedFiles.size} project-specific files.`,
+  };
+}
+
+function personalizeBundledResource(
+  type: "skills" | "rules" | "agents" | "hooks" | "templates",
+  id: string,
+  content: string,
+  profile: ProjectProfile,
+): string {
+  if (type !== "rules" || !["quality-gates", "tdd-policy", "dependency-policy"].includes(id))
+    return content;
+  const signals = [
+    profile.runtime.languages.length ? `- Languages: ${profile.runtime.languages.join(", ")}` : "",
+    profile.frameworks.length ? `- Frameworks: ${profile.frameworks.join(", ")}` : "",
+    profile.testing ? `- Test runner: ${profile.testing.name}` : "",
+    profile.testing?.command
+      ? `- Test command: \`${safeProjectSignal(profile.testing.command)}\``
+      : "",
+    profile.quality.linter ? `- Linter: ${profile.quality.linter.name}` : "",
+    profile.quality.linter?.command
+      ? `- Lint command: \`${safeProjectSignal(profile.quality.linter.command)}\``
+      : "",
+    profile.quality.formatter ? `- Formatter: ${profile.quality.formatter.name}` : "",
+    profile.quality.formatter?.command
+      ? `- Format command: \`${safeProjectSignal(profile.quality.formatter.command)}\``
+      : "",
+  ].filter(Boolean);
+  return signals.length
+    ? `${content.trimEnd()}\n\n## Detected project context\n\n${signals.join("\n")}\n`
+    : content;
+}
+
+function safeProjectSignal(value: string): string {
+  return value
+    .split("")
+    .map((character) =>
+      character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 || character === "`"
+        ? " "
+        : character,
+    )
+    .join("")
+    .replace(/\s+/g, " ")
+    .slice(0, 180);
 }
 
 function readSelectedRecommendations(fs: FileSystem, aiw: string): string[] {

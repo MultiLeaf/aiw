@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-12
+
+### Fixed
+
+- Keep first install limited to the `ai-init` bootstrap and neutral AI Workflow state; install optional capabilities only after the project scan and explicit user selection.
+- Materialize only selected skills, rules, agents, hooks, and templates, and personalize supported rules with detected project commands.
+- Allow non-interactive recommendation previews without silently selecting or installing capabilities.
+
 ## [0.1.1] - 2026-09-12
 
 ### Fixed
@@ -36,6 +44,7 @@ All notable changes to this project are documented in this file. The format foll
 
 - Path confinement, symlink protection, explicit permission gates, secret redaction, strict parsers, atomic migrations, and immutable execution checkpoints.
 
-[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/MultiLeaf/aiw/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.1
 [0.1.0]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.0

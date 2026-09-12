@@ -8,9 +8,9 @@ export function generateProjectResources(
   selected: string[],
   write: ResourceWriter,
 ): void {
-  const linterCommand = profile.quality.linter?.command;
-  const formatterCommand = profile.quality.formatter?.command;
-  const testCommand = profile.testing?.command;
+  const linterCommand = safeInlineValue(profile.quality.linter?.command);
+  const formatterCommand = safeInlineValue(profile.quality.formatter?.command);
+  const testCommand = safeInlineValue(profile.testing?.command);
   if (selected.includes("typescript-quality"))
     write(
       resolveGeneratedPath("rules/project-quality.md"),
@@ -36,4 +36,17 @@ export function generateProjectResources(
       `# Quality Check Hook\n\nRun the available project quality commands before completion.${linterCommand ? `\n\n- Linter: \`${linterCommand}\`` : ""}${formatterCommand ? `\n- Formatter: \`${formatterCommand}\`` : ""}${testCommand ? `\n- Tests: \`${testCommand}\`` : ""}\n`,
     );
   }
+}
+
+function safeInlineValue(value: string | undefined): string | undefined {
+  return value
+    ?.split("")
+    .map((character) =>
+      character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 || character === "`"
+        ? " "
+        : character,
+    )
+    .join("")
+    .replace(/\s+/g, " ")
+    .slice(0, 180);
 }

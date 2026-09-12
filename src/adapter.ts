@@ -37,20 +37,20 @@ description: Initialize AI Workflow and run its specification-driven development
 
 # AI Workflow Initialization
 
-Set up the repository's AI-assisted development workflow. Do not stop after scanning or writing configuration: activate the installed skills, rules, agents, hooks, and templates, then guide the user through the project gates.
-
-Analyze the repository safely, confirm uncertain facts, and recommend project-specific capabilities.
+This skill is the bootstrap for AI Workflow. The installer intentionally installs only this skill and the provider-neutral project state. Do not copy or activate the full resource package automatically.
 
 ## First-run setup
 
-1. Inspect the repository and existing AI instructions. Preserve user-authored files and ask before replacing conflicts.
-2. Run \`aiw scan\` and review detected facts and evidence. Confirm uncertain inferences with the user before treating them as project policy.
-3. Run \`aiw recommend\`. Explain each recommendation and its permissions, then install only the capabilities the user selects. Do not approve network or shell permissions implicitly.
-4. Run \`aiw sync\` to generate the selected project-specific resources. Resolve drift or conflicts with the user instead of overwriting them.
-5. Show the available workflow resources and explain how to use them: brainstorming → specification → architecture decision when needed → implementation plan → implementation with tests → verification → traceability → review.
-6. Before advancing each stage, run its matching \`aiw gate <stage>\`. Record validation evidence with \`aiw verify\` and link requirements, decisions, tasks, code, tests, and evidence with \`aiw trace\`.
+1. Inspect the repository's existing AI instructions and project structure. Preserve user-authored files and do not expose secrets.
+2. Run \`aiw scan\`. Explain the detected facts and their evidence; ask the user to confirm uncertain inferences before they influence generated content.
+3. Run \`aiw recommend\`, then read \`.aiw/recommendations.yml\` and \`.aiw/profile.yml\`. Explain why each suggested skill, rule, agent, hook, or template fits and identify external permissions. Ask which capabilities to install, and ask separately before granting an external permission such as \`network:external\`.
+4. Record the user's choices with \`aiw recommend --select=id,id\`; use \`aiw recommend --select=\` when all recommendations are declined. If at least one capability is selected, run \`aiw sync\`; when the user separately approved external network access, pass \`--allow=network:external\`. Sync installs only selected resources and fills supported project rules with detected stack and quality-tool details. Do not add unselected resources or overwrite existing files.
+5. Review the installed resource list and the generated project-specific files with the user. Ask before changing project policy or tailoring any other skill/rule.
+6. Introduce the selected workflow gates: brainstorming → specification → architecture decision when needed → implementation plan → implementation with tests → verification → traceability → review. Use only gates supported by the resources the user chose.
 
-## For each feature request
+If the user declines all recommendations, leave the project with only the bootstrap skill and scan state. Do not treat scanning or recommendation as consent to install.
+
+## For each feature request after setup
 
 - Start with the brainstorming skill when scope, users, constraints, or assumptions are unclear.
 - Create and complete a specification with stable requirement IDs and Given/When/Then acceptance criteria; pass \`aiw gate specification\` before planning.
