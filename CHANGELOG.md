@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-12
+
+### Fixed
+
+- Activate the complete bundled workflow package during installation instead of installing only `ai-init`.
+- Preserve user edits during migration rollback and remove migration checkpoints during uninstall.
+- Match Git ignore rules consistently when scanning projects.
+
+### Security
+
+- Validate package manifests and resource paths, verify local package integrity, and redact credentials from scanned context.
+- Track installed-file ownership so uninstall and migration only remove unchanged AI Workflow files.
+- Require organization approval and explicit consent before loading remote package sources.
+
+### Changed
+
+- Update runtime and development dependencies and expand install, migration, rollback, and security coverage.
+
 ## [0.1.0] - 2026-09-04
 
 ### Added
@@ -18,5 +36,6 @@ All notable changes to this project are documented in this file. The format foll
 
 - Path confinement, symlink protection, explicit permission gates, secret redaction, strict parsers, atomic migrations, and immutable execution checkpoints.
 
-[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/MultiLeaf/aiw/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.1
 [0.1.0]: https://github.com/MultiLeaf/aiw/releases/tag/v0.1.0
