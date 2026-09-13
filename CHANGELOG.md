@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-13
+
+### Added
+
+- Persisted human approval gates for every SDD stage, with explicit optional-stage skips and invalidation when reviewed evidence changes.
+- Reviewable, fingerprint-bound installation previews with conflict detection and rollback on failed syncs.
+- Reusable implementation evidence and code review templates, plus completeness checks for every workflow stage.
+
+### Changed
+
+- Require an active workflow, ordered stage evidence, a passing quality gate, and explicit human approval before advancing SDD work.
+- Align generated bootstrap and stage skills with the enforced approval and installation flows.
+
 ## [0.1.5] - 2026-09-12
 
 ### Fixed
