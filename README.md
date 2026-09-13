@@ -126,27 +126,35 @@ flowchart TD
 
     G -->|Yes| H[Brainstorm]
     H --> I[(generated/specs/brainstorm.md)]
-    I --> J{Brainstorm gate}
+    I --> J{Brainstorm quality gate}
     J -->|Incomplete| H
-    J -->|Complete| K[Write specification]
+    J -->|Complete| JH{Human approves brainstorm?}
+    JH -->|Revise| H
+    JH -->|Approve| K[Write specification]
     G -->|No| K
 
     K --> L[(generated/specs/specification.md)]
-    L --> M{Specification gate}
+    L --> M{Specification quality gate}
     M -->|Incomplete| K
-    M -->|Complete| N{Architecture decision needed?}
+    M -->|Complete| MH{Human approves requirements?}
+    MH -->|Revise| K
+    MH -->|Approve| N{Architecture decision needed?}
 
     N -->|Yes| O[Create ADR]
     O --> P[(.context/adrs/ADR-NNN-title.md)]
     P --> Q[Update ADR index]
     Q --> R[(.context/adrs/INDEX.md)]
-    N -->|No| S[Create implementation plan]
-    R --> S
+    R --> RH{Human approves design?}
+    RH -->|Revise| O
+    RH -->|Approve| S[Create implementation plan]
+    N -->|No| S
 
     S --> T[(generated/plans/implementation-plan.md)]
-    T --> U{Plan gate}
+    T --> U{Plan quality gate}
     U -->|Incomplete| S
-    U -->|Ready| V[Implement tasks with TDD]
+    U -->|Ready| UH{Human approves plan?}
+    UH -->|Revise| S
+    UH -->|Approve| V[Implement tasks with TDD]
 
     V --> W[Write code and tests]
     W --> X[Run task validation commands]
@@ -155,17 +163,24 @@ flowchart TD
     Y -->|Yes| Z[Record completion evidence]
 
     Z --> AA[(generated/artifacts and checkpoint evidence)]
-    AA --> AB[Write verification report]
-    AB --> AC{Verification gate}
+    AA --> AAH{Human accepts implementation?}
+    AAH -->|Revise| V
+    AAH -->|Approve| AB[Write verification report]
+    AB --> AC{Verification quality gate}
     AC -->|Missing evidence| V
-    AC -->|Complete| AD[Build traceability graph]
-
-    AD --> AE[Requirement → ADR → Task → Code → Test → Evidence]
-    AE --> AF[(generated artifacts and trace output)]
-    AF --> AG[Run code-review skill when installed]
+    AC -->|Complete| ACH{Human approves verification?}
+    ACH -->|Revise| V
+    ACH -->|Approve| AG[Run code-review skill when installed]
     AG --> AH{Review findings?}
     AH -->|Changes required| V
-    AH -->|Clear| AI[Run repository self-validation]
+    AH -->|Clear| AHR{Human accepts review outcome?}
+    AHR -->|Address findings| V
+    AHR -->|Approve| AD[Build final traceability graph]
+    AD --> AE[Requirement → ADR → Task → Code → Test → Evidence]
+    AE --> AF[(generated artifacts and trace output)]
+    AF --> AFH{Human approves traceability?}
+    AFH -->|Revise| AD
+    AFH -->|Approve| AI[Run repository self-validation]
     AI --> AJ[(.aiw/checkpoints/self-validation-TICKET.yml)]
     AJ --> AK[Commit and independent integration validation]
 
@@ -185,24 +200,37 @@ npx @multileaf/ai-workflow recommend
 # In CI, provide comma-separated recommendation IDs detected for that project.
 npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 
-# Create structured product artifacts.
+# Track a feature from its first artifact through final human approval.
+npx @multileaf/ai-workflow workflow start
 npx @multileaf/ai-workflow brainstorm --title="Feature name"
-npx @multileaf/ai-workflow spec --title="Feature requirements"
-npx @multileaf/ai-workflow adr --id=001 --title="Technical decision"
-npx @multileaf/ai-workflow plan --title="Implementation plan"
-
-# Optional, after creating a brainstorm artifact for an unclear request:
 npx @multileaf/ai-workflow gate brainstorming
-# After filling the specification and plan scaffolds shown above:
+# Present evidence and wait for a human reply before each approve command.
+npx @multileaf/ai-workflow approve brainstorming
+npx @multileaf/ai-workflow spec --title="Feature requirements"
 npx @multileaf/ai-workflow gate specification
+npx @multileaf/ai-workflow approve specification
+npx @multileaf/ai-workflow adr --id=001 --title="Technical decision"
+npx @multileaf/ai-workflow gate technical-design
+npx @multileaf/ai-workflow approve technical-design
+npx @multileaf/ai-workflow plan --title="Implementation plan"
 npx @multileaf/ai-workflow gate plan
-# After writing .aiw/generated/reports/verification-report.md from the verification report template:
+npx @multileaf/ai-workflow approve plan
+# After implementation, write implementation-report.md and pass its gate.
+npx @multileaf/ai-workflow gate implementation
+npx @multileaf/ai-workflow approve implementation
+# Write verification-report.md and code-review.md before their gates.
 npx @multileaf/ai-workflow gate verification
+npx @multileaf/ai-workflow approve verification
+npx @multileaf/ai-workflow gate review
+npx @multileaf/ai-workflow approve review
 npx @multileaf/ai-workflow verify
 npx @multileaf/ai-workflow trace
+npx @multileaf/ai-workflow gate traceability
+npx @multileaf/ai-workflow approve traceability
+npx @multileaf/ai-workflow workflow complete
 ```
 
-Scaffold commands write deterministic files at fixed paths and a repeated invocation replaces that scaffold. Complete and review each artifact before advancing. Requirements use stable identifiers and Given/When/Then acceptance criteria. Plans link tasks to requirements, tests, risks, dependencies, and expected evidence. Each `gate` validates the artifact named by its stage. `verify` checks that the specification has acceptance criteria and the plan links requirements to validation; it does not execute project test commands. `trace` records declared links between requirements, decisions, tasks, code, tests, and evidence. Code review is performed with the `code-review` skill when installed; there is no separate review gate command.
+Scaffold commands write deterministic files at fixed paths and a repeated invocation replaces that scaffold. Each applicable workflow stage requires two separate checks: its automated quality gate (when available), then explicit human approval. After presenting the artifact or evidence, the agent must stop and wait for the human before invoking the next skill, command, scaffold, or implementation action. A passing `aiw gate` validates artifact completeness only; it never records or implies human approval. Requirements use stable identifiers and Given/When/Then acceptance criteria. Plans link tasks to requirements, tests, risks, dependencies, and expected evidence. `verify` checks that the specification has acceptance criteria and the plan links requirements to validation; it does not execute project test commands. `trace` records declared links between requirements, decisions, tasks, code, tests, and evidence. Code review is performed with the `code-review` skill when installed; there is no separate review gate command, but the human must accept the review outcome before completion.
 
 ## Project intelligence
 

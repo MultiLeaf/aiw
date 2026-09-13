@@ -57,4 +57,34 @@ describe("quality gates", () => {
       );
     },
   );
+
+  it("requires reviewable technical design, implementation, review, and traceability evidence", () => {
+    expect(
+      evaluateQualityGate(
+        "technical-design",
+        "## Context\nNeed\n## Proposed Design\nModule\n## Alternatives\nA or B\n## Interfaces\nAPI\n## Risks\nMigration\n## Validation\nTests\n",
+      ),
+    ).toEqual([]);
+    expect(
+      evaluateQualityGate(
+        "implementation",
+        "## Changed Files\nsrc/a.ts\n## Tests\nnpm test\n## Validation\npassed\n## Deviations\nNone\n",
+      ),
+    ).toEqual([]);
+    expect(
+      evaluateQualityGate(
+        "review",
+        "## Scope\nDiff\n## Findings\nNone\n## Checks\nReviewed tests\n## Residual Risks\nNone\n## Decision\nAccept\n",
+      ),
+    ).toEqual([]);
+    expect(evaluateQualityGate("implementation", "## Tests\nNo tests\n")).toContain(
+      "Implementation Evidence section Changed Files is missing.",
+    );
+    expect(
+      evaluateQualityGate(
+        "traceability",
+        "schema: 1\nlinks:\n  - requirement: REQ-001\n    tasks: [TASK-001]\n    decisions: []\n    code: [src/a.ts]\n    tests: [src/a.test.ts]\n    evidence: [npm test]\n",
+      ),
+    ).toEqual([]);
+  });
 });

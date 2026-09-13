@@ -34,8 +34,77 @@ async function syncCapabilities(cwd: string, ids: string[]): Promise<void> {
   );
   const recommendation = await run(["recommend", `--select=${ids.join(",")}`], cwd);
   expect(recommendation.exitCode).toBe(0);
-  const result = await run(["sync"], cwd);
+  const result = await syncWithApproval(cwd);
   expect(result.exitCode).toBe(0);
+}
+
+async function syncWithApproval(
+  cwd: string,
+  options: string[] = [],
+  services?: Parameters<typeof run>[2],
+): Promise<Awaited<ReturnType<typeof run>>> {
+  const preview = await run(["sync", "--preview", ...options], cwd, services);
+  const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+  if (!fingerprint)
+    return { exitCode: 1, error: preview.error ?? "Sync preview did not produce a fingerprint." };
+  return run(["sync", `--approve-plan=${fingerprint}`, ...options], cwd, services);
+}
+
+async function advanceWorkflowTo(cwd: string, target: string): Promise<void> {
+  const stages = [
+    "brainstorming",
+    "specification",
+    "technical-design",
+    "plan",
+    "implementation",
+    "verification",
+    "review",
+    "traceability",
+  ];
+  const targetIndex = stages.indexOf(target);
+  if (targetIndex < 0) throw new Error(`Unknown test workflow stage: ${target}`);
+  await run(["workflow", "start", "--id=test-workflow"], cwd);
+  for (const stage of stages.slice(0, targetIndex)) {
+    if (stage === "brainstorming" || stage === "technical-design") {
+      await run(["skip", stage, "--reason=Not needed by this test"], cwd);
+      continue;
+    }
+    if (stage === "specification") {
+      await run(["spec"], cwd);
+      await writeFile(
+        join(cwd, ".aiw/generated/specs/specification.md"),
+        "## Requirements\nREQ-001\n## Acceptance criteria\nGiven a user\nWhen they act\nThen it works\n",
+      );
+    } else if (stage === "plan") {
+      await run(["plan"], cwd);
+      await writeFile(
+        join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+        "TASK-001\nRequirement: REQ-001\nCode: src/main.ts\nTests: src/main.test.ts\nValidation: npm test\nEvidence: test output\n",
+      );
+    } else if (stage === "implementation") {
+      await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
+      await writeFile(
+        join(cwd, ".aiw/generated/reports/implementation-report.md"),
+        "## Changed Files\nsrc/main.ts\n## Tests\nmain.test.ts\n## Validation\nnpm test\n## Deviations\nNone\n",
+      );
+    } else if (stage === "verification") {
+      await writeFile(
+        join(cwd, ".aiw/generated/reports/verification-report.md"),
+        "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
+      );
+    } else if (stage === "review") {
+      await writeFile(
+        join(cwd, ".aiw/generated/reports/code-review.md"),
+        "## Scope\nFeature\n## Findings\nNone\n## Checks\nTests reviewed\n## Residual Risks\nNone\n## Decision\nAccept\n",
+      );
+    } else if (stage === "traceability") {
+      await run(["trace"], cwd);
+    }
+    const gate = await run(["gate", stage], cwd);
+    if (gate.exitCode !== 0) throw new Error(gate.error ?? `Gate failed: ${stage}`);
+    const approval = await run(["approve", stage], cwd);
+    if (approval.exitCode !== 0) throw new Error(approval.error ?? `Approval failed: ${stage}`);
+  }
 }
 
 describe("AI Workflow CLI", () => {
@@ -113,10 +182,23 @@ tasks:
       "trace",
     ])
       expect(aiInit).toContain(`npx --yes --package=@multileaf/ai-workflow -- aiw ${command}`);
-    expect(aiInit).toContain("Install only selected resources and declared dependencies");
+    expect(aiInit).toContain("Install only confirmed selected resources and declared dependencies");
     expect(aiInit).toContain("Present recommendations as concise tables grouped by category");
     expect(aiInit).toContain("short project-specific reason for the recommendation");
     expect(aiInit).toContain("Do not show a flat list without category headings");
+    expect(aiInit).toContain("Mandatory interaction checkpoints");
+    expect(aiInit).toContain("end your current response/turn immediately");
+    expect(aiInit).toContain(
+      "Do not launch analysis agents or run `aiw scan` until the user replies",
+    );
+    expect(aiInit).toContain("widget must start with no choice selected");
+    expect(aiInit).toContain(
+      "Before syncing a non-empty selection, show the exact selected resources",
+    );
+    expect(aiInit).toContain("Run sync only after that confirmation arrives");
+    expect(aiInit).toContain("Mandatory human gates between stages");
+    expect(aiInit).toContain("a passing result is not human approval");
+    expect(aiInit).toContain("Do not invoke the next skill, create its scaffold");
     expect(aiInit).toContain("All generated AI Workflow artifacts must be written in English");
     expect(result.output).toContain("only the ai-init skill");
   });
@@ -140,7 +222,7 @@ tasks:
     );
     expect(recommendation.exitCode).toBe(0);
     expect(recommendation.output).toContain("recommendations generated");
-    const sync = await run(["sync"], cwd);
+    const sync = await syncWithApproval(cwd);
 
     expect(sync.exitCode).toBe(0);
     await expect(stat(join(cwd, ".agents/skills/brainstorming/SKILL.md"))).resolves.toBeTruthy();
@@ -188,7 +270,7 @@ tasks:
       "selected_resources: [rules/tdd-policy, agents/test-engineer]",
     );
 
-    const sync = await run(["sync"], cwd);
+    const sync = await syncWithApproval(cwd);
     expect(sync.exitCode).toBe(0);
     await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(cwd, ".agents/rules/tdd-policy/tdd-policy.md"))).resolves.toBeTruthy();
@@ -1126,6 +1208,7 @@ tasks:
   it("runs self-validation and records generated-output evidence", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "brainstorming");
     await run(["brainstorm"], cwd);
     const calls: string[][] = [];
     const result = await run(["self-validate", "--ticket=FND-009"], cwd, {
@@ -1169,6 +1252,7 @@ tasks:
   it("creates an English brainstorming artifact with required sections", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "brainstorming");
     const result = await run(["brainstorm", "--title=Portable Workflow"], cwd);
     expect(result.exitCode).toBe(0);
     const artifact = await readFile(join(cwd, ".aiw/generated/specs/brainstorm.md"), "utf8");
@@ -1188,6 +1272,7 @@ tasks:
   it("creates a specification with stable requirement IDs and acceptance criteria", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "specification");
     const result = await run(["spec", "--title=Workflow Specification"], cwd);
     expect(result.exitCode).toBe(0);
     const artifact = await readFile(join(cwd, ".aiw/generated/specs/specification.md"), "utf8");
@@ -1204,6 +1289,7 @@ tasks:
   it("creates an ADR with alternatives, decision, rationale, and links", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "technical-design");
     const result = await run(["adr", "--id=007", "--title=Use Neutral Adapters"], cwd);
     expect(result.exitCode).toBe(0);
     const path = join(cwd, ".context/adrs/ADR-007-use-neutral-adapters.md");
@@ -1217,6 +1303,7 @@ tasks:
   it("creates an implementation plan linked to requirements and validation commands", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "plan");
     const result = await run(["plan", "--title=First Increment"], cwd);
     expect(result.exitCode).toBe(0);
     const artifact = await readFile(
@@ -1233,20 +1320,20 @@ tasks:
     expect(artifact).toContain("Link code changes, test results, and validation output");
   });
 
-  it("reports missing verification evidence and passes after required artifacts exist", async () => {
+  it("requires an active approved workflow before verification", async () => {
     const cwd = await project();
     await run(["install"], cwd);
-    expect((await run(["verify"], cwd)).error).toContain("Specification artifact is missing");
-    await run(["spec"], cwd);
-    await run(["plan"], cwd);
+    expect((await run(["verify"], cwd)).error).toContain("No SDD workflow is active");
+    await advanceWorkflowTo(cwd, "verification");
     const result = await run(["verify"], cwd);
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("Verification passed");
   });
 
-  it("reports each requirement without linked validation coverage", async () => {
+  it("blocks specification approval when acceptance criteria are incomplete", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "specification");
     await writeFile(
       join(cwd, ".aiw/generated/specs/specification.md"),
       "# Spec\n\nREQ-001\n\nREQ-002\n\nAcceptance criteria\n",
@@ -1255,16 +1342,15 @@ tasks:
       join(cwd, ".aiw/generated/plans/implementation-plan.md"),
       "# Plan\n\nREQ-001\n\nValidation: npm test\n",
     );
-    const result = await run(["verify"], cwd);
+    const result = await run(["gate", "specification"], cwd);
     expect(result.exitCode).toBe(1);
-    expect(result.error).toContain("Untested requirements: REQ-002");
+    expect(result.error).toContain("Given");
   });
 
   it("creates a queryable requirement traceability artifact", async () => {
     const cwd = await project();
     await run(["install"], cwd);
-    await run(["spec"], cwd);
-    await run(["plan"], cwd);
+    await advanceWorkflowTo(cwd, "traceability");
     const result = await run(["trace"], cwd);
     expect(result.exitCode).toBe(0);
     const trace = await readFile(join(cwd, ".aiw/generated/artifacts/traceability.yml"), "utf8");
@@ -1274,7 +1360,7 @@ tasks:
     expect(trace).toContain("code:");
     expect(trace).toContain("tests:");
     expect(trace).toContain("evidence:");
-    expect(trace).toContain("npm run check");
+    expect(trace).toContain("npm test");
 
     const query = await run(["trace", "--requirement=REQ-001"], cwd);
     expect(query.exitCode).toBe(0);
@@ -1287,6 +1373,7 @@ tasks:
   it("blocks SDD progression until the previous artifact exists", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "plan");
     expect((await run(["gate", "plan"], cwd)).error).toContain("Quality gate blocked");
     await writeFile(
       join(cwd, ".aiw/generated/plans/implementation-plan.md"),
@@ -1297,9 +1384,172 @@ tasks:
     expect((await run(["gate", "toString"], cwd)).error).toContain("Usage");
   });
 
+  it("persists workflow sessions and requires human approval before stage transitions", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    expect((await run(["spec"], cwd)).error).toContain("No SDD workflow is active");
+    expect((await run(["workflow", "start", "--id=approval-test"], cwd)).exitCode).toBe(0);
+
+    expect((await run(["spec"], cwd)).error).toContain("brainstorming");
+    expect((await run(["skip", "brainstorming", "--reason=Not needed"], cwd)).exitCode).toBe(0);
+    await run(["spec"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
+    );
+    expect((await run(["gate", "specification"], cwd)).exitCode).toBe(0);
+    expect((await run(["plan"], cwd)).error).toContain("specification");
+    expect((await run(["approve", "specification"], cwd)).exitCode).toBe(0);
+    await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw/generated/reports/technical-design.md"),
+      "## Context\nNeed\n## Proposed Design\nModule\n## Alternatives\nA or B\n## Interfaces\nAPI\n## Risks\nMigration\n## Validation\nTests\n",
+    );
+    expect((await run(["gate", "technical-design"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "technical-design"], cwd)).exitCode).toBe(0);
+    expect((await run(["plan"], cwd)).exitCode).toBe(0);
+
+    const status = await run(["workflow", "status"], cwd);
+    expect(status.output).toContain("Workflow approval-test (active)");
+    expect(status.output).toContain("Next action:");
+    expect(status.output).toContain("specification: approved");
+    expect((await run(["workflow", "complete"], cwd)).error).toContain("implementation");
+  });
+
+  it("invalidates downstream approvals when reviewed evidence changes", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=stale-test"], cwd);
+    await run(["skip", "brainstorming", "--reason=Not needed"], cwd);
+    await run(["spec"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
+    );
+    await run(["gate", "specification"], cwd);
+    const specification = join(cwd, ".aiw/generated/specs/specification.md");
+    await writeFile(specification, `${await readFile(specification, "utf8")}Updated.\n`);
+    expect((await run(["approve", "specification"], cwd)).error).toContain("changed after review");
+    expect((await run(["workflow", "status"], cwd)).output).toContain("specification: stale");
+  });
+
+  it("completes every workflow stage only after its gate and explicit approval", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=full-stage-run"], cwd);
+
+    expect((await run(["approve", "brainstorming"], cwd)).error).toContain(
+      "Approval evidence is missing",
+    );
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    expect((await run(["gate", "brainstorming"], cwd)).exitCode).toBe(0);
+    expect((await run(["spec"], cwd)).error).toContain("awaiting human approval");
+    expect((await run(["approve", "brainstorming"], cwd)).exitCode).toBe(0);
+
+    await run(["spec"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they act\nThen the feature works\n",
+    );
+    expect((await run(["gate", "specification"], cwd)).exitCode).toBe(0);
+    expect((await run(["plan"], cwd)).error).toContain("specification");
+    expect((await run(["approve", "specification"], cwd)).exitCode).toBe(0);
+
+    await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw/generated/reports/technical-design.md"),
+      "## Context\nRequirement context\n## Proposed Design\nA modular implementation\n## Alternatives\nAlternative A\n## Interfaces\nStable API\n## Risks\nRegression risk\n## Validation\nAutomated tests\n",
+    );
+    expect((await run(["gate", "technical-design"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "technical-design"], cwd)).exitCode).toBe(0);
+
+    await run(["plan"], cwd);
+    expect((await run(["gate", "plan"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "plan"], cwd)).exitCode).toBe(0);
+    await writeFile(
+      join(cwd, ".aiw/generated/reports/implementation-report.md"),
+      "## Changed Files\nsrc/feature.ts\n## Tests\nsrc/feature.test.ts\n## Validation\nnpm test passed\n## Deviations\nNone\n",
+    );
+    expect((await run(["gate", "implementation"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "implementation"], cwd)).exitCode).toBe(0);
+    await writeFile(
+      join(cwd, ".aiw/generated/reports/verification-report.md"),
+      "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
+    );
+    expect((await run(["gate", "verification"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "verification"], cwd)).exitCode).toBe(0);
+    await writeFile(
+      join(cwd, ".aiw/generated/reports/code-review.md"),
+      "## Scope\nFeature implementation\n## Findings\nNone\n## Checks\nTests and diff reviewed\n## Residual Risks\nNone\n## Decision\nAccept\n",
+    );
+    expect((await run(["gate", "review"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "review"], cwd)).exitCode).toBe(0);
+
+    expect((await run(["trace"], cwd)).exitCode).toBe(0);
+    expect((await run(["gate", "traceability"], cwd)).exitCode).toBe(0);
+    expect((await run(["workflow", "complete"], cwd)).error).toContain("traceability");
+    expect((await run(["approve", "traceability"], cwd)).exitCode).toBe(0);
+    expect((await run(["workflow", "complete"], cwd)).exitCode).toBe(0);
+    expect((await run(["workflow", "status"], cwd)).output).toContain(
+      "Workflow full-stage-run (complete)",
+    );
+  });
+
+  it("records a human rejection before revising and re-gating the current stage", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=rejection-run"], cwd);
+    await run(["skip", "brainstorming", "--reason=Scope is already clear"], cwd);
+    await run(["spec"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they act\nThen it works\n",
+    );
+    await run(["gate", "specification"], cwd);
+    expect((await run(["reject", "specification"], cwd)).error).toContain("Usage");
+    expect(
+      (await run(["reject", "specification", "--reason=Clarify the outcome"], cwd)).exitCode,
+    ).toBe(0);
+    expect((await run(["workflow", "status"], cwd)).output).toContain(
+      "Next action: revise specification",
+    );
+    await run(["spec"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/specification.md"),
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a member\nWhen they request setup\nThen setup completes\n",
+    );
+    expect((await run(["gate", "specification"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "specification"], cwd)).exitCode).toBe(0);
+  });
+
+  it("does not inherit approvals when starting a workflow in legacy project state", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await mkdir(join(cwd, ".aiw/generated/specs"), { recursive: true });
+    await mkdir(join(cwd, ".aiw/generated/plans"), { recursive: true });
+    await writeFile(join(cwd, ".aiw/generated/specs/specification.md"), "REQ-001 already exists\n");
+    await writeFile(
+      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+      "TASK-001 already exists\n",
+    );
+
+    expect((await run(["workflow", "start", "--id=legacy-state"], cwd)).exitCode).toBe(0);
+    const status = await run(["status"], cwd);
+    expect(status.output).toContain("SDD workflow legacy-state (active)");
+    expect(status.output).toContain("Next action: prepare brainstorming evidence.");
+    expect((await run(["plan"], cwd)).error).toContain("brainstorming");
+    const approvalLedger = await readFile(join(cwd, ".aiw/approvals.yml"), "utf8");
+    expect(approvalLedger).toContain("stages: {}\n");
+  });
+
   it("blocks existing but incomplete SDD artifacts with actionable feedback", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "brainstorming");
     await run(["brainstorm"], cwd);
     const result = await run(["gate", "brainstorming"], cwd);
     expect(result.exitCode).toBe(1);
@@ -1309,18 +1559,24 @@ tasks:
   it("validates specifications and verification reports at their matching gates", async () => {
     const cwd = await project();
     await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "specification");
     await writeFile(
       join(cwd, ".aiw/generated/specs/specification.md"),
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
     );
     expect((await run(["gate", "specification"], cwd)).output).toContain("Quality gate passed");
 
-    await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
+    const verificationCwd = await project();
+    await run(["install"], verificationCwd);
+    await advanceWorkflowTo(verificationCwd, "verification");
+    await mkdir(join(verificationCwd, ".aiw/generated/reports"), { recursive: true });
     await writeFile(
-      join(cwd, ".aiw/generated/reports/verification-report.md"),
+      join(verificationCwd, ".aiw/generated/reports/verification-report.md"),
       "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
     );
-    expect((await run(["gate", "verification"], cwd)).output).toContain("Quality gate passed");
+    expect((await run(["gate", "verification"], verificationCwd)).output).toContain(
+      "Quality gate passed",
+    );
   });
 
   it("installs prerequisite workflow skills when a custom stage is selected", async () => {
@@ -1339,7 +1595,7 @@ tasks:
     expect(persisted).toContain("id: implementation-planning");
     expect(persisted).toContain("id: verification");
 
-    const sync = await run(["sync"], cwd);
+    const sync = await syncWithApproval(cwd);
     expect(sync.exitCode).toBe(0);
     for (const skill of [
       "requirements-specification",
@@ -1891,7 +2147,7 @@ resources:
 
   it.each(["generate", "sync"])(
     "enforces organization policy before %s installs an external skill",
-    async (command) => {
+    async (command: string): Promise<void> => {
       const cwd = await project();
       await run(["install", "--target", "codex"], cwd);
       await writeFile(
@@ -1899,18 +2155,19 @@ resources:
         "schema: 1\nname: Engineering\napproved_sources: [vercel-skills:vercel-labs/agent-skills]\ndenied_permissions: [network:external]\n",
       );
       let calls = 0;
-      const result = await run(
-        [command, "--select=react-best-practices", "--allow=network:external"],
-        cwd,
-        {
-          externalSkills: {
-            execute: async () => {
-              calls += 1;
-              return { stdout: "installed", exitCode: 0 };
-            },
+      const options = ["--select=react-best-practices", "--allow=network:external"];
+      const services = {
+        externalSkills: {
+          execute: async (): Promise<{ stdout: string; exitCode: number }> => {
+            calls += 1;
+            return { stdout: "installed", exitCode: 0 };
           },
         },
-      );
+      };
+      const result =
+        command === "sync"
+          ? await syncWithApproval(cwd, options, services)
+          : await run([command, ...options], cwd, services);
 
       if (command === "sync") {
         expect(result.exitCode).toBe(0);
@@ -1949,7 +2206,7 @@ resources:
     }
     await run(["recommend", "--select=all"], cwd);
     let externalCalls = 0;
-    const result = await run(["sync"], cwd, {
+    const result = await syncWithApproval(cwd, [], {
       externalSkills: {
         execute: async () => {
           externalCalls += 1;
@@ -1968,6 +2225,134 @@ resources:
     ).rejects.toThrow();
     for (const [path, content] of existingFiles)
       await expect(readFile(join(cwd, path), "utf8")).resolves.toBe(content);
+  });
+
+  it("previews the exact sync plan and requires approval of its current fingerprint", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "latest" },
+        devDependencies: { typescript: "latest" },
+      }),
+    );
+    const selected = await run(["recommend", "--select=skills/requirements-specification"], cwd);
+    expect(selected.exitCode).toBe(0);
+
+    const preview = await run(["sync", "--preview"], cwd);
+    expect(preview.exitCode).toBe(0);
+    expect(preview.output).toContain('"plan": {');
+    expect(preview.output).toMatch(/"fingerprint": "sha256-[a-f0-9]{64}"/);
+    await expect(
+      stat(join(cwd, ".agents/skills/requirements-specification/SKILL.md")),
+    ).rejects.toThrow();
+
+    const blocked = await run(["sync"], cwd);
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.error).toContain("--approve-plan=");
+
+    const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+    expect(fingerprint).toBeTruthy();
+    const applied = await run(["sync", `--approve-plan=${fingerprint}`], cwd);
+    expect(applied.exitCode).toBe(0);
+    await expect(
+      stat(join(cwd, ".agents/skills/requirements-specification/SKILL.md")),
+    ).resolves.toBeTruthy();
+  });
+
+  it("rejects a sync approval when recommendations change after preview", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "latest" },
+        devDependencies: { typescript: "latest" },
+      }),
+    );
+    await writeFile(join(cwd, "README.md"), "Previewed project README.\n");
+    await run(["recommend", "--select=skills/requirements-specification"], cwd);
+    const preview = await run(["sync", "--preview"], cwd);
+    const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+    expect(fingerprint).toBeTruthy();
+
+    await run(["recommend", "--select=skills/technical-design"], cwd);
+    await writeFile(join(cwd, "README.md"), "Changed after preview.\n");
+    const stale = await run(["sync", `--approve-plan=${fingerprint}`], cwd);
+    expect(stale.exitCode).toBe(1);
+    expect(stale.error).toContain("plan changed after review");
+    await expect(
+      stat(join(cwd, ".agents/skills/requirements-specification/SKILL.md")),
+    ).rejects.toThrow();
+    await expect(stat(join(cwd, ".agents/skills/technical-design/SKILL.md"))).rejects.toThrow();
+  });
+
+  it("lists file conflicts before sync and preserves them without partial writes", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "latest" },
+        devDependencies: { typescript: "latest" },
+      }),
+    );
+    await run(["recommend", "--select=skills/requirements-specification"], cwd);
+    const conflictPath = join(cwd, ".agents/skills/requirements-specification/SKILL.md");
+    await mkdir(dirname(conflictPath), { recursive: true });
+    await writeFile(conflictPath, "human-owned content\n");
+
+    const preview = await run(["sync", "--preview"], cwd);
+    expect(preview.output).toContain(".agents/skills/requirements-specification/SKILL.md");
+    expect(preview.output).toContain('"conflicts": [');
+    const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+    expect(fingerprint).toBeTruthy();
+    const result = await run(["sync", `--approve-plan=${fingerprint}`], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("conflicts and made no changes");
+    await expect(readFile(conflictPath, "utf8")).resolves.toBe("human-owned content\n");
+    await expect(stat(join(cwd, ".aiw/generated/context/project-profile.md"))).rejects.toThrow();
+  });
+
+  it("rolls back every sync write when the filesystem fails mid-apply", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "latest" },
+        devDependencies: { typescript: "latest" },
+      }),
+    );
+    await run(["recommend", "--select=skills/requirements-specification"], cwd);
+    const preview = await run(["sync", "--preview"], cwd);
+    const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+    expect(fingerprint).toBeTruthy();
+    const originalOwnership = await readFile(join(cwd, ".aiw/ownership.yml"), "utf8");
+    let writes = 0;
+    const failingFileSystem: FileSystem = {
+      ...nodeFileSystem,
+      writeBytes: (path, content) => {
+        writes += 1;
+        if (writes === 2) throw new Error("injected filesystem failure");
+        nodeFileSystem.writeBytes?.(path, content);
+      },
+    };
+    const result = await runCommand(
+      ["sync", `--approve-plan=${fingerprint}`],
+      cwd,
+      failingFileSystem,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("injected filesystem failure");
+    await expect(readFile(join(cwd, ".aiw/ownership.yml"), "utf8")).resolves.toBe(
+      originalOwnership,
+    );
+    await expect(
+      stat(join(cwd, ".agents/skills/requirements-specification/SKILL.md")),
+    ).rejects.toThrow();
+    await expect(stat(join(cwd, ".aiw/generated/context/project-profile.md"))).rejects.toThrow();
   });
 
   it.each(["check", "update"])(
@@ -2270,7 +2655,7 @@ resources:
 
     const selection = await run(["recommend", "--select=verification"], cwd);
     expect(selection.exitCode).toBe(0);
-    const sync = await run(["sync"], cwd);
+    const sync = await syncWithApproval(cwd);
     expect(sync.exitCode).toBe(0);
     await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).resolves.toBeTruthy();
   });
@@ -2286,7 +2671,7 @@ resources:
 
     const declined = await run(["recommend", "--select="], cwd);
     expect(declined.exitCode).toBe(0);
-    const sync = await run(["sync"], cwd);
+    const sync = await syncWithApproval(cwd);
     expect(sync.exitCode).toBe(0);
     await expect(stat(join(cwd, ".agents/skills/verification/SKILL.md"))).rejects.toThrow();
   });
@@ -2339,7 +2724,7 @@ resources:
     await mkdir(join(cwd, "src"));
     await writeFile(join(cwd, "src", "main.ts"), "export {};\n");
     await run(["recommend", "--select=typescript-quality"], cwd);
-    const result = await run(["sync"], cwd);
+    const result = await syncWithApproval(cwd);
     expect(result.exitCode).toBe(0);
     await expect(stat(join(cwd, ".aiw/generated/rules/project-quality.md"))).resolves.toBeTruthy();
   });

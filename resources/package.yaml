@@ -69,6 +69,8 @@ resources:
     - { id: task, version: 0.1.0, path: templates/task.md }
     - { id: test-plan, version: 0.1.0, path: templates/test-plan.md }
     - { id: verification-report, version: 0.1.0, path: templates/verification-report.md }
+    - { id: implementation-evidence, version: 0.1.0, path: templates/implementation-evidence.md }
+    - { id: code-review, version: 0.1.0, path: templates/code-review.md }
     - { id: security-review, version: 0.1.0, path: templates/security-review.md }
     - { id: migration-report, version: 0.1.0, path: templates/migration-report.md }
 provides:

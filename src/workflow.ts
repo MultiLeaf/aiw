@@ -1,4 +1,5 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
 import {
   detectTarget,
@@ -15,7 +16,7 @@ import {
 } from "./files.js";
 import { parseProjectProfile, profileProject } from "./profile.js";
 import type { ProjectProfile } from "./profile.js";
-import type { CommandResult, FileSystem } from "./types.js";
+import type { CommandResult, FileSystem, HumanApprovalStage } from "./types.js";
 import { serializeOverrides, type FactOverride } from "./confirmation.js";
 import { applyOverrides, parseOverrides } from "./confirmation.js";
 import { mergeFacts } from "./intelligence.js";
@@ -78,6 +79,24 @@ import {
   serializeSummaryCache,
 } from "./context-cache.js";
 import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "./token-usage.js";
+import {
+  APPROVAL_STAGES,
+  approveStage,
+  beginStageApproval,
+  createApprovalLedger,
+  getUnresolvedPrerequisites,
+  invalidateStageAndDescendants,
+  parseApprovalLedger,
+  parseWorkflowSession,
+  rejectStage,
+  serializeApprovalLedger,
+  serializeWorkflowSession,
+  skipOptionalStage,
+  stageDefinition,
+  stageFingerprint,
+  type ApprovalLedger,
+  type WorkflowSession,
+} from "./human-approval.js";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
@@ -132,6 +151,148 @@ export async function runCommand(
   try {
     fs = withSafeProjectWrites(fs, root);
     const command = args[0] ?? "help";
+    if (command === "workflow") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const action = args[1];
+      const sessionPath = join(aiw, "workflow.yml");
+      const ledgerPath = join(aiw, "approvals.yml");
+      if (action === "start") {
+        const options = parseNamedOptions(args.slice(2), ["id"]);
+        if (!options) return { exitCode: 1, error: "Usage: aiw workflow start [--id=workflow-id]" };
+        if (fs.exists(sessionPath)) {
+          const previous = parseWorkflowSession(fs.read(sessionPath));
+          if (previous.status === "active")
+            return {
+              exitCode: 1,
+              error: `Workflow ${previous.workflowId} is still active. Complete it before starting another.`,
+            };
+          if (!fs.exists(ledgerPath))
+            return { exitCode: 1, error: "Completed workflow is missing its approval ledger." };
+          const archive = join(aiw, `checkpoints/workflow-${previous.workflowId}-approvals.yml`);
+          if (fs.exists(archive))
+            return { exitCode: 1, error: `Workflow approval archive already exists: ${archive}` };
+          fs.mkdir(join(aiw, "checkpoints"));
+          fs.write(archive, fs.read(ledgerPath));
+        } else if (fs.exists(ledgerPath)) {
+          return {
+            exitCode: 1,
+            error: "Approval ledger exists without a workflow session; run doctor.",
+          };
+        }
+        const workflowId = options.id ?? randomUUID();
+        const priorRun = join(aiw, `checkpoints/workflow-${workflowId}-approvals.yml`);
+        if (fs.exists(priorRun))
+          return {
+            exitCode: 1,
+            error: `Workflow ID has already been used: ${workflowId}. Choose a new ID.`,
+          };
+        const now = new Date().toISOString();
+        const session = {
+          schema: 1 as const,
+          workflowId,
+          status: "active" as const,
+          startedAt: now,
+          updatedAt: now,
+        };
+        const ledger = createApprovalLedger(workflowId);
+        fs.write(ledgerPath, serializeApprovalLedger(ledger));
+        fs.write(sessionPath, serializeWorkflowSession(session));
+        return { exitCode: 0, output: `Workflow started: ${workflowId}.` };
+      }
+      if (action === "status") {
+        if (!fs.exists(sessionPath)) return { exitCode: 0, output: "No SDD workflow is active." };
+        const { session, ledger } = readWorkflowState(aiw, fs, false);
+        const stages = APPROVAL_STAGES.map(
+          (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
+        );
+        return {
+          exitCode: 0,
+          output: `Workflow ${session.workflowId} (${session.status})\n${stages.join("\n")}\n${workflowNextAction(ledger)}`,
+        };
+      }
+      if (action === "complete") {
+        const { session, ledger } = readActiveWorkflow(aiw, fs);
+        const unresolved = APPROVAL_STAGES.filter(
+          (stage) =>
+            ledger.stages[stage]?.status !== "approved" &&
+            ledger.stages[stage]?.status !== "skipped",
+        );
+        if (unresolved.length)
+          return {
+            exitCode: 1,
+            error: `Workflow cannot complete before every stage is approved or explicitly skipped: ${unresolved.join(", ")}.`,
+          };
+        fs.write(
+          sessionPath,
+          serializeWorkflowSession({
+            ...session,
+            status: "complete",
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+        return { exitCode: 0, output: `Workflow completed: ${session.workflowId}.` };
+      }
+      return {
+        exitCode: 1,
+        error: "Usage: aiw workflow <start|status|complete> [options]",
+      };
+    }
+    if (command === "approve" || command === "reject" || command === "skip") {
+      const stage = args[1];
+      if (!stage || !APPROVAL_STAGES.includes(stage as HumanApprovalStage))
+        return { exitCode: 1, error: `Usage: aiw ${command} <workflow-stage> [options]` };
+      const { ledger } = readActiveWorkflow(aiw, fs);
+      const workflowStage = stage as HumanApprovalStage;
+      if (command === "skip") {
+        const options = parseNamedOptions(args.slice(2), ["reason"]);
+        if (!options?.reason)
+          return {
+            exitCode: 1,
+            error: "Usage: aiw skip <optional-stage> --reason=human-approved-reason",
+          };
+        const updated = skipOptionalStage(ledger, workflowStage, {
+          reason: options.reason,
+          humanAccepted: true,
+          updatedAt: new Date().toISOString(),
+        });
+        fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
+        return { exitCode: 0, output: `Human-approved skip recorded for ${workflowStage}.` };
+      }
+      const artifact = approvalArtifactPath(aiw, workflowStage);
+      if (!artifact || !fs.exists(artifact))
+        return { exitCode: 1, error: `Approval evidence is missing for ${workflowStage}.` };
+      const artifactHash = stageFingerprint(fs.read(artifact));
+      if (command === "approve") {
+        if (ledger.stages[workflowStage]?.artifactHash !== artifactHash) {
+          const invalidated = invalidateStageAndDescendants(
+            ledger,
+            workflowStage,
+            new Date().toISOString(),
+          );
+          fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(invalidated));
+          return {
+            exitCode: 1,
+            error: `The ${workflowStage} artifact changed after review; its approval is stale. Rerun the quality gate and request approval again.`,
+          };
+        }
+        const updated = approveStage(ledger, workflowStage, {
+          artifactHash,
+          updatedAt: new Date().toISOString(),
+        });
+        fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
+        return { exitCode: 0, output: `Human approval recorded for ${workflowStage}.` };
+      }
+      const options = parseNamedOptions(args.slice(2), ["reason"]);
+      if (!options?.reason)
+        return { exitCode: 1, error: "Usage: aiw reject <stage> --reason=human-feedback" };
+      const updated = rejectStage(ledger, workflowStage, options.reason, new Date().toISOString());
+      fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
+      return {
+        exitCode: 0,
+        output: `Human rejection recorded for ${workflowStage}. Revise this stage.`,
+      };
+    }
     if (command === "ui") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -891,42 +1052,55 @@ export async function runCommand(
       const selected =
         selectedArg?.split(",") ?? (command === "sync" ? readSelectedRecommendations(fs, aiw) : []);
       if (command === "sync") {
-        const result = syncSelectedResources(fs, root, aiw, profile, selected);
+        const previewOnly = args.includes("--preview");
+        const planApprovals = args.filter((arg) => arg.startsWith("--approve-plan="));
+        if (planApprovals.length > 1 || (previewOnly && planApprovals.length > 0))
+          return {
+            exitCode: 1,
+            error: "Usage: aiw sync [--preview | --approve-plan=sha256-fingerprint]",
+          };
+        const approval = planApprovals[0]?.slice("--approve-plan=".length);
+        const result = syncSelectedResources(
+          fs,
+          root,
+          aiw,
+          profile,
+          selected,
+          !previewOnly,
+          approval,
+        );
         if (result.error) return { exitCode: 1, error: result.error };
+        if (previewOnly) return { exitCode: 0, output: result.preview };
+        if (!approval)
+          return {
+            exitCode: 1,
+            error: `Sync is read-only until the exact preview is approved. Review the plan, then rerun with --approve-plan=${result.fingerprint}.`,
+          };
+        if (approval !== result.fingerprint)
+          return {
+            exitCode: 1,
+            error: `The sync plan changed after review. Run aiw sync --preview again and approve the new fingerprint (${result.fingerprint}).`,
+          };
+        if (result.conflicts?.length)
+          return {
+            exitCode: 1,
+            error: `Sync plan has conflicts and made no changes: ${result.conflicts.join(", ")}`,
+          };
         const messages = [result.output ?? "Selected bundled resources synchronized."];
         if (selected.includes("react-best-practices")) {
-          const approvedPermissions = parseApprovedPermissions(args);
-          if (!approvedPermissions.includes("network:external")) {
-            messages.push(
-              "Remote skill pending: network:external was not approved. Bundled resources were installed; rerun sync with --allow=network:external only if you approve external access.",
-            );
-          } else {
-            try {
-              enforceConfiguredOrganizationPolicy(fs, aiw, {
-                provider: "vercel-skills",
-                source: "vercel-labs/agent-skills",
-                permissions: ["network:external"],
-              });
-              const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
-              await installVercelSkill(
-                services.externalSkills ?? nodeCommandExecutor,
-                "vercel-labs/agent-skills",
-                "vercel-react-best-practices",
-                target,
-              );
-              writeVercelSkillLock(
-                fs,
-                root,
-                aiw,
-                "vercel-labs/agent-skills",
-                "vercel-react-best-practices",
-              );
-              messages.push("Remote React best-practices skill installed.");
-            } catch (error) {
-              const reason = error instanceof Error ? error.message : String(error);
-              messages.push(`Remote skill pending: ${reason}`);
-            }
+          let pendingReason = "network:external was not approved";
+          try {
+            enforceConfiguredOrganizationPolicy(fs, aiw, {
+              provider: "vercel-skills",
+              source: "vercel-labs/agent-skills",
+              permissions: ["network:external"],
+            });
+          } catch (error) {
+            pendingReason = error instanceof Error ? error.message : String(error);
           }
+          messages.push(
+            `Remote skill pending: ${pendingReason}. Install it separately with aiw skills install.`,
+          );
         }
         return { exitCode: 0, output: messages.join(" ") };
       }
@@ -980,7 +1154,13 @@ export async function runCommand(
       try {
         const manifest = fs.read(join(aiw, "manifest.yml"));
         parseManifest(manifest);
-        return { exitCode: 0, output: manifest };
+        const workflowPath = join(aiw, "workflow.yml");
+        if (!fs.exists(workflowPath)) return { exitCode: 0, output: manifest };
+        const { session, ledger } = readWorkflowState(aiw, fs, false);
+        return {
+          exitCode: 0,
+          output: `${manifest}\nSDD workflow ${session.workflowId} (${session.status})\n${workflowNextAction(ledger)}`,
+        };
       } catch (error) {
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
       }
@@ -1098,6 +1278,7 @@ export async function runCommand(
     if (command === "brainstorm") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
+      assertStageReady(aiw, fs, "brainstorming");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Brainstorm";
       const path = join(aiw, "generated/specs/brainstorm.md");
@@ -1110,6 +1291,7 @@ export async function runCommand(
     if (command === "spec") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
+      assertStageReady(aiw, fs, "specification");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Specification";
       const path = join(aiw, "generated/specs/specification.md");
@@ -1122,6 +1304,7 @@ export async function runCommand(
     if (command === "adr") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
+      assertStageReady(aiw, fs, "technical-design");
       const id = args.find((arg) => arg.startsWith("--id="))?.slice(5) || "001";
       const title = args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Decision";
       const path = join(
@@ -1138,6 +1321,7 @@ export async function runCommand(
     if (command === "plan") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
+      assertStageReady(aiw, fs, "plan");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Implementation Plan";
       const path = join(aiw, "generated/plans/implementation-plan.md");
@@ -1150,6 +1334,7 @@ export async function runCommand(
     if (command === "verify") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
+      assertStageReady(aiw, fs, "verification");
       const specPath = join(aiw, "generated/specs/specification.md");
       const planPath = join(aiw, "generated/plans/implementation-plan.md");
       const issues: string[] = [];
@@ -1180,6 +1365,7 @@ export async function runCommand(
     if (command === "trace") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
+      assertStageReady(aiw, fs, "traceability");
       const specPath = join(aiw, "generated/specs/specification.md");
       const planPath = join(aiw, "generated/plans/implementation-plan.md");
       if (!fs.exists(specPath) || !fs.exists(planPath))
@@ -1210,25 +1396,36 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const stage = args[1];
-      const requirements: Record<QualityGateStage, string> = {
-        brainstorming: "generated/specs/brainstorm.md",
-        specification: "generated/specs/specification.md",
-        plan: "generated/plans/implementation-plan.md",
-        verification: "generated/reports/verification-report.md",
-      };
-      if (!stage || !Object.hasOwn(requirements, stage))
+      if (!stage || !APPROVAL_STAGES.includes(stage as HumanApprovalStage))
         return {
           exitCode: 1,
-          error: "Usage: aiw gate <brainstorming|specification|plan|verification>",
+          error: `Usage: aiw gate <${APPROVAL_STAGES.join("|")}>`,
         };
-      const gateStage = stage as QualityGateStage;
-      const artifact = requirements[gateStage];
-      if (!fs.exists(join(aiw, artifact)))
-        return { exitCode: 1, error: `Quality gate blocked: missing ${artifact}` };
-      const issues = evaluateQualityGate(gateStage, fs.read(join(aiw, artifact)));
-      return issues.length
-        ? { exitCode: 1, error: `Quality gate blocked: ${issues.join(" ")}` }
-        : { exitCode: 0, output: `Quality gate passed for ${stage}.` };
+      const workflowStage = stage as HumanApprovalStage;
+      assertStageReady(aiw, fs, workflowStage);
+      const artifactPath = approvalArtifactPath(aiw, workflowStage);
+      if (!artifactPath || !fs.exists(artifactPath))
+        return {
+          exitCode: 1,
+          error: `Quality gate blocked: required evidence is missing for ${stage}.`,
+        };
+      const hasQualityGate = stageDefinition(workflowStage).requiresQualityGate;
+      if (hasQualityGate) {
+        const issues = evaluateQualityGate(stage as QualityGateStage, fs.read(artifactPath));
+        if (issues.length)
+          return { exitCode: 1, error: `Quality gate blocked: ${issues.join(" ")}` };
+      }
+      const { ledger } = readActiveWorkflow(aiw, fs);
+      const updated = beginStageApproval(ledger, workflowStage, {
+        artifactHash: stageFingerprint(fs.read(artifactPath)),
+        qualityGate: hasQualityGate ? "passed" : "not-applicable",
+        updatedAt: new Date().toISOString(),
+      });
+      fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
+      return {
+        exitCode: 0,
+        output: `${hasQualityGate ? `Quality gate passed for ${stage}.` : `Evidence recorded for ${stage}; no automated quality gate applies.`} Human approval is still required: run aiw approve ${stage}.`,
+      };
     }
     if (command === "validate") {
       if (!fs.exists(join(aiw, "manifest.yml")))
@@ -1630,11 +1827,100 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function readWorkflowState(
+  aiw: string,
+  fs: FileSystem,
+  requireActive = true,
+): { session: WorkflowSession; ledger: ApprovalLedger } {
+  const sessionPath = join(aiw, "workflow.yml");
+  const ledgerPath = join(aiw, "approvals.yml");
+  if (!fs.exists(sessionPath) || !fs.exists(ledgerPath))
+    throw new Error("No SDD workflow is active. Start one with `aiw workflow start`.");
+  const session = parseWorkflowSession(fs.read(sessionPath));
+  let ledger = parseApprovalLedger(fs.read(ledgerPath));
+  if (session.workflowId !== ledger.workflowId)
+    throw new Error("Workflow session and approval ledger IDs do not match; run doctor.");
+  if (requireActive && session.status !== "active")
+    throw new Error(`Workflow ${session.workflowId} is complete; start a new workflow first.`);
+  const changed = APPROVAL_STAGES.find((stage) => {
+    const record = ledger.stages[stage];
+    if (!record?.artifactHash || !["pending-human", "approved"].includes(record.status))
+      return false;
+    const artifact = approvalArtifactPath(aiw, stage);
+    return (
+      !artifact ||
+      !fs.exists(artifact) ||
+      stageFingerprint(fs.read(artifact)) !== record.artifactHash
+    );
+  });
+  if (changed) {
+    ledger = invalidateStageAndDescendants(ledger, changed, new Date().toISOString());
+    fs.write(ledgerPath, serializeApprovalLedger(ledger));
+  }
+  return { session, ledger };
+}
+
+function readActiveWorkflow(
+  aiw: string,
+  fs: FileSystem,
+): { session: WorkflowSession; ledger: ApprovalLedger } {
+  return readWorkflowState(aiw, fs, true);
+}
+
+function workflowNextAction(ledger: ApprovalLedger): string {
+  const next = APPROVAL_STAGES.find(
+    (stage) =>
+      ledger.stages[stage]?.status !== "approved" && ledger.stages[stage]?.status !== "skipped",
+  );
+  if (!next) return "Next action: all stages are resolved; run aiw workflow complete.";
+  if (ledger.stages[next]?.status === "pending-human")
+    return `Next action: present ${next} evidence and wait for the human; then run aiw approve ${next} (or reject it).`;
+  if (ledger.stages[next]?.status === "stale" || ledger.stages[next]?.status === "rejected")
+    return `Next action: revise ${next}, rerun its gate, and request human approval.`;
+  return `Next action: prepare ${next} evidence.`;
+}
+
+function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage): void {
+  const { ledger } = readActiveWorkflow(aiw, fs);
+  const unresolved = getUnresolvedPrerequisites(ledger, stage);
+  if (unresolved.length) {
+    const pending = unresolved.filter(
+      (prerequisite) => ledger.stages[prerequisite]?.status === "pending-human",
+    );
+    if (pending.length)
+      throw new Error(
+        `Cannot enter ${stage}; previous stage(s) are awaiting human approval: ${pending.join(", ")}.`,
+      );
+    throw new Error(
+      `Cannot enter ${stage}; previous stages require human approval or an accepted optional skip: ${unresolved.join(", ")}.`,
+    );
+  }
+  const current = ledger.stages[stage];
+  if (current?.status === "pending-human")
+    throw new Error(`${stage} is awaiting human approval. Approve or reject it before continuing.`);
+  if (current?.status === "approved")
+    throw new Error(`${stage} is already approved. Evidence changes require rerunning its gate.`);
+}
+
+function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
+  if (stage === "technical-design") return join(aiw, "generated/reports/technical-design.md");
+  const paths: Record<Exclude<HumanApprovalStage, "technical-design">, string> = {
+    brainstorming: "generated/specs/brainstorm.md",
+    specification: "generated/specs/specification.md",
+    plan: "generated/plans/implementation-plan.md",
+    implementation: "generated/reports/implementation-report.md",
+    verification: "generated/reports/verification-report.md",
+    review: "generated/reports/code-review.md",
+    traceability: "generated/artifacts/traceability.yml",
+  };
+  return resolve(aiw, paths[stage]);
 }
 
 function parseNamedOptions(args: string[], allowed: string[]): Record<string, string> | undefined {
@@ -1814,7 +2100,15 @@ function syncSelectedResources(
   aiw: string,
   profile: ProjectProfile,
   selected: string[],
-): { output?: string; error?: string } {
+  apply = false,
+  approvedFingerprint?: string,
+): {
+  output?: string;
+  error?: string;
+  preview?: string;
+  fingerprint?: string;
+  conflicts?: string[];
+} {
   const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
   const resourceSelections = resourcesForCapabilities(selected);
   const bundled = loadBundledResources(target);
@@ -1877,7 +2171,16 @@ function syncSelectedResources(
   const inventory = parseOwnership(fs.read(ownershipPath));
   const nextInventory = new Map(inventory.map((entry) => [entry.path, entry]));
   const changes: ProjectFileChange[] = [];
+  const changeActions = new Map<string, "add" | "update">();
+  const preserved = new Map<string, { path: string; state: string; contentFingerprint?: string }>();
   const conflicts: string[] = [];
+  const preserve = (path: string, type: string | undefined, content?: string): void => {
+    preserved.set(path, {
+      path,
+      state: type ?? "unknown",
+      ...(content === undefined ? {} : { contentFingerprint: stageFingerprint(content) }),
+    });
+  };
 
   for (const [path, { content, metadata }] of desired) {
     assertSafeProjectPath(fs, root, path);
@@ -1886,40 +2189,82 @@ function syncSelectedResources(
     const owned = nextInventory.get(relativePath);
     if (type === "missing") {
       changes.push({ path, content: Buffer.from(content, "utf8") });
+      changeActions.set(relativePath, "add");
       nextInventory.set(relativePath, createOwnedFile(relativePath, content, metadata));
       continue;
     }
     if (type !== "file" || !owned) {
       conflicts.push(relativePath);
+      preserve(relativePath, type);
       continue;
     }
     const actual = fs.read(path);
     if (createOwnedFile(relativePath, actual).checksum !== owned.checksum) {
       conflicts.push(relativePath);
+      preserve(relativePath, type, actual);
       continue;
     }
-    if (actual !== content) changes.push({ path, content: Buffer.from(content, "utf8") });
+    if (actual !== content) {
+      changes.push({ path, content: Buffer.from(content, "utf8") });
+      changeActions.set(relativePath, "update");
+    } else preserve(relativePath, type, actual);
     nextInventory.set(relativePath, createOwnedFile(relativePath, content, metadata));
   }
 
   for (const [path, content] of generatedFiles) {
     assertSafeProjectPath(fs, root, path);
     const type = fs.pathType?.(path);
-    if (type === "missing") changes.push({ path, content: Buffer.from(content, "utf8") });
-    else if (type !== "file" || fs.read(path) !== content)
+    const relativePath = relative(root, path).split(sep).join("/");
+    if (type === "missing") {
+      changes.push({ path, content: Buffer.from(content, "utf8") });
+      changeActions.set(relativePath, "add");
+    } else if (type !== "file" || fs.read(path) !== content) {
       conflicts.push(relative(root, path).split(sep).join("/"));
+      preserve(relativePath, type, type === "file" ? fs.read(path) : undefined);
+    } else preserve(relativePath, type, fs.read(path));
   }
-
-  if (conflicts.length)
-    return {
-      error: `Sync preserved existing or modified project resources: ${[...new Set(conflicts)].sort().join(", ")}`,
-    };
   const nextOwnership = serializeOwnership([...nextInventory.values()]);
-  if (fs.read(ownershipPath) !== nextOwnership)
+  if (fs.read(ownershipPath) !== nextOwnership) {
     changes.push({ path: ownershipPath, content: Buffer.from(nextOwnership, "utf8") });
+    changeActions.set(relative(root, ownershipPath).split(sep).join("/"), "update");
+  }
+  const plan = {
+    target,
+    selected: [...new Set(selected)].sort(),
+    changes: changes
+      .map(({ path, content }) => ({
+        path: relative(root, path).split(sep).join("/"),
+        action: changeActions.get(relative(root, path).split(sep).join("/")) ?? "update",
+        contentFingerprint: stageFingerprint(content ?? new Uint8Array()),
+      }))
+      .sort((a, b) => a.path.localeCompare(b.path)),
+    preserved: [...preserved.values()].sort((a, b) => a.path.localeCompare(b.path)),
+    conflicts: [...new Set(conflicts)].sort(),
+    externalPending: selected.includes("react-best-practices")
+      ? [
+          {
+            id: "vercel-react-best-practices",
+            source: "vercel-labs/agent-skills",
+            permissions: ["network:external"],
+            approval: "separate human decision required",
+          },
+        ]
+      : [],
+  };
+  const fingerprint = stageFingerprint(JSON.stringify(plan));
+  const preview = `${JSON.stringify({ plan, fingerprint }, null, 2)}\n`;
+  if (!apply) return { preview, fingerprint, conflicts: plan.conflicts };
+  if (!approvedFingerprint) return { preview, fingerprint, conflicts: plan.conflicts };
+  if (approvedFingerprint !== fingerprint)
+    return { error: `The sync plan changed after review; current fingerprint is ${fingerprint}.` };
+  if (plan.conflicts.length)
+    return { error: `Sync plan has conflicts and made no changes: ${plan.conflicts.join(", ")}` };
   if (changes.length) applyProjectFileChanges(fs, root, changes);
   return {
     output: `Synchronized ${resourceSelections.length} selected bundled resources for ${target} and generated ${generatedFiles.size} project-specific files.`,
+    preview,
+    fingerprint,
+    conflicts: plan.conflicts,
   };
 }
 
