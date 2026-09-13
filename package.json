@@ -1,6 +1,6 @@
 {
   "name": "@multileaf/ai-workflow",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Portable spec-driven development workflow for AI coding agents",
   "license": "MIT",
   "repository": {

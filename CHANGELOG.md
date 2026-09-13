@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-13
+
+### Changed
+
+- Require host-native blocking question widgets for onboarding decisions and every SDD approval gate when available, with explicit unselected choices and a safe chat fallback.
+- Clarify that the CLI persists approval state but cannot prove that a host widget was used or verify respondent identity.
+
 ## [0.2.0] - 2026-09-13
 
 ### Added
