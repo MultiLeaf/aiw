@@ -187,10 +187,13 @@ tasks:
     expect(aiInit).toContain("short project-specific reason for the recommendation");
     expect(aiInit).toContain("Do not show a flat list without category headings");
     expect(aiInit).toContain("Mandatory interaction checkpoints");
-    expect(aiInit).toContain("end your current response/turn immediately");
     expect(aiInit).toContain(
-      "Do not launch analysis agents or run `aiw scan` until the user replies",
+      "Do not continue, call tools, run commands, or change files while a widget is awaiting submission",
     );
+    expect(aiInit).toContain(
+      "Do not launch analysis agents or run `aiw scan` until the widget returns",
+    );
+    expect(aiInit).toContain("I switched; continue");
     expect(aiInit).toContain("widget must start with no choice selected");
     expect(aiInit).toContain(
       "Before syncing a non-empty selection, show the exact selected resources",
