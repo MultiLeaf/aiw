@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Changed
+
+- Unified user-local settings into a single `.aiw/settings.yml` with `semantic`, `decision`, `telemetry`, and `overrides` sections. The file is local user state, not committed project state. Interactive onboarding and the `telemetry`/`confirm` commands write to it, and legacy `.aiw/semantic.yml`, `.aiw/decision.yml`, `.aiw/telemetry.yml`, and `.aiw/overrides.yml` files are still read for backward compatibility. `uninstall` removes `settings.yml` and all four legacy files.
+
 ## [0.3.1] - 2026-10-08
 
 ### Added

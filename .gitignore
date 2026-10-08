@@ -1,5 +1,8 @@
 .aiw/generated/
 .aiw/semantic/
+.aiw/settings.yml
 .aiw/semantic.yml
 .aiw/decision.yml
+.aiw/telemetry.yml
+.aiw/overrides.yml
 dist

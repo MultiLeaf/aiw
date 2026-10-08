@@ -1,5 +1,6 @@
 import { parseDocument } from "yaml";
 import type { FileSystem } from "./types.js";
+import { loadSettings } from "./settings.js";
 
 export type DecisionConfig = {
   enabled: boolean;
@@ -45,15 +46,12 @@ export const DEFAULT_DECISION_CONFIG: DecisionConfig = {
   baseUrl: "http://localhost:11434",
 };
 
-export function parseDecisionConfig(text: string): DecisionConfig {
-  const document = parseDocument(text);
-  const node = document.get("decision");
-  if (document.errors.length > 0 || !node || typeof node !== "object")
-    throw new Error("Decision configuration must be a YAML object with a `decision` mapping");
-  const raw = (node as { toJSON(): unknown }).toJSON() as Record<string, unknown>;
-  const enabled = raw.enabled;
-  const model = raw.model;
-  const baseUrl = raw.baseUrl;
+export function parseDecisionMapping(raw: unknown): DecisionConfig {
+  if (!raw || typeof raw !== "object") throw new Error("decision must be a YAML mapping");
+  const record = raw as Record<string, unknown>;
+  const enabled = record.enabled;
+  const model = record.model;
+  const baseUrl = record.baseUrl;
   if (typeof enabled !== "boolean") throw new Error("decision.enabled must be a boolean");
   if (!enabled) return { ...DEFAULT_DECISION_CONFIG, enabled: false };
   if (typeof model !== "string" || model.trim() === "")
@@ -67,7 +65,18 @@ export function serializeDecisionConfig(config: DecisionConfig): string {
   return `decision:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n`;
 }
 
+export function parseDecisionConfig(text: string): DecisionConfig {
+  const document = parseDocument(text);
+  const node = document.get("decision");
+  if (document.errors.length > 0 || !node || typeof node !== "object")
+    throw new Error("Decision configuration must be a YAML object with a `decision` mapping");
+  return parseDecisionMapping((node as { toJSON(): unknown }).toJSON());
+}
+
 export function loadDecisionConfig(fs: FileSystem, aiwPath: string): DecisionConfig | undefined {
+  const settings = loadSettings(fs, aiwPath);
+  if (settings !== undefined)
+    return "decision" in settings ? parseDecisionMapping(settings.decision) : undefined;
   const configPath = `${aiwPath}/${DECISION_CONFIG_PATH}`;
   if (!fs.exists(configPath)) return undefined;
   return parseDecisionConfig(fs.read(configPath));

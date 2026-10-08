@@ -35,7 +35,7 @@ async function runWithTelemetry(
   if (args[0] === "ui" || (args[0] === "telemetry" && result.exitCode !== 0)) return result;
   await recordConfiguredTelemetry(
     nodeFileSystem,
-    join(root, ".aiw/telemetry.yml"),
+    join(root, ".aiw"),
     services.telemetry,
     args[0],
     result,

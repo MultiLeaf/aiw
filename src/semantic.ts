@@ -1,5 +1,6 @@
 import { parseDocument } from "yaml";
 import type { FileSystem } from "./types.js";
+import { loadSettings } from "./settings.js";
 
 export type SemanticConfig = {
   enabled: boolean;
@@ -29,17 +30,14 @@ export const DEFAULT_SEMANTIC_CONFIG: SemanticConfig = {
   topK: 8,
 };
 
-export function parseSemanticConfig(text: string): SemanticConfig {
-  const document = parseDocument(text);
-  const node = document.get("semantic");
-  if (document.errors.length > 0 || !node || typeof node !== "object")
-    throw new Error("Semantic configuration must be a YAML object with a `semantic` mapping");
-  const raw = (node as { toJSON(): unknown }).toJSON() as Record<string, unknown>;
-  const enabled = raw.enabled;
-  const model = raw.model;
-  const baseUrl = raw.baseUrl;
-  const chunkChars = raw.chunkChars;
-  const topK = raw.topK;
+export function parseSemanticMapping(raw: unknown): SemanticConfig {
+  if (!raw || typeof raw !== "object") throw new Error("semantic must be a YAML mapping");
+  const raw2 = raw as Record<string, unknown>;
+  const enabled = raw2.enabled;
+  const model = raw2.model;
+  const baseUrl = raw2.baseUrl;
+  const chunkChars = raw2.chunkChars;
+  const topK = raw2.topK;
   if (typeof enabled !== "boolean") throw new Error("semantic.enabled must be a boolean");
   if (!enabled) return { ...DEFAULT_SEMANTIC_CONFIG, enabled: false };
   if (typeof model !== "string" || model.trim() === "")
@@ -60,9 +58,24 @@ export function serializeSemanticConfig(config: SemanticConfig): string {
 }
 
 export function loadSemanticConfig(fs: FileSystem, aiwPath: string): SemanticConfig | undefined {
+  const settings = loadSettings(fs, aiwPath);
+  if (settings !== undefined)
+    return "semantic" in settings ? parseSemanticMapping(settings.semantic) : undefined;
   const configPath = `${aiwPath}/${SEMANTIC_CONFIG_PATH}`;
   if (!fs.exists(configPath)) return undefined;
   return parseSemanticConfig(fs.read(configPath));
+}
+
+function parseSemanticDocument(text: string): SemanticConfig {
+  const document = parseDocument(text);
+  const node = document.get("semantic");
+  if (document.errors.length > 0 || !node || typeof node !== "object")
+    throw new Error("Semantic configuration must be a YAML object with a `semantic` mapping");
+  return parseSemanticMapping((node as { toJSON(): unknown }).toJSON());
+}
+
+export function parseSemanticConfig(text: string): SemanticConfig {
+  return parseSemanticDocument(text);
 }
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;

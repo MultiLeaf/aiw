@@ -17,8 +17,8 @@ import {
 import { parseProjectProfile, profileProject } from "./profile.js";
 import type { ProjectProfile } from "./profile.js";
 import type { CommandResult, FileSystem, HumanApprovalStage } from "./types.js";
-import { serializeOverrides, type FactOverride } from "./confirmation.js";
-import { applyOverrides, parseOverrides } from "./confirmation.js";
+import type { FactOverride } from "./confirmation.js";
+import { applyOverrides } from "./confirmation.js";
 import { mergeFacts } from "./intelligence.js";
 import { createInterpretationRequest } from "./interpreter.js";
 import {
@@ -44,12 +44,17 @@ import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import {
+  readFactOverrides,
+  saveSettingOverrides,
+  saveSettingsSection,
+  loadSettings,
+} from "./settings.js";
+import {
   buildEvidenceTriageRequest,
   createOllamaDecisionProvider,
   DEFAULT_DECISION_CONFIG,
   DECISION_CONFIG_PATH,
   loadDecisionConfig,
-  serializeDecisionConfig,
 } from "./decision.js";
 import {
   buildSemanticIndex,
@@ -58,9 +63,7 @@ import {
   loadSemanticConfig,
   parseSemanticIndex,
   querySemanticIndex,
-  SEMANTIC_CONFIG_PATH,
   SEMANTIC_INDEX_PATH,
-  serializeSemanticConfig,
   serializeSemanticIndex,
 } from "./semantic.js";
 import {
@@ -143,8 +146,9 @@ import {
 import { enforcePolicyGate, gitPolicyTracking } from "./policy-gate.js";
 import {
   DEFAULT_TELEMETRY_CONFIG,
+  loadTelemetryConfig,
   parseTelemetryConfig,
-  serializeTelemetryConfig,
+  serializeTelemetryMapping,
 } from "./telemetry.js";
 import {
   createPluginScaffold,
@@ -495,12 +499,10 @@ export async function runCommand(
         "Usage: aiw telemetry <status|enable|disable> [--commands=include|exclude] [--outcomes=include|exclude]";
       const action = args[1];
       if (!action) return { exitCode: 1, error: usage };
-      const path = join(aiw, "telemetry.yml");
+      const telemetryConfig = loadTelemetryConfig(fs, aiw);
       if (action === "status") {
         if (args.length !== 2) return { exitCode: 1, error: usage };
-        const config = fs.exists(path)
-          ? parseTelemetryConfig(fs.read(path))
-          : DEFAULT_TELEMETRY_CONFIG;
+        const config = telemetryConfig;
         return {
           exitCode: 0,
           output: `Telemetry is ${config.enabled ? "enabled" : "disabled"}. Command collection: ${config.includeCommand ? "included" : "excluded"}. Outcome collection: ${config.includeOutcome ? "included" : "excluded"}.`,
@@ -508,7 +510,12 @@ export async function runCommand(
       }
       if (action === "disable") {
         if (args.length !== 2) return { exitCode: 1, error: usage };
-        fs.write(path, serializeTelemetryConfig({ ...DEFAULT_TELEMETRY_CONFIG }));
+        saveSettingsSection(
+          fs,
+          aiw,
+          "telemetry",
+          serializeTelemetryMapping(DEFAULT_TELEMETRY_CONFIG),
+        );
         return { exitCode: 0, output: "Telemetry disabled." };
       }
       if (action === "enable") {
@@ -520,9 +527,11 @@ export async function runCommand(
         )
           return { exitCode: 1, error: usage };
         const privacyValue = (name: string): boolean => !options.includes(`--${name}=exclude`);
-        fs.write(
-          path,
-          serializeTelemetryConfig({
+        saveSettingsSection(
+          fs,
+          aiw,
+          "telemetry",
+          serializeTelemetryMapping({
             schema: 1,
             enabled: true,
             includeCommand: privacyValue("commands"),
@@ -575,9 +584,7 @@ export async function runCommand(
         );
         profile.facts = mergeFacts(profile.facts, inferred);
       }
-      const overrides = fs.exists(join(aiw, "overrides.yml"))
-        ? parseOverrides(fs.read(join(aiw, "overrides.yml")))
-        : [];
+      const overrides = readFactOverrides(fs, aiw);
       const rejectedKeys = new Set(
         overrides
           .filter((override) => override.action === "reject")
@@ -1102,7 +1109,7 @@ export async function runCommand(
           exitCode: 1,
           error: "Usage: aiw confirm --accept key | --reject key | --edit key=value",
         };
-      fs.write(join(aiw, "overrides.yml"), serializeOverrides(overrides));
+      saveSettingOverrides(fs, aiw, overrides);
       return { exitCode: 0, output: "Fact overrides saved." };
     }
     if (command === "recommend") {
@@ -1345,6 +1352,7 @@ export async function runCommand(
           parsePrivateRegistries(fs.read(join(aiw, "registries.yml")));
         if (fs.exists(join(aiw, "telemetry.yml")))
           parseTelemetryConfig(fs.read(join(aiw, "telemetry.yml")));
+        loadTelemetryConfig(fs, aiw);
       } catch (error) {
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
       }
@@ -1378,6 +1386,7 @@ export async function runCommand(
         "profile.yml",
         "lock.yml",
         "overrides.yml",
+        "settings.yml",
         "recommendations.yml",
         "team-preset.yml",
         "registries.yml",
@@ -2097,8 +2106,8 @@ export async function configureOptionalModels(
   answer: ConfirmQuestion,
 ): Promise<string[]> {
   const enabled: string[] = [];
-  const semanticPath = join(aiwPath, SEMANTIC_CONFIG_PATH);
-  if (!fs.exists(semanticPath)) {
+  const settings = loadSettings(fs, aiwPath) ?? {};
+  if (!("semantic" in settings)) {
     const response = (
       await answer(
         `Enable semantic mapping with a local embedding model (default: ${DEFAULT_SEMANTIC_CONFIG.model} at ${DEFAULT_SEMANTIC_CONFIG.baseUrl})? [y/N] `,
@@ -2107,15 +2116,17 @@ export async function configureOptionalModels(
       .trim()
       .toLowerCase();
     if (response === "y" || response === "yes") {
-      fs.write(
-        semanticPath,
-        serializeSemanticConfig({ ...DEFAULT_SEMANTIC_CONFIG, enabled: true }),
-      );
+      saveSettingsSection(fs, aiwPath, "semantic", {
+        enabled: true,
+        model: DEFAULT_SEMANTIC_CONFIG.model,
+        baseUrl: DEFAULT_SEMANTIC_CONFIG.baseUrl,
+        chunkChars: DEFAULT_SEMANTIC_CONFIG.chunkChars,
+        topK: DEFAULT_SEMANTIC_CONFIG.topK,
+      });
       enabled.push(`semantic (${DEFAULT_SEMANTIC_CONFIG.model})`);
     }
   }
-  const decisionPath = join(aiwPath, DECISION_CONFIG_PATH);
-  if (!fs.exists(decisionPath)) {
+  if (!("decision" in settings)) {
     const response = (
       await answer(
         `Enable advisory decision triage with a local decision model (default: ${DEFAULT_DECISION_CONFIG.model} at ${DEFAULT_DECISION_CONFIG.baseUrl})? [y/N] `,
@@ -2124,10 +2135,11 @@ export async function configureOptionalModels(
       .trim()
       .toLowerCase();
     if (response === "y" || response === "yes") {
-      fs.write(
-        decisionPath,
-        serializeDecisionConfig({ ...DEFAULT_DECISION_CONFIG, enabled: true }),
-      );
+      saveSettingsSection(fs, aiwPath, "decision", {
+        enabled: true,
+        model: DEFAULT_DECISION_CONFIG.model,
+        baseUrl: DEFAULT_DECISION_CONFIG.baseUrl,
+      });
       enabled.push(`decision (${DEFAULT_DECISION_CONFIG.model})`);
     }
   }

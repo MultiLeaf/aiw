@@ -414,7 +414,7 @@ tasks:
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("Existing state preserved");
     await expect(readFile(join(cwd, ".aiw/manifest.yml"), "utf8")).resolves.toBe(manifestBefore);
-    await expect(readFile(join(cwd, ".aiw/overrides.yml"), "utf8")).resolves.toContain(
+    await expect(readFile(join(cwd, ".aiw/settings.yml"), "utf8")).resolves.toContain(
       "value: pnpm",
     );
     await expect(stat(join(cwd, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
@@ -491,7 +491,7 @@ tasks:
     const cwd = await project();
     await run(["install"], cwd);
     await run(["telemetry", "enable", "--commands=exclude", "--outcomes=exclude"], cwd);
-    const path = join(cwd, ".aiw/telemetry.yml");
+    const path = join(cwd, ".aiw/settings.yml");
     const before = await readFile(path, "utf8");
     const result = await run(args, cwd);
     expect(result.exitCode).toBe(1);
@@ -2586,7 +2586,7 @@ resources:
     await run(["install"], cwd);
     const result = await run(["confirm", "--accept", "package-manager"], cwd);
     expect(result.exitCode).toBe(0);
-    await expect(readFile(join(cwd, ".aiw/overrides.yml"), "utf8")).resolves.toContain(
+    await expect(readFile(join(cwd, ".aiw/settings.yml"), "utf8")).resolves.toContain(
       "action: accept",
     );
   });
@@ -2595,7 +2595,7 @@ resources:
     const cwd = await project();
     await run(["install"], cwd);
     await run(["confirm", "--edit", "package-manager=pnpm"], cwd);
-    await expect(readFile(join(cwd, ".aiw/overrides.yml"), "utf8")).resolves.toContain(
+    await expect(readFile(join(cwd, ".aiw/settings.yml"), "utf8")).resolves.toContain(
       "value: pnpm",
     );
   });

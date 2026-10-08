@@ -1,4 +1,5 @@
 import type { CommandResult, FileSystem } from "./types.js";
+import { loadSettings } from "./settings.js";
 
 export type TelemetryConfig = {
   schema: 1;
@@ -66,6 +67,41 @@ const TELEMETRY_COMMANDS = new Set([
   "verify-package",
 ]);
 
+export function parseTelemetryMapping(raw: unknown): TelemetryConfig {
+  if (!raw || typeof raw !== "object") throw new Error("telemetry settings must be a mapping");
+  const record = raw as Record<string, unknown>;
+  if (typeof record.enabled !== "boolean") throw new Error("telemetry.enabled must be a boolean");
+  if (typeof record.include_command !== "boolean")
+    throw new Error("telemetry.include_command must be a boolean");
+  if (typeof record.include_outcome !== "boolean")
+    throw new Error("telemetry.include_outcome must be a boolean");
+  return {
+    schema: 1,
+    enabled: record.enabled,
+    includeCommand: record.include_command,
+    includeOutcome: record.include_outcome,
+  };
+}
+
+export function serializeTelemetryMapping(config: TelemetryConfig): unknown {
+  return {
+    enabled: config.enabled,
+    include_command: config.includeCommand,
+    include_outcome: config.includeOutcome,
+  };
+}
+
+export function loadTelemetryConfig(fs: FileSystem, aiwPath: string): TelemetryConfig {
+  const settings = loadSettings(fs, aiwPath);
+  if (settings !== undefined)
+    return "telemetry" in settings
+      ? parseTelemetryMapping(settings.telemetry)
+      : DEFAULT_TELEMETRY_CONFIG;
+  const legacyPath = `${aiwPath}/telemetry.yml`;
+  if (!fs.exists(legacyPath)) return DEFAULT_TELEMETRY_CONFIG;
+  return parseTelemetryConfig(fs.read(legacyPath));
+}
+
 export function parseTelemetryConfig(content: string): TelemetryConfig {
   const lines = content.split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop();
@@ -107,14 +143,19 @@ export function createTelemetryEvent(
 
 export async function recordConfiguredTelemetry(
   fs: FileSystem,
-  configPath: string,
+  aiwPath: string,
   client: TelemetryClient | undefined,
   command: string | undefined,
   result: CommandResult,
 ): Promise<void> {
-  if (!client || !fs.exists(configPath)) return;
+  if (!client) return;
   try {
-    const event = createTelemetryEvent(command, result, parseTelemetryConfig(fs.read(configPath)));
+    const config = loadTelemetryConfig(fs, aiwPath);
+    const settings = loadSettings(fs, aiwPath);
+    const configured =
+      (settings !== undefined && "telemetry" in settings) || fs.exists(`${aiwPath}/telemetry.yml`);
+    if (!configured) return;
+    const event = createTelemetryEvent(command, result, config);
     if (event) await client.record(event);
   } catch {
     // Telemetry must never affect the requested workflow operation.

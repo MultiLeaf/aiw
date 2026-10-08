@@ -5,8 +5,9 @@ import { nodeFileSystem } from "./files.js";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { parseSemanticConfig } from "./semantic.js";
-import { parseDecisionConfig } from "./decision.js";
+import { loadSettings, readFactOverrides, saveSettingsSection } from "./settings.js";
+import { parseSemanticMapping } from "./semantic.js";
+import { parseDecisionMapping } from "./decision.js";
 
 function tempProject(): { root: string; aiw: string } {
   const root = mkdtempSync(join(tmpdir(), "aiw-onboarding-"));
@@ -14,7 +15,7 @@ function tempProject(): { root: string; aiw: string } {
 }
 
 describe("optional model onboarding", () => {
-  it("enables semantic and decision when the user confirms", async () => {
+  it("enables semantic and decision in settings.yml when the user confirms", async () => {
     const { root, aiw } = tempProject();
     try {
       const answers = ["y", "yes"];
@@ -26,29 +27,31 @@ describe("optional model onboarding", () => {
       expect(enabled).toHaveLength(2);
       expect(enabled[0]).toContain("semantic");
       expect(enabled[1]).toContain("decision");
-      const semantic = parseSemanticConfig(await readFile(join(aiw, "semantic.yml"), "utf8"));
-      expect(semantic.enabled).toBe(true);
-      expect(semantic.model).toBe("embeddinggemma-2:latest");
-      const decision = parseDecisionConfig(await readFile(join(aiw, "decision.yml"), "utf8"));
-      expect(decision.enabled).toBe(true);
-      expect(decision.model).toBe("clef-flash:latest");
+      const settings = loadSettings(nodeFileSystem, aiw);
+      expect(settings?.schema).toBe(1);
+      expect(parseSemanticMapping(settings?.semantic).enabled).toBe(true);
+      expect(parseSemanticMapping(settings?.semantic).model).toBe("embeddinggemma-2:latest");
+      expect(parseDecisionMapping(settings?.decision).enabled).toBe(true);
+      expect(parseDecisionMapping(settings?.decision).model).toBe("clef-flash:latest");
+      expect(nodeFileSystem.exists(join(aiw, "semantic.yml"))).toBe(false);
+      expect(nodeFileSystem.exists(join(aiw, "decision.yml"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("writes nothing when declined and preserves existing configuration", async () => {
+  it("writes nothing when declined and preserves existing settings sections", async () => {
     const { root, aiw } = tempProject();
     try {
       const enabled = await configureOptionalModels(nodeFileSystem, aiw, async () => "n");
       expect(enabled).toEqual([]);
-      expect(nodeFileSystem.exists(join(aiw, "semantic.yml"))).toBe(false);
-      expect(nodeFileSystem.exists(join(aiw, "decision.yml"))).toBe(false);
+      expect(nodeFileSystem.exists(join(aiw, "settings.yml"))).toBe(false);
       nodeFileSystem.mkdir(aiw);
-      nodeFileSystem.write(
-        join(aiw, "semantic.yml"),
-        "semantic:\n  enabled: true\n  model: custom-model\n  baseUrl: http://remote:11434\n",
-      );
+      saveSettingsSection(nodeFileSystem, aiw, "semantic", {
+        enabled: true,
+        model: "custom-model",
+        baseUrl: "http://remote:11434",
+      });
       const questions: string[] = [];
       const skipped = await configureOptionalModels(nodeFileSystem, aiw, async (question) => {
         questions.push(question);
@@ -57,9 +60,47 @@ describe("optional model onboarding", () => {
       expect(skipped).toEqual([]);
       expect(questions).toHaveLength(1);
       expect(questions[0]).toContain("decision");
-      expect(parseSemanticConfig(nodeFileSystem.read(join(aiw, "semantic.yml"))).model).toBe(
+      expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
         "custom-model",
       );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("settings overrides", () => {
+  it("round-trips fact overrides through settings.yml", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      expect(readFactOverrides(nodeFileSystem, aiw)).toEqual([]);
+      const cwd = root;
+      process.chdir(cwd);
+      const { run } = await import("./cli.js");
+      await run(["install"], cwd);
+      await run(["confirm", "--edit", "package-manager=pnpm"], cwd);
+      const overrides = readFactOverrides(nodeFileSystem, aiw);
+      expect(overrides).toEqual([{ key: "package-manager", action: "edit", value: "pnpm" }]);
+      const raw = await readFile(join(aiw, "settings.yml"), "utf8");
+      expect(raw).toContain("value: pnpm");
+    } finally {
+      process.chdir("/tmp");
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to legacy overrides.yml when settings.yml is absent", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      nodeFileSystem.write(
+        join(aiw, "overrides.yml"),
+        "schema: 1\noverrides:\n  - key: package-manager\n    action: reject\n",
+      );
+      expect(readFactOverrides(nodeFileSystem, aiw)).toEqual([
+        { key: "package-manager", action: "reject" },
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
