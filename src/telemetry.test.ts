@@ -40,6 +40,12 @@ describe("telemetry privacy", () => {
         { ...enabled, includeOutcome: false },
       ),
     ).toEqual({ schema: 1, command: "unknown" });
+    expect(
+      createTelemetryEvent("semantic", { exitCode: 0 }, { ...enabled, includeOutcome: false }),
+    ).toEqual({ schema: 1, command: "semantic" });
+    expect(
+      createTelemetryEvent("decision", { exitCode: 1 }, { ...enabled, includeCommand: false }),
+    ).toEqual({ schema: 1, outcome: "failure" });
   });
 
   it("emits nothing unless telemetry is explicitly enabled", () => {
