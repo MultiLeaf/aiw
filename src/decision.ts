@@ -63,6 +63,10 @@ export function parseDecisionConfig(text: string): DecisionConfig {
   return { enabled: true, model, baseUrl };
 }
 
+export function serializeDecisionConfig(config: DecisionConfig): string {
+  return `decision:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n`;
+}
+
 export function loadDecisionConfig(fs: FileSystem, aiwPath: string): DecisionConfig | undefined {
   const configPath = `${aiwPath}/${DECISION_CONFIG_PATH}`;
   if (!fs.exists(configPath)) return undefined;

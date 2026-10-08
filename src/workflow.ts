@@ -46,16 +46,21 @@ import { scanProject } from "./scanner.js";
 import {
   buildEvidenceTriageRequest,
   createOllamaDecisionProvider,
-  loadDecisionConfig,
+  DEFAULT_DECISION_CONFIG,
   DECISION_CONFIG_PATH,
+  loadDecisionConfig,
+  serializeDecisionConfig,
 } from "./decision.js";
 import {
   buildSemanticIndex,
   createOllamaEmbeddingProvider,
+  DEFAULT_SEMANTIC_CONFIG,
   loadSemanticConfig,
   parseSemanticIndex,
   querySemanticIndex,
+  SEMANTIC_CONFIG_PATH,
   SEMANTIC_INDEX_PATH,
+  serializeSemanticConfig,
   serializeSemanticIndex,
 } from "./semantic.js";
 import {
@@ -463,9 +468,24 @@ export async function runCommand(
         [...pendingWrites].map(([path, content]) => ({ path, content })),
         [...BASE_DIRECTORIES.map((directory) => join(aiw, directory)), join(root, ".context/adrs")],
       );
+      let optionalModels: string[] = [];
+      if (stdin.isTTY) {
+        const terminal = createInterface({ input: stdin, output: stdout });
+        try {
+          optionalModels = await configureOptionalModels(fs, aiw, (question) =>
+            terminal.question(question),
+          );
+        } finally {
+          terminal.close();
+        }
+      }
       return {
         exitCode: 0,
-        output: `AI Workflow initialized for target: ${target} with only the ai-init skill. Run /ai-init to scan the project and choose which resources to install.`,
+        output:
+          `AI Workflow initialized for target: ${target} with only the ai-init skill. Run /ai-init to scan the project and choose which resources to install.` +
+          (optionalModels.length
+            ? ` Optional models enabled: ${optionalModels.join(", ")}. They activate once the models are available.`
+            : ""),
       };
     }
     if (command === "telemetry") {
@@ -2067,6 +2087,51 @@ function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
     traceability: "generated/artifacts/traceability.yml",
   };
   return resolve(aiw, paths[stage]);
+}
+
+export type ConfirmQuestion = (question: string) => Promise<string>;
+
+export async function configureOptionalModels(
+  fs: FileSystem,
+  aiwPath: string,
+  answer: ConfirmQuestion,
+): Promise<string[]> {
+  const enabled: string[] = [];
+  const semanticPath = join(aiwPath, SEMANTIC_CONFIG_PATH);
+  if (!fs.exists(semanticPath)) {
+    const response = (
+      await answer(
+        `Enable semantic mapping with a local embedding model (default: ${DEFAULT_SEMANTIC_CONFIG.model} at ${DEFAULT_SEMANTIC_CONFIG.baseUrl})? [y/N] `,
+      )
+    )
+      .trim()
+      .toLowerCase();
+    if (response === "y" || response === "yes") {
+      fs.write(
+        semanticPath,
+        serializeSemanticConfig({ ...DEFAULT_SEMANTIC_CONFIG, enabled: true }),
+      );
+      enabled.push(`semantic (${DEFAULT_SEMANTIC_CONFIG.model})`);
+    }
+  }
+  const decisionPath = join(aiwPath, DECISION_CONFIG_PATH);
+  if (!fs.exists(decisionPath)) {
+    const response = (
+      await answer(
+        `Enable advisory decision triage with a local decision model (default: ${DEFAULT_DECISION_CONFIG.model} at ${DEFAULT_DECISION_CONFIG.baseUrl})? [y/N] `,
+      )
+    )
+      .trim()
+      .toLowerCase();
+    if (response === "y" || response === "yes") {
+      fs.write(
+        decisionPath,
+        serializeDecisionConfig({ ...DEFAULT_DECISION_CONFIG, enabled: true }),
+      );
+      enabled.push(`decision (${DEFAULT_DECISION_CONFIG.model})`);
+    }
+  }
+  return enabled;
 }
 
 function formatConfidence(confidence: number | undefined): string {

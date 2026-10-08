@@ -1,6 +1,6 @@
 # Semantic Mapping
 
-AI Workflow can build a semantic index of the scanned project with a local embedding model such as `embeddinggemma-2` served by Ollama. Semantic mapping is opt-in and flag-gated: it activates only when a valid configuration exists, and every scan and flow query re-reads the flag.
+AI Workflow can build a semantic index of the scanned project with a local embedding model such as `embeddinggemma-2` served by Ollama. Semantic mapping is opt-in and flag-gated: it activates only when a valid configuration exists, and every scan and flow query re-reads the flag. During an interactive `aiw install`, the installer offers to create this configuration with defaults; answering `y` writes it before `/ai-init` runs. Declining, or installing non-interactively, leaves the file absent.
 
 ## Configuration
 

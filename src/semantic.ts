@@ -55,6 +55,10 @@ export function parseSemanticConfig(text: string): SemanticConfig {
   return { enabled: true, model, baseUrl, chunkChars: parsedChunk, topK: parsedTopK };
 }
 
+export function serializeSemanticConfig(config: SemanticConfig): string {
+  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n`;
+}
+
 export function loadSemanticConfig(fs: FileSystem, aiwPath: string): SemanticConfig | undefined {
   const configPath = `${aiwPath}/${SEMANTIC_CONFIG_PATH}`;
   if (!fs.exists(configPath)) return undefined;
