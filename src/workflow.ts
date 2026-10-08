@@ -44,6 +44,21 @@ import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import {
+  buildEvidenceTriageRequest,
+  createOllamaDecisionProvider,
+  loadDecisionConfig,
+  DECISION_CONFIG_PATH,
+} from "./decision.js";
+import {
+  buildSemanticIndex,
+  createOllamaEmbeddingProvider,
+  loadSemanticConfig,
+  parseSemanticIndex,
+  querySemanticIndex,
+  SEMANTIC_INDEX_PATH,
+  serializeSemanticIndex,
+} from "./semantic.js";
+import {
   assertKnownPermissions,
   assertPermissions,
   assertPackagePermissions,
@@ -561,7 +576,138 @@ export async function runCommand(
         join(aiw, "profile.yml"),
         `schema: 1\nstatus: scanned\nfacts:\n${evidence}\nruntime:\n  languages: [${profile.runtime.languages.join(", ")}]\nframeworks: [${profile.frameworks.join(", ")}]\npackage_manager: ${profile.packageManager}\nquality:\n  linter: ${profile.quality.linter?.name ?? "unknown"}\n  linter_command: ${profile.quality.linter?.command ?? "unknown"}\n  formatter: ${profile.quality.formatter?.name ?? "unknown"}\n  formatter_command: ${profile.quality.formatter?.command ?? "unknown"}\n  typecheck: ${profile.quality.typecheck?.name ?? "unknown"}\n  typecheck_command: ${profile.quality.typecheck?.command ?? "unknown"}\ntesting: ${profile.testing?.name ?? "unknown"}\ntesting_command: ${profile.testing?.command ?? "unknown"}\nci: [${profile.ci.join(", ")}]\nworkspaces: [${profile.workspaces.join(", ")}]\nproject_modules: ${JSON.stringify(profile.modules ?? [])}\npolicies:\n  artifact_language: en\n`,
       );
+      const semanticConfig = loadSemanticConfig(fs, aiw);
+      if (semanticConfig?.enabled) {
+        const provider = createOllamaEmbeddingProvider(semanticConfig);
+        if (!(await provider.available()))
+          return {
+            exitCode: 1,
+            error: `Semantic model ${semanticConfig.model} is not available at ${semanticConfig.baseUrl}.`,
+          };
+        const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
+        const index = await buildSemanticIndex(
+          scanFiles.files,
+          async (file) => {
+            const absolute = join(root, file);
+            try {
+              return new TextDecoder("utf-8", { fatal: true }).decode(
+                fs.readBytes?.(absolute) ?? Buffer.from(fs.read(absolute), "utf8"),
+              );
+            } catch {
+              return undefined;
+            }
+          },
+          provider,
+          semanticConfig,
+        );
+        fs.mkdir(join(aiw, "semantic"));
+        fs.write(join(aiw, SEMANTIC_INDEX_PATH), serializeSemanticIndex(index));
+      }
       return { exitCode: 0, output: "Project profile generated." };
+    }
+    if (command === "decision") {
+      const usage = "Usage: aiw decision triage --artifact=<path> | aiw decision status";
+      const action = args[1];
+      const config = loadDecisionConfig(fs, aiw);
+      if (action === "status") {
+        if (!config)
+          return {
+            exitCode: 0,
+            output: `Decision model is not configured. Create .aiw/${DECISION_CONFIG_PATH} to enable it.`,
+          };
+        return {
+          exitCode: 0,
+          output: `Decision model ${config.enabled ? "enabled" : "disabled"}: ${config.model} at ${config.baseUrl}`,
+        };
+      }
+      if (action === "triage") {
+        const parsed = parseNamedOptions(args.slice(2), ["artifact"]);
+        if (!parsed?.artifact) return { exitCode: 1, error: usage };
+        if (!config?.enabled)
+          return {
+            exitCode: 1,
+            error: "Decision model is disabled. Set decision.enabled=true in .aiw/decision.yml.",
+          };
+        const artifactPath = safeProjectFile(root, parsed.artifact, fs);
+        if (!fs.exists(artifactPath))
+          return { exitCode: 1, error: `Artifact not found: ${parsed.artifact}` };
+        const provider = createOllamaDecisionProvider(config);
+        if (!(await provider.available()))
+          return {
+            exitCode: 1,
+            error: `Decision model ${config.model} is not available at ${config.baseUrl}.`,
+          };
+        const decision = await provider.decide(buildEvidenceTriageRequest(fs.read(artifactPath)));
+        const gate = decision.answers.gate;
+        const evidence = decision.answers.evidence_complete;
+        return {
+          exitCode: 0,
+          output: [
+            "Advisory decision (never replaces human approval):",
+            `  gate: ${gate?.choice ?? "unknown"} (confidence ${formatConfidence(gate?.confidence)})`,
+            `  evidence_complete: ${formatNoul(evidence?.noul)}`,
+          ].join("\n"),
+        };
+      }
+      return { exitCode: 1, error: usage };
+    }
+    if (command === "semantic") {
+      const usage = "Usage: aiw semantic query --text=<query> | aiw semantic status";
+      const action = args[1];
+      if (action === "status") {
+        const config = loadSemanticConfig(fs, aiw);
+        if (!config)
+          return {
+            exitCode: 0,
+            output: `Semantic mapping is not configured. Create .aiw/${"semantic.yml"} to enable it.`,
+          };
+        const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
+        const built = fs.exists(indexPath)
+          ? `indexed chunks: ${parseSemanticIndex(fs.read(indexPath)).chunks.length}`
+          : "index: not built (run aiw scan)";
+        return {
+          exitCode: 0,
+          output: `Semantic mapping ${config.enabled ? "enabled" : "disabled"}: model ${config.model} at ${config.baseUrl}\n${built}`,
+        };
+      }
+      if (action === "query") {
+        const parsed = parseNamedOptions(args.slice(2), ["text"]);
+        if (!parsed?.text) return { exitCode: 1, error: usage };
+        const config = loadSemanticConfig(fs, aiw);
+        if (!config?.enabled)
+          return {
+            exitCode: 1,
+            error: "Semantic mapping is disabled. Set semantic.enabled=true in .aiw/semantic.yml.",
+          };
+        const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
+        if (!fs.exists(indexPath))
+          return { exitCode: 1, error: "Semantic index is missing. Run `aiw scan` first." };
+        const provider = createOllamaEmbeddingProvider(config);
+        if (!(await provider.available()))
+          return {
+            exitCode: 1,
+            error: `Semantic model ${config.model} is not available at ${config.baseUrl}.`,
+          };
+        const matches = await querySemanticIndex(
+          parseSemanticIndex(fs.read(indexPath)),
+          parsed.text,
+          provider,
+          config,
+        );
+        return {
+          exitCode: 0,
+          output:
+            matches.length === 0
+              ? "No semantic matches."
+              : matches
+                  .map(
+                    (match) =>
+                      `- ${match.file} (score ${match.score.toFixed(3)})\n  ${match.excerpt}`,
+                  )
+                  .join("\n"),
+        };
+      }
+      return { exitCode: 1, error: usage };
     }
     if (command === "target") {
       const target = args[1];
@@ -1921,6 +2067,14 @@ function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
     traceability: "generated/artifacts/traceability.yml",
   };
   return resolve(aiw, paths[stage]);
+}
+
+function formatConfidence(confidence: number | undefined): string {
+  return confidence === undefined ? "unknown" : confidence.toFixed(3);
+}
+
+function formatNoul(noul: number | undefined): string {
+  return noul === undefined ? "unknown" : noul.toFixed(3);
 }
 
 function parseNamedOptions(args: string[], allowed: string[]): Record<string, string> | undefined {

@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- Optional semantic mapping in `aiw scan`: when `.aiw/semantic.yml` enables a local embedding model (for example Ollama `embeddinggemma-2`), the scan verifies model availability, embeds line-aligned file chunks, and writes a versioned index to `.aiw/semantic/index.json`.
+- `aiw semantic query` and `aiw semantic status` commands for cosine-similarity retrieval over the semantic index, gated by the same configuration flag.
+- Advisory decision triage via a local decision model (`jev/clef-flash` through Ollama `/v1/systemone`): flag-gated by `.aiw/decision.yml`, `aiw decision status` and `aiw decision triage --artifact=<path>` return advisory evidence-completeness and gate decisions with confidence, never replacing human approval.
+- Documentation for semantic mapping and an evaluation of the `jev/clef` decision model for advisory flow decisions.
+
+### Fixed
+
+- Removed high-severity transitive vulnerabilities (`brace-expansion`, `source-map-js`) reported by `npm audit`.
+
 ## [0.2.1] - 2026-09-13
 
 ### Changed

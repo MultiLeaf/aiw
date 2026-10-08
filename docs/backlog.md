@@ -68,6 +68,8 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 ## Context and cost — P2
 
+- [x] **SEM-001** Add flag-gated semantic mapping to scan and retrieval. _Acceptance:_ `.aiw/semantic.yml` with `enabled: true` verifies model availability before indexing, builds a versioned chunk index during `aiw scan`, and `aiw semantic query` returns ranked matches; missing or disabled configuration keeps scans fully deterministic and offline; semantic results are retrieval aids, never confirmed facts.
+- [x] **SEM-002** Integrate a decision model (jev/clef-flash via Ollama `/v1/systemone`) for advisory gate triage. _Acceptance:_ `.aiw/decision.yml` with `enabled: true` verifies model availability before use; `aiw decision triage` returns advisory `evidence_complete` and `gate` decisions with confidence; disabled or missing configuration makes no network request; advisory output never replaces human approval. See `docs/decision-model-evaluation.md`.
 - [x] **CTX-001** Build layered project context store.
 - [x] **CTX-002** Add task-scoped context retrieval and delta loading.
 - [x] **CTX-003** Add summary cache and freshness invalidation.
