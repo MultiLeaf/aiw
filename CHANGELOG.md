@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-08
+
 ### Added
 
 - Interactive optional-model onboarding during `aiw install`: in an interactive terminal, the installer asks whether to enable semantic mapping and advisory decision triage and writes `.aiw/semantic.yml` / `.aiw/decision.yml` with defaults before `/ai-init` runs. Non-interactive installs skip the prompts, and existing configuration files are never overwritten.
