@@ -1,2 +1,5 @@
 .aiw/generated/
+.aiw/semantic/
+.aiw/semantic.yml
+.aiw/decision.yml
 dist

@@ -6,13 +6,13 @@ facts:
     state: detected
     method: deterministic
     confidence: 1
-    evidence: ["eslint.config.js"]
+    evidence: ["eslint.config.js", "scripts/clean-dist.mjs", "scripts/release-check.mjs", "scripts/release-publish-check.mjs", "scripts/release-publish-check.node-test.mjs"]
   - key: runtime.language
     value: typescript
     state: detected
     method: deterministic
     confidence: 1
-    evidence: ["src/adapter-contract.test.ts", "src/adapter-contract.ts", "src/adapter.ts", "src/ci.test.ts", "src/cli.test.ts", "src/cli.ts", "src/confirmation.test.ts", "src/confirmation.ts", "src/constants.ts", "src/drift.test.ts", "src/drift.ts", "src/evidence.test.ts", "src/evidence.ts", "src/files.ts", "src/generator.test.ts", "src/generator.ts", "src/intelligence.test.ts", "src/intelligence.ts", "src/interpreter.test.ts", "src/interpreter.ts", "src/manifest.test.ts", "src/manifest.ts", "src/package-contract.test.ts", "src/package-contract.ts", "src/profile.test.ts", "src/profile.ts", "src/quality-pipeline.test.ts", "src/recommendations.test.ts", "src/recommendations.ts", "src/scanner.test.ts", "src/scanner.ts", "src/selection.test.ts", "src/selection.ts", "src/services.test.ts", "src/services.ts", "src/types.ts", "src/workflow.ts"]
+    evidence: ["src/adapter-contract.integration.test.ts", "src/adapter-contract.test.ts", "src/adapter-contract.ts", "src/adapter.ts", "src/bundled-resources.ts", "src/ci.test.ts", "src/claude-adapter.test.ts", "src/claude-layout.ts", "src/cli.test.ts", "src/cli.ts", "src/codex-adapter.test.ts", "src/codex-layout.test.ts", "src/codex-layout.ts", "src/confirmation.test.ts", "src/confirmation.ts", "src/constants.ts", "src/context-cache.test.ts", "src/context-cache.ts", "src/context-quality.test.ts", "src/context-quality.ts", "src/context-retrieval.test.ts", "src/context-retrieval.ts", "src/context-store.test.ts", "src/context-store.ts", "src/copilot-adapter.test.ts", "src/copilot-layout.ts", "src/cursor-adapter.test.ts", "src/cursor-layout.ts", "src/dashboard.test.ts", "src/dashboard.ts", "src/decision.test.ts", "src/decision.ts", "src/drift.test.ts", "src/drift.ts", "src/entrypoint.test.ts", "src/evidence.test.ts", "src/evidence.ts", "src/files.ts", "src/fixtures/adapter-contract.ts", "src/fixtures/plugin-files.ts", "src/gemini-adapter.test.ts", "src/gemini-layout.ts", "src/generator.test.ts", "src/generator.ts", "src/human-approval.test.ts", "src/human-approval.ts", "src/human-gates.test.ts", "src/intelligence.test.ts", "src/intelligence.ts", "src/interpreter.test.ts", "src/interpreter.ts", "src/lockfile.test.ts", "src/lockfile.ts", "src/manifest.test.ts", "src/manifest.ts", "src/migration.test.ts", "src/migration.ts", "src/orchestration.integration.test.ts", "src/orchestration.test.ts", "src/orchestration.ts", "src/organization-policy.test.ts", "src/organization-policy.ts", "src/ownership.test.ts", "src/ownership.ts", "src/package-audit.test.ts", "src/package-audit.ts", "src/package-contract.test.ts", "src/package-contract.ts", "src/package-integrity.test.ts", "src/package-integrity.ts", "src/package-updates.test.ts", "src/package-updates.ts", "src/plugin-sdk.test.ts", "src/plugin-sdk.ts", "src/policy-gate.test.ts", "src/policy-gate.ts", "src/profile.test.ts", "src/profile.ts", "src/providers.test.ts", "src/providers.ts", "src/quality-gates.test.ts", "src/quality-gates.ts", "src/quality-pipeline.test.ts", "src/recommendations.test.ts", "src/recommendations.ts", "src/registry.test.ts", "src/registry.ts", "src/release.test.ts", "src/scanner.test.ts", "src/scanner.ts", "src/selection.test.ts", "src/selection.ts", "src/self-validation.test.ts", "src/self-validation.ts", "src/semantic.test.ts", "src/semantic.ts", "src/services.test.ts", "src/services.ts", "src/target-detection.test.ts", "src/team-configuration.test.ts", "src/team-configuration.ts", "src/telemetry.test.ts", "src/telemetry.ts", "src/test-discovery.integration.test.ts", "src/token-usage.test.ts", "src/token-usage.ts", "src/traceability.test.ts", "src/traceability.ts", "src/types.ts", "src/universal-adapter.test.ts", "src/universal-layout.ts", "src/vercel-skills.test.ts", "src/vercel-skills.ts", "src/workflow.ts", "vitest.config.ts"]
   - key: package-manager
     value: npm
     state: detected
@@ -49,9 +49,15 @@ frameworks: []
 package_manager: npm
 quality:
   linter: eslint
+  linter_command: eslint .
   formatter: prettier
+  formatter_command: prettier --write "src/**/*.{ts,js}" "docs/**/*.md" "*.{json,js}"
+  typecheck: typescript
+  typecheck_command: tsc --noEmit
 testing: vitest
+testing_command: vitest run
 ci: [github-actions]
 workspaces: []
+project_modules: []
 policies:
   artifact_language: en
