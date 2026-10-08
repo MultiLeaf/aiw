@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-08
+
 ### Added
 
 - Optional semantic mapping in `aiw scan`: when `.aiw/semantic.yml` enables a local embedding model (for example Ollama `embeddinggemma-2`), the scan verifies model availability, embeds line-aligned file chunks, and writes a versioned index to `.aiw/semantic/index.json`.
