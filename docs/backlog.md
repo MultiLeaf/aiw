@@ -86,6 +86,10 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **ENT-006** Add web UI for project profile, recommendations, traceability, and migrations. _Acceptance:_ `aiw ui` serves a local-only, responsive and accessible dashboard from packaged project state; profile, recommendations, and requirement evidence are visible; migrations require explicit confirmation and delegate to the existing workflow.
 - [x] **ENT-007** Add multi-agent orchestration and parallel task execution. _Acceptance:_ strict versioned task graphs support deterministic preview, explicit adapter-backed execution, bounded parallelism, dependency-aware failure isolation, and immutable checkpoint evidence.
 
+## Engineering — P2
+
+- [ ] **ENG-001** Update GitHub Actions to Node 24-native versions. _Acceptance:_ `actions/checkout` and `actions/setup-node` upgraded past v4 so release workflows no longer emit Node.js 20 deprecation warnings; CI and Release workflows pass on `ubuntu-latest` before and after the October 19, 2026 Ubuntu 26 runner migration.
+
 ## Backlog rules
 
 - [x] **FND-009** Add self-validation workflow. _Acceptance:_ changes affecting AIW behavior execute against this repository and record generated-output evidence.
