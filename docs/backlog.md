@@ -29,8 +29,10 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 - [x] **SCAN-006** Implement scoped AI project interpreter. _Acceptance:_ interpreter receives filtered context and produces structured insights requiring confirmation when uncertain.
 - [x] **SCAN-007** Add interpreter privacy and token guardrails. _Acceptance:_ secrets, dependencies, generated files, Git internals, and checkpoints are excluded and token usage is measured.
 - [x] **SCAN-004** Add interactive confirmation and overrides. _Acceptance:_ users can accept, reject, or edit inferred facts.
+- [ ] **INT-001** Ship a built-in OpenAI-compatible `AiProvider`. _Acceptance:_ an `aiw` settings section configures a local or remote OpenAI-compatible endpoint (for example Ollama `gpt-oss:20b`) so the scoped AI interpreter works without a host-injected provider; secrets redaction, token ceilings, and scoped-context validation still apply; missing configuration keeps scans deterministic and offline.
 - [x] **REC-001** Build capability recommendation engine. _Acceptance:_ recommendations include rationale, evidence, permissions, conflicts, and confidence.
 - [x] **REC-002** Add interactive capability selection. _Acceptance:_ users select packages and individual resources before installation.
+- [ ] **REC-003** Rank capability recommendations with a decision model. _Acceptance:_ when a decision model is enabled in settings, recommendations are ordered by decision-model relevance to the confirmed profile with confidence and rationale; ranking is advisory and never changes evidence states. See `docs/decision-model-evaluation.md`.
 - [x] **GEN-001** Generate project-specific rules, agents, hooks, and context. _Acceptance:_ generated content uses confirmed profile data and English artifacts.
 - [x] **GEN-002** Preserve manual overrides and detect drift. _Acceptance:_ regeneration never silently overwrites user changes.
 
@@ -70,6 +72,9 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 - [x] **SEM-001** Add flag-gated semantic mapping to scan and retrieval. _Acceptance:_ `.aiw/semantic.yml` with `enabled: true` verifies model availability before indexing, builds a versioned chunk index during `aiw scan`, and `aiw semantic query` returns ranked matches; missing or disabled configuration keeps scans fully deterministic and offline; semantic results are retrieval aids, never confirmed facts.
 - [x] **SEM-002** Integrate a decision model (jev/clef-flash via Ollama `/v1/systemone`) for advisory gate triage. _Acceptance:_ `.aiw/decision.yml` with `enabled: true` verifies model availability before use; `aiw decision triage` returns advisory `evidence_complete` and `gate` decisions with confidence; disabled or missing configuration makes no network request; advisory output never replaces human approval. See `docs/decision-model-evaluation.md`.
+- [ ] **SEM-003** Embed chunks in batches. _Acceptance:_ indexing uses the batch embeddings endpoint (for example Ollama `/api/embed`) instead of one request per chunk, measurably reducing scan time on this repository (baseline: ~34s for 824 chunks) with identical index output.
+- [ ] **SEM-004** Exclude lockfiles and generated vendor manifests from the semantic index. _Acceptance:_ files such as `package-lock.json` (observed contributing 75 noise chunks) are skipped during indexing by default with an explicit, documented override.
+- [ ] **SEM-005** Re-rank semantic recall with a decision model. _Acceptance:_ when both semantic mapping and a decision model are enabled, `aiw semantic query` optionally re-ranks embedding matches with the decision model, reporting the ranking influence; recall without a decision model is unchanged.
 - [x] **CTX-001** Build layered project context store.
 - [x] **CTX-002** Add task-scoped context retrieval and delta loading.
 - [x] **CTX-003** Add summary cache and freshness invalidation.
