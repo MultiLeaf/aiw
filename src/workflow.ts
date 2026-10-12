@@ -53,7 +53,6 @@ import {
   buildEvidenceTriageRequest,
   createOllamaDecisionProvider,
   DEFAULT_DECISION_CONFIG,
-  DECISION_CONFIG_PATH,
   loadDecisionConfig,
 } from "./decision.js";
 import {
@@ -295,9 +294,12 @@ export async function runCommand(
             new Date().toISOString(),
           );
           fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(invalidated));
+          const existing = ledger.stages[workflowStage];
           return {
             exitCode: 1,
-            error: `The ${workflowStage} artifact changed after review; its approval is stale. Rerun the quality gate and request approval again.`,
+            error: existing
+              ? `The ${workflowStage} artifact changed after review; its approval is stale. Rerun the quality gate and request approval again.`
+              : `No passing quality gate recorded for ${workflowStage}. Run aiw gate ${workflowStage} before approving.`,
           };
         }
         const updated = approveStage(ledger, workflowStage, {
@@ -640,7 +642,7 @@ export async function runCommand(
         if (!config)
           return {
             exitCode: 0,
-            output: `Decision model is not configured. Create .aiw/${DECISION_CONFIG_PATH} to enable it.`,
+            output: `Decision model is not configured. Add a decision section to .aiw/settings.yml to enable it.`,
           };
         return {
           exitCode: 0,
@@ -686,7 +688,7 @@ export async function runCommand(
         if (!config)
           return {
             exitCode: 0,
-            output: `Semantic mapping is not configured. Create .aiw/${"semantic.yml"} to enable it.`,
+            output: `Semantic mapping is not configured. Add a semantic section to .aiw/settings.yml to enable it.`,
           };
         const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
         const built = fs.exists(indexPath)

@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-08
+
+### Fixed
+
+- Approving an SDD stage that never passed its quality gate now reports an actionable `Run aiw gate <stage> before approving` error instead of a misleading stale-approval message.
+- `aiw semantic status` and `aiw decision status` now point to the `.aiw/settings.yml` sections instead of the legacy standalone files.
+
 ## [0.4.0] - 2026-10-08
 
 ### Changed
