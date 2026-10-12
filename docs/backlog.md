@@ -79,6 +79,12 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 ## Onboarding — P1
 
+- [ ] **TEL-001** Offer telemetry consent during installation. _Acceptance:_ interactive install asks about telemetry after the model questions with an explicit default of No, states the exact event payload (command name and outcome only, no arguments, paths, or contents), records the decision in `.aiw/settings.yml`, and remains reversible through `aiw telemetry enable/disable`; non-interactive installs skip the prompt; the prompt itself never emits an event.
+
+## Telemetry — P2
+
+- [ ] **TEL-002** Add an inspectable local telemetry buffer. _Acceptance:_ when telemetry is enabled and a host client is absent, events accumulate in a rotated local buffer under `.aiw/` with a documented retention cap; `aiw telemetry status --verbose` displays buffered events; `aiw telemetry disable` purges the buffer; no network transport is introduced by this item.
+
 - [ ] **ONB-001** Detect and offer real local models during installation. _Acceptance:_ interactive install probes the configured Ollama endpoint (`/api/tags`), lists the embedding and decision models actually available, and records the user's selection in `.aiw/settings.yml`; when no server or models are found, the installer reports the optional capability and continues without network assumptions; non-interactive installs are unchanged.
 
 ## Context and cost — P2 (continued)
