@@ -27,7 +27,7 @@ Clef Flash answers typed questions over a supplied state in a single non-autoreg
 
 The earlier blocker (no exposed endpoint in Ollama 0.40.1) is resolved by the `/v1/systemone` endpoint documented at <https://ollama.com/library/clef-flash>. AI Workflow now ships the advisory layer:
 
-- `src/decision.ts`: `DecisionConfig` (`.aiw/decision.yml`, flag-gated: `enabled` / `model` / `baseUrl`), a `DecisionProvider` with availability verification (`/api/tags`), typed question/response contracts, and `buildEvidenceTriageRequest` for pre-gate triage.
+- `src/decision.ts`: `DecisionConfig` (`.aiw/decision.yml`, flag-gated: `enabled` / `model` / `baseUrl` / optional `apiKeyEnv` for an external OpenAI-compatible endpoint with bearer authentication), a `DecisionProvider` with availability verification (`/api/tags` for Ollama, `/v1/models` with auth for external), typed question/response contracts, and `buildEvidenceTriageRequest` for pre-gate triage.
 - `aiw decision status` and `aiw decision triage --artifact=<path>`: advisory `evidence_complete` (noul) and `gate` (`ready` / `needs-work`) decisions over any project artifact, with explicit confidence reporting.
 
 Observed behavior on real plans: an evidence-free plan scored `gate: ready` with confidence 0.044 and `evidence_complete` 0.260, while a fully evidenced plan scored confidence 0.718 and `evidence_complete` 0.924 — low confidence signals an inconclusive decision rather than approval.

@@ -27,7 +27,7 @@ npx @multileaf/ai-workflow install --target codex
 
 Then run `/ai-init` in Codex. The bootstrap scans the repository, explains project-specific recommendations, and waits for the user's selections before installing optional resources.
 
-During an interactive install, AI Workflow also offers optional local capabilities after the base installation: it probes the configured Ollama endpoint, lists the embedding and decision models actually available, records the user's selection in `.aiw/settings.yml`, and then asks for telemetry consent with an explicit default of No (see [Privacy and security](#privacy-and-security)). Non-interactive installs skip every prompt.
+During an interactive install, AI Workflow also offers optional local capabilities after the base installation: it probes the configured Ollama endpoint, offers Ollama or an external OpenAI-compatible provider (endpoint URL plus an optional token environment variable), lists the embedding and decision models actually available, can run `ollama pull` for a default embedding model when none exist, and validates the chosen setup with a live request before recording it in `.aiw/settings.yml`. It then asks for telemetry consent with an explicit default of No (see [Privacy and security](#privacy-and-security)). Non-interactive installs skip every prompt.
 
 Supported targets are `codex`, `claude`, `cursor`, `gemini`, `copilot`, and `universal`. Every command uses the same entry point:
 

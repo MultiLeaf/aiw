@@ -9,6 +9,7 @@ export type SemanticConfig = {
   chunkChars: number;
   topK: number;
   excludeLockfiles: boolean;
+  apiKeyEnv?: string;
 };
 
 export type SemanticIndexChunk = { file: string; text: string; vector: number[] };
@@ -70,11 +71,17 @@ export function parseSemanticMapping(raw: unknown): SemanticConfig {
   const chunkChars = raw2.chunkChars;
   const topK = raw2.topK;
   const rawExclude = raw2.excludeLockfiles;
+  const apiKeyEnv = raw2.apiKeyEnv;
   if (typeof enabled !== "boolean") throw new Error("semantic.enabled must be a boolean");
   const excludeLockfiles = rawExclude === undefined ? true : (rawExclude as boolean);
   if (!enabled) return { ...DEFAULT_SEMANTIC_CONFIG, enabled: false, excludeLockfiles };
   if (rawExclude !== undefined && typeof rawExclude !== "boolean")
     throw new Error("semantic.excludeLockfiles must be a boolean");
+  if (
+    apiKeyEnv !== undefined &&
+    (typeof apiKeyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv))
+  )
+    throw new Error("semantic.apiKeyEnv must be an uppercase environment variable name");
   if (typeof model !== "string" || model.trim() === "")
     throw new Error("semantic.model must be a non-empty string when semantic mapping is enabled");
   if (typeof baseUrl !== "string" || !/^https?:\/\//i.test(baseUrl))
@@ -93,11 +100,12 @@ export function parseSemanticMapping(raw: unknown): SemanticConfig {
     chunkChars: parsedChunk,
     topK: parsedTopK,
     excludeLockfiles,
+    ...(apiKeyEnv ? { apiKeyEnv } : {}),
   };
 }
 
 export function serializeSemanticConfig(config: SemanticConfig): string {
-  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n  excludeLockfiles: ${config.excludeLockfiles}\n`;
+  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n  excludeLockfiles: ${config.excludeLockfiles}${config.apiKeyEnv ? `\n  apiKeyEnv: ${config.apiKeyEnv}` : ""}\n`;
 }
 
 export function loadSemanticConfig(fs: FileSystem, aiwPath: string): SemanticConfig | undefined {
@@ -128,7 +136,49 @@ const EMBED_BATCH_SIZE = 64;
 export function createOllamaEmbeddingProvider(
   config: SemanticConfig,
   fetchImpl: FetchLike = (url, init) => fetch(url, init),
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): EmbeddingProvider {
+  const externalToken = config.apiKeyEnv ? env[config.apiKeyEnv] : undefined;
+  const isExternal = config.apiKeyEnv !== undefined;
+  const authHeaders = (extra: Record<string, string> = {}): Record<string, string> =>
+    externalToken ? { ...extra, authorization: `Bearer ${externalToken}` } : extra;
+  if (isExternal)
+    return {
+      async available(): Promise<boolean> {
+        try {
+          const response = await fetchImpl(`${config.baseUrl}/v1/models`, {
+            headers: authHeaders(),
+          });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      },
+      async embed(texts: string[]): Promise<number[][]> {
+        const vectors: number[][] = [];
+        for (let offset = 0; offset < texts.length; offset += EMBED_BATCH_SIZE) {
+          const batch = texts.slice(offset, offset + EMBED_BATCH_SIZE);
+          const response = await fetchImpl(`${config.baseUrl}/v1/embeddings`, {
+            method: "POST",
+            headers: authHeaders({ "content-type": "application/json" }),
+            body: JSON.stringify({ model: config.model, input: batch }),
+          });
+          if (!response.ok) throw new Error(`Embedding request failed for model ${config.model}`);
+          const body = (await response.json()) as { data?: { embedding?: unknown }[] };
+          const rows = body.data ?? [];
+          if (
+            rows.length !== batch.length ||
+            rows.some(
+              (row) =>
+                !Array.isArray(row.embedding) || row.embedding.some((v) => typeof v !== "number"),
+            )
+          )
+            throw new Error(`Embedding model ${config.model} returned invalid vectors`);
+          vectors.push(...rows.map((row) => row.embedding as number[]));
+        }
+        return vectors;
+      },
+    };
   return {
     async available(): Promise<boolean> {
       try {

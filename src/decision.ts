@@ -6,6 +6,7 @@ export type DecisionConfig = {
   enabled: boolean;
   model: string;
   baseUrl: string;
+  apiKeyEnv?: string;
 };
 
 export type DecisionQuestion =
@@ -52,17 +53,23 @@ export function parseDecisionMapping(raw: unknown): DecisionConfig {
   const enabled = record.enabled;
   const model = record.model;
   const baseUrl = record.baseUrl;
+  const apiKeyEnv = record.apiKeyEnv;
   if (typeof enabled !== "boolean") throw new Error("decision.enabled must be a boolean");
   if (!enabled) return { ...DEFAULT_DECISION_CONFIG, enabled: false };
+  if (
+    apiKeyEnv !== undefined &&
+    (typeof apiKeyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv))
+  )
+    throw new Error("decision.apiKeyEnv must be an uppercase environment variable name");
   if (typeof model !== "string" || model.trim() === "")
     throw new Error("decision.model must be a non-empty string when decision mapping is enabled");
   if (typeof baseUrl !== "string" || !/^https?:\/\//i.test(baseUrl))
     throw new Error("decision.baseUrl must be an http(s) URL when decision mapping is enabled");
-  return { enabled: true, model, baseUrl };
+  return { enabled: true, model, baseUrl, ...(apiKeyEnv ? { apiKeyEnv } : {}) };
 }
 
 export function serializeDecisionConfig(config: DecisionConfig): string {
-  return `decision:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n`;
+  return `decision:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}${config.apiKeyEnv ? `\n  apiKeyEnv: ${config.apiKeyEnv}` : ""}\n`;
 }
 
 export function parseDecisionConfig(text: string): DecisionConfig {
@@ -101,11 +108,26 @@ export function parseDecisionResponse(text: string): DecisionResponse {
   return { model: parsed.model, answers: result };
 }
 
-export function createOllamaDecisionProvider(config: DecisionConfig): DecisionProvider {
+type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
+
+export function createOllamaDecisionProvider(
+  config: DecisionConfig,
+  fetchImpl: FetchLike = (url, init) => fetch(url, init),
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): DecisionProvider {
+  const externalToken = config.apiKeyEnv ? env[config.apiKeyEnv] : undefined;
+  const authHeaders = (extra: Record<string, string> = {}): Record<string, string> =>
+    externalToken ? { ...extra, authorization: `Bearer ${externalToken}` } : extra;
   return {
     async available(): Promise<boolean> {
       try {
-        const response = await fetch(`${config.baseUrl}/api/tags`);
+        if (config.apiKeyEnv !== undefined) {
+          const response = await fetchImpl(`${config.baseUrl}/v1/models`, {
+            headers: authHeaders(),
+          });
+          return response.ok;
+        }
+        const response = await fetchImpl(`${config.baseUrl}/api/tags`);
         if (!response.ok) return false;
         const body = (await response.json()) as { models?: { name?: string; model?: string }[] };
         const names = new Set(
@@ -124,9 +146,9 @@ export function createOllamaDecisionProvider(config: DecisionConfig): DecisionPr
       const questionCount = Object.keys(request.questions).length;
       if (questionCount === 0 || questionCount > 64)
         throw new Error("Decision requests must contain between 1 and 64 questions");
-      const response = await fetch(`${config.baseUrl}/v1/systemone`, {
+      const response = await fetchImpl(`${config.baseUrl}/v1/systemone`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: authHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({
           model: config.model,
           state: request.state,

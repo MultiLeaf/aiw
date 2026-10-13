@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEvidenceTriageRequest,
+  createOllamaDecisionProvider,
+  parseDecisionMapping,
   buildRecommendationRankingRequest,
   buildSemanticRerankRequest,
   parseDecisionConfig,
@@ -97,5 +99,46 @@ describe("recommendation ranking request", () => {
     expect(question.instructions).toContain("languages: typescript");
     expect(question.instructions).toContain("Test-first with existing runner");
     expect(question.instructions).toContain("testing:vitest");
+  });
+});
+
+describe("external decision provider", () => {
+  it("checks /v1/models with auth and sends a bearer token on decide", async () => {
+    const seen: { url: string; init: RequestInit }[] = [];
+    const provider = createOllamaDecisionProvider(
+      {
+        enabled: true,
+        model: "clef-flash",
+        baseUrl: "https://api.example.com",
+        apiKeyEnv: "AIW_DEC_KEY",
+      },
+      async (url, init) => {
+        seen.push({ url, init: init ?? {} });
+        if (url.endsWith("/v1/models")) return new Response("{}", { status: 200 });
+        return new Response(
+          JSON.stringify({ model: "clef-flash", answers: { q: { type: "noul", noul: 1 } } }),
+          { status: 200 },
+        );
+      },
+      { AIW_DEC_KEY: "tok" },
+    );
+    expect(await provider.available()).toBe(true);
+    await provider.decide(buildEvidenceTriageRequest("artifact"));
+    expect(seen[0].url).toBe("https://api.example.com/v1/models");
+    expect(seen[1].url).toBe("https://api.example.com/v1/systemone");
+    expect((seen[1].init.headers as Record<string, string>).authorization).toBe("Bearer tok");
+  });
+  it("parses decision apiKeyEnv and rejects invalid names", () => {
+    expect(
+      parseDecisionMapping({
+        enabled: true,
+        model: "m",
+        baseUrl: "http://h",
+        apiKeyEnv: "AIW_DEC_KEY",
+      }).apiKeyEnv,
+    ).toBe("AIW_DEC_KEY");
+    expect(() =>
+      parseDecisionMapping({ enabled: true, model: "m", baseUrl: "http://h", apiKeyEnv: "no" }),
+    ).toThrow(/decision.apiKeyEnv/);
   });
 });

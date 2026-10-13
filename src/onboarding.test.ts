@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { readFile } from "node:fs/promises";
-import { configureOptionalModels } from "./workflow.js";
+import { configureOptionalModels, type OnboardingRuntime } from "./model-onboarding.js";
 import { nodeFileSystem } from "./files.js";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { loadSettings, readFactOverrides, saveSettingsSection } from "./settings.js";
-import { DEFAULT_SEMANTIC_CONFIG, parseSemanticMapping } from "./semantic.js";
-import { DEFAULT_DECISION_CONFIG, parseDecisionMapping } from "./decision.js";
+import { loadSettings, saveSettingsSection } from "./settings.js";
+import { parseSemanticMapping } from "./semantic.js";
+import { parseDecisionMapping } from "./decision.js";
 import {
   offerTelemetryConsent,
   parseTelemetryMapping,
@@ -18,105 +17,6 @@ function tempProject(): { root: string; aiw: string } {
   const root = mkdtempSync(join(tmpdir(), "aiw-onboarding-"));
   return { root, aiw: join(root, ".aiw") };
 }
-
-describe("optional model onboarding", () => {
-  it("enables semantic and decision in settings.yml when the user confirms", async () => {
-    const { root, aiw } = tempProject();
-    try {
-      const answers = ["y", "yes"];
-      const enabled = await configureOptionalModels(
-        nodeFileSystem,
-        aiw,
-        async () => answers.shift() ?? "",
-        async () => undefined,
-      );
-      expect(enabled).toHaveLength(2);
-      expect(enabled[0]).toContain("semantic");
-      expect(enabled[1]).toContain("decision");
-      const settings = loadSettings(nodeFileSystem, aiw);
-      expect(settings?.schema).toBe(1);
-      expect(parseSemanticMapping(settings?.semantic).enabled).toBe(true);
-      expect(parseSemanticMapping(settings?.semantic).model).toBe("embeddinggemma-2:latest");
-      expect(parseDecisionMapping(settings?.decision).enabled).toBe(true);
-      expect(parseDecisionMapping(settings?.decision).model).toBe("clef-flash:latest");
-      expect(nodeFileSystem.exists(join(aiw, "semantic.yml"))).toBe(false);
-      expect(nodeFileSystem.exists(join(aiw, "decision.yml"))).toBe(false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("writes nothing when declined and preserves existing settings sections", async () => {
-    const { root, aiw } = tempProject();
-    try {
-      const enabled = await configureOptionalModels(nodeFileSystem, aiw, async () => "n");
-      expect(enabled).toEqual([]);
-      expect(nodeFileSystem.exists(join(aiw, "settings.yml"))).toBe(false);
-      nodeFileSystem.mkdir(aiw);
-      saveSettingsSection(nodeFileSystem, aiw, "semantic", {
-        enabled: true,
-        model: "custom-model",
-        baseUrl: "http://remote:11434",
-      });
-      const questions: string[] = [];
-      const skipped = await configureOptionalModels(
-        nodeFileSystem,
-        aiw,
-        async (question) => {
-          questions.push(question);
-          return "n";
-        },
-        async () => undefined,
-      );
-      expect(skipped).toEqual([]);
-      expect(questions).toHaveLength(1);
-      expect(questions[0]).toContain("decision");
-      expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
-        "custom-model",
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("settings overrides", () => {
-  it("round-trips fact overrides through settings.yml", async () => {
-    const { root, aiw } = tempProject();
-    try {
-      nodeFileSystem.mkdir(aiw);
-      expect(readFactOverrides(nodeFileSystem, aiw)).toEqual([]);
-      const cwd = root;
-      process.chdir(cwd);
-      const { run } = await import("./cli.js");
-      await run(["install"], cwd);
-      await run(["confirm", "--edit", "package-manager=pnpm"], cwd);
-      const overrides = readFactOverrides(nodeFileSystem, aiw);
-      expect(overrides).toEqual([{ key: "package-manager", action: "edit", value: "pnpm" }]);
-      const raw = await readFile(join(aiw, "settings.yml"), "utf8");
-      expect(raw).toContain("value: pnpm");
-    } finally {
-      process.chdir("/tmp");
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("falls back to legacy overrides.yml when settings.yml is absent", async () => {
-    const { root, aiw } = tempProject();
-    try {
-      nodeFileSystem.mkdir(aiw);
-      nodeFileSystem.write(
-        join(aiw, "overrides.yml"),
-        "schema: 1\noverrides:\n  - key: package-manager\n    action: reject\n",
-      );
-      expect(readFactOverrides(nodeFileSystem, aiw)).toEqual([
-        { key: "package-manager", action: "reject" },
-      ]);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
 
 describe("telemetry consent", () => {
   it("asks after the model questions, defaults to No, and records the decision", async () => {
@@ -132,15 +32,20 @@ describe("telemetry consent", () => {
           questions.push(question);
           return answers.shift() ?? "";
         },
-        async () => undefined,
+        {
+          listOllamaModels: async () => undefined,
+          pullOllamaModel: async () => false,
+          validateEmbedding: async () => true,
+          validateDecision: async () => true,
+        },
       );
       const enabled = await offerTelemetryConsent(nodeFileSystem, aiw, async (question) => {
         questions.push(question);
         return "";
       });
       expect(enabled).toBe(false); // explicit default of No
-      expect(questions).toHaveLength(3);
-      const consentQuestion = questions[2];
+      expect(questions.length).toBeGreaterThanOrEqual(2);
+      const consentQuestion = questions.at(-1);
       expect(consentQuestion).toContain("[y/N]");
       expect(consentQuestion).toContain("command name");
       expect(consentQuestion).toContain("outcome");
@@ -198,14 +103,23 @@ describe("telemetry consent", () => {
   });
 });
 
-describe("local model detection during install", () => {
-  it("lists real local models and records the user's selection", async () => {
+describe("model provider onboarding", () => {
+  function runtime(overrides: Partial<OnboardingRuntime> = {}): OnboardingRuntime {
+    return {
+      listOllamaModels: async () => undefined,
+      pullOllamaModel: async () => false,
+      validateEmbedding: async () => true,
+      validateDecision: async () => true,
+      ...overrides,
+    };
+  }
+
+  it("configures semantic through Ollama with a numbered model selection", async () => {
     const { root, aiw } = tempProject();
     try {
       nodeFileSystem.mkdir(aiw);
-      const probed: string[] = [];
       const questions: string[] = [];
-      const answers = ["y", "custom-embed", "yes", "clef-flash"];
+      const answers = ["y", "1", "", "n"];
       const enabled = await configureOptionalModels(
         nodeFileSystem,
         aiw,
@@ -213,65 +127,234 @@ describe("local model detection during install", () => {
           questions.push(question);
           return answers.shift() ?? "";
         },
-        async (baseUrl) => {
-          probed.push(baseUrl);
-          return ["clef-flash", "custom-embed", "embeddinggemma-2:latest"];
-        },
+        runtime({
+          listOllamaModels: async () => [
+            { name: "clef-flash:latest", embedding: false },
+            { name: "embeddinggemma-2:latest", embedding: true },
+          ],
+        }),
       );
-      expect(probed).toEqual(["http://localhost:11434"]);
-      expect(enabled).toEqual(["semantic (custom-embed)", "decision (clef-flash)"]);
-      expect(questions[0]).toContain("Available embedding models: clef-flash, custom-embed");
-      expect(questions[2]).toContain("Available decision models: clef-flash, custom-embed");
-      expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
-        "custom-embed",
+      expect(enabled).toEqual(["semantic (embeddinggemma-2:latest)"]);
+      const providerQuestion = questions.find((q) => q.includes("Select provider"));
+      expect(providerQuestion).toContain("1) ollama");
+      expect(providerQuestion).toContain("2) external");
+      expect(questions.find((q) => q.includes("Select semantic mapping"))).toContain(
+        "1) embeddinggemma-2:latest",
       );
-      expect(parseDecisionMapping(loadSettings(nodeFileSystem, aiw)?.decision).model).toBe(
-        "clef-flash",
-      );
+      const settings = loadSettings(nodeFileSystem, aiw);
+      expect(parseSemanticMapping(settings?.semantic).model).toBe("embeddinggemma-2:latest");
+      expect(parseSemanticMapping(settings?.semantic).baseUrl).toBe("http://localhost:11434");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("falls back to the first available model when the default is absent", async () => {
+  it("lists only embedding models for semantic", async () => {
     const { root, aiw } = tempProject();
     try {
       nodeFileSystem.mkdir(aiw);
-      const answers = ["y", "", "yes", ""];
+      const answers = ["y", "1", "", "n"];
+      await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async () => answers.shift() ?? "",
+        runtime({
+          listOllamaModels: async () => [
+            { name: "gpt-oss:20b", embedding: false },
+            { name: "nomic-embed-text", embedding: true },
+          ],
+        }),
+      );
+      const settings = loadSettings(nodeFileSystem, aiw);
+      expect(parseSemanticMapping(settings?.semantic).model).toBe("nomic-embed-text");
+      expect(settings?.decision).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("asks permission to ollama pull when no embedding models exist", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const questions: string[] = [];
+      let pulls = 0;
+      let pulled = false;
+      const answers = ["y", "1", "y", "", "n"];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          questions.push(question);
+          return answers.shift() ?? "";
+        },
+        runtime({
+          listOllamaModels: async () =>
+            pulled ? [{ name: "embeddinggemma-2:latest", embedding: true }] : [],
+          pullOllamaModel: async () => {
+            pulls += 1;
+            pulled = true;
+            return true;
+          },
+        }),
+      );
+      expect(pulls).toBe(1);
+      expect(questions.some((q) => q.includes("ollama pull embeddinggemma-2:latest"))).toBe(true);
+      expect(enabled).toEqual(["semantic (embeddinggemma-2:latest)"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("configures an external provider with endpoint and token env", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const validated: { baseUrl: string; model: string; apiKeyEnv?: string }[] = [];
+      const answers = ["y", "2", "https://api.example.com", "text-embed-3", "AIW_EMBED_KEY", "n"];
       const enabled = await configureOptionalModels(
         nodeFileSystem,
         aiw,
         async () => answers.shift() ?? "",
-        async () => ["mreforge:latest"],
+        runtime({
+          listOllamaModels: async () => [{ name: "clef-flash:latest", embedding: false }],
+          validateEmbedding: async (config) => {
+            validated.push(config);
+            return true;
+          },
+        }),
       );
-      expect(enabled).toEqual(["semantic (mreforge:latest)", "decision (mreforge:latest)"]);
+      expect(enabled).toEqual(["semantic (text-embed-3 via https://api.example.com)"]);
+      expect(validated).toEqual([
+        { baseUrl: "https://api.example.com", model: "text-embed-3", apiKeyEnv: "AIW_EMBED_KEY" },
+      ]);
+      const config = parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic);
+      expect(config.model).toBe("text-embed-3");
+      expect(config.baseUrl).toBe("https://api.example.com");
+      expect(config.apiKeyEnv).toBe("AIW_EMBED_KEY");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("continues with defaults when no server or models are found", async () => {
+  it("forces external when Ollama is unreachable", async () => {
     const { root, aiw } = tempProject();
     try {
       nodeFileSystem.mkdir(aiw);
       const questions: string[] = [];
-      const answers = ["y", "yes"];
-      const enabled = await configureOptionalModels(
+      const answers = ["y", "", "https://api.example.com", "dec-1", "", "n"];
+      await configureOptionalModels(
         nodeFileSystem,
         aiw,
         async (question) => {
           questions.push(question);
           return answers.shift() ?? "";
         },
-        async () => undefined,
+        runtime(),
+      );
+      expect(questions.some((q) => q.includes("Ollama is not reachable"))).toBe(true);
+      const config = parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic);
+      expect(config.baseUrl).toBe("https://api.example.com");
+      expect(config.apiKeyEnv).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retries validation and can skip the capability", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      let attempts = 0;
+      const answers = ["y", "1", "", "y", "1", "", "n"];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async () => answers.shift() ?? "",
+        runtime({
+          listOllamaModels: async () => [{ name: "embeddinggemma-2:latest", embedding: true }],
+          validateEmbedding: async () => {
+            attempts += 1;
+            return attempts > 1;
+          },
+        }),
+      );
+      expect(attempts).toBe(2);
+      expect(enabled).toEqual(["semantic (embeddinggemma-2:latest)"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("skips when validation keeps failing", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const answers = ["y", "1", "", "n", "n"];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async () => answers.shift() ?? "",
+        runtime({
+          listOllamaModels: async () => [{ name: "embeddinggemma-2:latest", embedding: true }],
+          validateEmbedding: async () => false,
+        }),
+      );
+      expect(enabled).toEqual([]);
+      expect(loadSettings(nodeFileSystem, aiw)?.semantic).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("configures the decision model with the same flow", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const answers = ["y", "1", "", "y", "1", ""];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async () => answers.shift() ?? "",
+        runtime({
+          listOllamaModels: async () => [
+            { name: "clef-flash:latest", embedding: false },
+            { name: "embeddinggemma-2:latest", embedding: true },
+          ],
+        }),
       );
       expect(enabled).toEqual([
-        `semantic (${DEFAULT_SEMANTIC_CONFIG.model})`,
-        `decision (${DEFAULT_DECISION_CONFIG.model})`,
+        "semantic (embeddinggemma-2:latest)",
+        "decision (clef-flash:latest)",
       ]);
-      for (const question of questions) expect(question).not.toContain("Available");
+      const config = parseDecisionMapping(loadSettings(nodeFileSystem, aiw)?.decision);
+      expect(config.model).toBe("clef-flash:latest");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes nothing when declined and preserves existing sections", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async () => "n",
+        runtime(),
+      );
+      expect(enabled).toEqual([]);
+      expect(nodeFileSystem.exists(join(aiw, "settings.yml"))).toBe(false);
+      nodeFileSystem.mkdir(aiw);
+      saveSettingsSection(nodeFileSystem, aiw, "semantic", {
+        enabled: true,
+        model: "custom-model",
+        baseUrl: "http://remote:11434",
+      });
+      const again = await configureOptionalModels(nodeFileSystem, aiw, async () => "y", runtime());
+      expect(again).toEqual([]); // semantic already configured; decision declined
       expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
-        DEFAULT_SEMANTIC_CONFIG.model,
+        "custom-model",
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

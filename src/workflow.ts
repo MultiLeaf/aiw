@@ -20,6 +20,7 @@ import type { CommandResult, FileSystem, HumanApprovalStage } from "./types.js";
 import type { FactOverride } from "./confirmation.js";
 import { applyOverrides } from "./confirmation.js";
 import { mergeFacts } from "./intelligence.js";
+import { configureOptionalModels } from "./model-onboarding.js";
 import {
   createInterpretationRequest,
   createOpenAiCompatibleProvider,
@@ -52,24 +53,17 @@ import { validatePackageContract } from "./package-contract.js";
 import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
-import {
-  readFactOverrides,
-  saveSettingOverrides,
-  saveSettingsSection,
-  loadSettings,
-} from "./settings.js";
+import { readFactOverrides, saveSettingOverrides, saveSettingsSection } from "./settings.js";
 import {
   buildEvidenceTriageRequest,
   buildRecommendationRankingRequest,
   buildSemanticRerankRequest,
   createOllamaDecisionProvider,
-  DEFAULT_DECISION_CONFIG,
   loadDecisionConfig,
 } from "./decision.js";
 import {
   buildSemanticIndex,
   createOllamaEmbeddingProvider,
-  DEFAULT_SEMANTIC_CONFIG,
   loadSemanticConfig,
   parseSemanticIndex,
   querySemanticIndex,
@@ -2241,106 +2235,6 @@ function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
     traceability: "generated/artifacts/traceability.yml",
   };
   return resolve(aiw, paths[stage]);
-}
-
-export type ConfirmQuestion = (question: string) => Promise<string>;
-
-export type ModelProbe = (baseUrl: string) => Promise<string[] | undefined>;
-
-async function defaultModelProbe(baseUrl: string): Promise<string[] | undefined> {
-  try {
-    const response = await fetch(`${baseUrl}/api/tags`);
-    if (!response.ok) return undefined;
-    const body = (await response.json()) as { models?: { name?: string }[] };
-    const names = [
-      ...new Set(
-        (body.models ?? [])
-          .map((entry) => entry.name)
-          .filter((name): name is string => typeof name === "string"),
-      ),
-    ];
-    return names.length > 0 ? names.sort() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function defaultModelFor(available: string[] | undefined, fallback: string): string {
-  if (!available || available.length === 0) return fallback;
-  return available.includes(fallback) ? fallback : available[0];
-}
-
-export async function configureOptionalModels(
-  fs: FileSystem,
-  aiwPath: string,
-  answer: ConfirmQuestion,
-  listModels: ModelProbe = defaultModelProbe,
-): Promise<string[]> {
-  const enabled: string[] = [];
-  const settings = loadSettings(fs, aiwPath) ?? {};
-  let availableModels: string[] | undefined;
-  if (!("semantic" in settings) || !("decision" in settings))
-    availableModels = await listModels(DEFAULT_SEMANTIC_CONFIG.baseUrl);
-  if (!("semantic" in settings)) {
-    const defaultEmbedding = defaultModelFor(availableModels, DEFAULT_SEMANTIC_CONFIG.model);
-    const catalog =
-      availableModels && availableModels.length > 0
-        ? ` Available embedding models: ${availableModels.join(", ")}.`
-        : "";
-    const response = (
-      await answer(
-        `Enable semantic mapping with a local embedding model (default: ${defaultEmbedding} at ${DEFAULT_SEMANTIC_CONFIG.baseUrl})?${catalog} [y/N] `,
-      )
-    )
-      .trim()
-      .toLowerCase();
-    if (response === "y" || response === "yes") {
-      let model = defaultEmbedding;
-      if (availableModels && availableModels.length > 0) {
-        const selection = (
-          await answer(`Use which embedding model? [${defaultEmbedding}] `)
-        ).trim();
-        if (selection.length > 0 && availableModels.includes(selection)) model = selection;
-      }
-      saveSettingsSection(fs, aiwPath, "semantic", {
-        enabled: true,
-        model,
-        baseUrl: DEFAULT_SEMANTIC_CONFIG.baseUrl,
-        chunkChars: DEFAULT_SEMANTIC_CONFIG.chunkChars,
-        topK: DEFAULT_SEMANTIC_CONFIG.topK,
-        excludeLockfiles: DEFAULT_SEMANTIC_CONFIG.excludeLockfiles,
-      });
-      enabled.push(`semantic (${model})`);
-    }
-  }
-  if (!("decision" in settings)) {
-    const defaultDecision = defaultModelFor(availableModels, DEFAULT_DECISION_CONFIG.model);
-    const catalog =
-      availableModels && availableModels.length > 0
-        ? ` Available decision models: ${availableModels.join(", ")}.`
-        : "";
-    const response = (
-      await answer(
-        `Enable advisory decision triage with a local decision model (default: ${defaultDecision} at ${DEFAULT_DECISION_CONFIG.baseUrl})?${catalog} [y/N] `,
-      )
-    )
-      .trim()
-      .toLowerCase();
-    if (response === "y" || response === "yes") {
-      let model = defaultDecision;
-      if (availableModels && availableModels.length > 0) {
-        const selection = (await answer(`Use which decision model? [${defaultDecision}] `)).trim();
-        if (selection.length > 0 && availableModels.includes(selection)) model = selection;
-      }
-      saveSettingsSection(fs, aiwPath, "decision", {
-        enabled: true,
-        model,
-        baseUrl: DEFAULT_DECISION_CONFIG.baseUrl,
-      });
-      enabled.push(`decision (${model})`);
-    }
-  }
-  return enabled;
 }
 
 function formatConfidence(confidence: number | undefined): string {

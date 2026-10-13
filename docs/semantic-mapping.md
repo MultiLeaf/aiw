@@ -1,6 +1,10 @@
 # Semantic Mapping
 
-AI Workflow can build a semantic index of the scanned project with a local embedding model such as `embeddinggemma-2` served by Ollama. Semantic mapping is opt-in and flag-gated: it activates only when a valid configuration exists, and every scan and flow query re-reads the flag. Configuration lives in the local user settings file `.aiw/settings.yml` under the `semantic` section; the legacy `.aiw/semantic.yml` file is still read when `settings.yml` does not exist. During an interactive `aiw install`, the installer probes the configured Ollama endpoint (`GET /api/tags`), lists the models actually available, and offers to create this configuration — the user's selected model is recorded in `.aiw/settings.yml`; when no server or models are found, the installer reports the optional capability and continues with defaults. Answering `n`, or installing non-interactively, leaves the section absent.
+AI Workflow can build a semantic index of the scanned project with a local embedding model such as `embeddinggemma-2` served by Ollama. Semantic mapping is opt-in and flag-gated: it activates only when a valid configuration exists, and every scan and flow query re-reads the flag. Configuration lives in the local user settings file `.aiw/settings.yml` under the `semantic` section; the legacy `.aiw/semantic.yml` file is still read when `settings.yml` does not exist.
+
+The provider can be Ollama (default, `http://localhost:11434`) or any OpenAI-compatible embeddings endpoint: set `apiKeyEnv` to the name of the environment variable holding the bearer token, and requests go to `<baseUrl>/v1/embeddings` with `Authorization: Bearer <token>` instead of Ollama's `/api/embed`. The token is read from the environment at call time and never stored in settings.
+
+During an interactive `aiw install`, the installer walks through provider selection: it probes the configured Ollama endpoint (`GET /api/tags`), offers Ollama or an external provider (external only, when Ollama is unreachable), lists the locally available embedding models — filtering to embedding-type models — and asks permission to run `ollama pull embeddinggemma-2` when none exist. External configuration asks for the endpoint URL, model name, and an optional token environment variable. The chosen setup is validated with a live request before being recorded in `.aiw/settings.yml`; a failed validation can be retried or skipped, and the next capability (decision triage) follows the same flow. Answering `n`, or installing non-interactively, leaves the section absent.
 
 ## Configuration
 
@@ -14,6 +18,7 @@ semantic:
   chunkChars: 1200 # optional, minimum 200
   topK: 8 # optional, results per query
   excludeLockfiles: true # optional, skip lockfiles and generated vendor manifests (default: true)
+  apiKeyEnv: AIW_EMBED_KEY # optional, external OpenAI-compatible endpoint bearer token
 ```
 
 - `enabled: false` (or a missing file) disables semantic mapping entirely; scans stay deterministic and make no network request.

@@ -5,6 +5,7 @@ import {
   chunkText,
   cosineSimilarity,
   createOllamaEmbeddingProvider,
+  parseSemanticMapping,
   DEFAULT_SEMANTIC_CONFIG,
   parseSemanticConfig,
   parseSemanticIndex,
@@ -245,5 +246,54 @@ describe("memory file system fixture", () => {
     expect(fs.exists(".aiw/semantic.yml")).toBe(false);
     fs.write(".aiw/semantic.yml", "semantic:\n  enabled: false\n");
     expect(fs.exists(".aiw/semantic.yml")).toBe(true);
+  });
+});
+
+describe("external embedding provider", () => {
+  const externalConfig = {
+    ...enabledConfig,
+    baseUrl: "https://api.example.com",
+    apiKeyEnv: "AIW_EMBED_KEY",
+  };
+  it("uses /v1/embeddings with a bearer token", async () => {
+    const seen: { url: string; init: RequestInit }[] = [];
+    const provider = createOllamaEmbeddingProvider(
+      externalConfig,
+      async (url, init) => {
+        seen.push({ url, init: init ?? {} });
+        if (url.endsWith("/v1/models")) return new Response("{}", { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [{ embedding: [0.1, 0.2] }, { embedding: [0.3, 0.4] }] }),
+          { status: 200 },
+        );
+      },
+      { AIW_EMBED_KEY: "tok" },
+    );
+    expect(await provider.available()).toBe(true);
+    const vectors = await provider.embed(["a", "b"]);
+    expect(vectors).toEqual([
+      [0.1, 0.2],
+      [0.3, 0.4],
+    ]);
+    expect(seen[0].url).toBe("https://api.example.com/v1/models");
+    expect(seen[1].url).toBe("https://api.example.com/v1/embeddings");
+    expect(JSON.parse(String(seen[1].init.body)).input).toEqual(["a", "b"]);
+    expect((seen[1].init.headers as Record<string, string>).authorization).toBe("Bearer tok");
+  });
+  it("validates the external response shape", async () => {
+    const provider = createOllamaEmbeddingProvider(
+      externalConfig,
+      async () => new Response(JSON.stringify({ data: [{ embedding: [1] }] }), { status: 200 }),
+      { AIW_EMBED_KEY: "tok" },
+    );
+    await expect(provider.embed(["a", "b"])).rejects.toThrow(/invalid vectors/i);
+  });
+  it("parses apiKeyEnv from settings and rejects invalid names", () => {
+    expect(parseSemanticMapping({ ...enabledConfig, apiKeyEnv: "AIW_EMBED_KEY" }).apiKeyEnv).toBe(
+      "AIW_EMBED_KEY",
+    );
+    expect(() => parseSemanticMapping({ ...enabledConfig, apiKeyEnv: "nope" })).toThrow(
+      /semantic.apiKeyEnv/,
+    );
   });
 });
