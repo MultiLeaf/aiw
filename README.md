@@ -19,13 +19,15 @@ AI-assisted development often relies on implicit prompts, duplicated configurati
 
 ## Installation
 
-The published package supports Node.js 18 or newer. Full development checks require Node.js 20.19 or newer for the current lint and test toolchain; CI runs on Node.js 20 and release validation runs on Node.js 24. Node.js 18 remains the declared runtime floor but is not currently in the release validation matrix.
+The published package supports Node.js 18 or newer. Full development checks require Node.js 20.19 or newer for the current lint and test toolchain; CI and release validation run on Node.js 24. Node.js 18 remains the declared runtime floor but is not currently in the release validation matrix.
 
 ```bash
 npx @multileaf/ai-workflow install --target codex
 ```
 
 Then run `/ai-init` in Codex. The bootstrap scans the repository, explains project-specific recommendations, and waits for the user's selections before installing optional resources.
+
+During an interactive install, AI Workflow also offers optional local capabilities after the base installation: it probes the configured Ollama endpoint, lists the embedding and decision models actually available, records the user's selection in `.aiw/settings.yml`, and then asks for telemetry consent with an explicit default of No (see [Privacy and security](#privacy-and-security)). Non-interactive installs skip every prompt.
 
 Supported targets are `codex`, `claude`, `cursor`, `gemini`, `copilot`, and `universal`. Every command uses the same entry point:
 
@@ -241,6 +243,18 @@ Analysis uses two complementary layers:
 
 Detected facts cannot be replaced by conflicting AI output. Inferred facts remain unconfirmed until the user accepts, rejects, or edits them. Context selection excludes known sensitive filenames, binaries, dependencies, Git internals, generated output, and checkpoints, then applies pattern-based redaction. This is a defense-in-depth filter, not a general secret scanner; review eligible text before enabling an external AI provider.
 
+The interpreter accepts an injected provider from a host application, or a built-in OpenAI-compatible provider configured through an `ai` section in `.aiw/settings.yml` — for example a local Ollama model such as `gpt-oss:20b` — so scans can interpret projects without any host integration. Without the section, scans stay deterministic and offline. See [Project Intelligence](docs/project-intelligence.md).
+
+## Optional local models
+
+AI Workflow can use local models served by an OpenAI-compatible endpoint (Ollama by default) for three opt-in capabilities, all gated by `.aiw/settings.yml` sections and disabled by default:
+
+- **Semantic mapping** (`semantic` section): `aiw scan` builds a versioned chunk index with batched embedding requests, skipping lockfiles and generated vendor manifests; `aiw semantic query` returns ranked matches and can optionally re-rank them with the decision model (`--rerank`). When an index exists, the AI interpreter's context is scoped to deterministic key files plus the top semantically relevant files, reducing token usage. See [Semantic Mapping](docs/semantic-mapping.md).
+- **Advisory decision triage** (`decision` section): `aiw decision triage` returns advisory evidence-completeness and gate decisions with confidence, and `aiw recommend` orders capability recommendations by decision-model relevance to the confirmed profile. Ranking is advisory and never changes evidence states or bypasses human approval. See [Decision Model Evaluation](docs/decision-model-evaluation.md).
+- **Built-in AI interpretation** (`ai` section): the scoped project interpreter works without a host-injected provider.
+
+All model-driven features verify model availability before use and degrade to fully deterministic behavior when unconfigured.
+
 ## Resource packages and recommendations
 
 Resources are distributed as versioned packages that may contain:
@@ -326,10 +340,10 @@ The typed SDK is available from `@multileaf/ai-workflow/plugin-sdk`. It exports 
 
 ## Privacy and security
 
-Telemetry is disabled by default and requires explicit consent. It records only approved aggregate fields through an injectable transport.
+Telemetry is disabled by default and requires explicit consent — offered once during interactive installation with an explicit default of No. Each event contains only the command name and its outcome; never arguments, file paths, or file contents. When telemetry is enabled but no host transport is configured, events accumulate in a rotated local buffer (`.aiw/telemetry-buffer.jsonl`, 200-event cap) that `aiw telemetry status --verbose` can inspect and `aiw telemetry disable` purges.
 
 ```bash
-npx @multileaf/ai-workflow telemetry status
+npx @multileaf/ai-workflow telemetry status --verbose
 npx @multileaf/ai-workflow telemetry enable
 npx @multileaf/ai-workflow telemetry disable
 ```
@@ -364,6 +378,9 @@ npm run release:check
 - [Quality and testing](docs/quality.md)
 - [Token efficiency](docs/token-efficiency.md)
 - [Multi-agent orchestration](docs/orchestration.md)
+- [Semantic mapping](docs/semantic-mapping.md)
+- [Decision model evaluation](docs/decision-model-evaluation.md)
+- [Telemetry and privacy](docs/telemetry.md)
 - [Release process](docs/release-process.md)
 
 ## License
