@@ -2985,3 +2985,33 @@ describe("root context rendering", () => {
     expect(await readFile(join(cwd, "AGENTS.md"), "utf8")).toBe("# Hand-written instructions\n");
   });
 });
+
+describe("telemetry show", () => {
+  it("summarizes buffered events by command with outcomes", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, ".aiw"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw", "telemetry-buffer.jsonl"),
+      '{"schema":1,"command":"scan","outcome":"success"}\n{"schema":1,"command":"scan","outcome":"failure"}\n{"schema":1,"command":"doctor","outcome":"success"}\n',
+    );
+    const summary = await run(["telemetry", "show"], cwd);
+    expect(summary.exitCode).toBe(0);
+    expect(summary.output).toContain("Buffered events: 3/200");
+    expect(summary.output).toContain("- doctor: 1 success, 0 failure");
+    expect(summary.output).toContain("- scan: 1 success, 1 failure");
+    expect(summary.output).not.toContain('"schema":1');
+    const detailed = await run(["telemetry", "show", "--verbose"], cwd);
+    expect(detailed.output).toContain('{"schema":1,"command":"scan","outcome":"success"}');
+  });
+
+  it("reports an empty buffer without a command table", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["telemetry", "show"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Buffered events: 0/200");
+    expect(result.output).not.toContain("By command:");
+  });
+});

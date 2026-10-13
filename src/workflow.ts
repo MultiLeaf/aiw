@@ -520,12 +520,44 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const usage =
-        "Usage: aiw telemetry <status|enable|disable> [--verbose] [--commands=include|exclude] [--outcomes=include|exclude]";
+        "Usage: aiw telemetry <status|show|enable|disable> [--verbose] [--commands=include|exclude] [--outcomes=include|exclude]";
       const action = args[1];
       if (!action) return { exitCode: 1, error: usage };
       const telemetryConfig = loadTelemetryConfig(fs, aiw);
       const actionArgs = args.slice(2).filter((arg) => arg !== "--verbose");
       const verbose = args.includes("--verbose");
+      if (action === "show") {
+        if (actionArgs.length !== 0) return { exitCode: 1, error: usage };
+        const buffered = readTelemetryBuffer(fs, aiw);
+        const byCommand = new Map<string, { success: number; failure: number }>();
+        for (const event of buffered) {
+          const key = event.command ?? "unknown";
+          const entry = byCommand.get(key) ?? { success: 0, failure: 0 };
+          if (event.outcome === "failure") entry.failure += 1;
+          else entry.success += 1;
+          byCommand.set(key, entry);
+        }
+        const lines = [
+          `Telemetry is ${telemetryConfig.enabled ? "enabled" : "disabled"}.`,
+          `Buffered events: ${buffered.length}/${TELEMETRY_BUFFER_CAP} (.aiw/${TELEMETRY_BUFFER_FILE}).`,
+        ];
+        if (buffered.length > 0) {
+          lines.push("By command:");
+          for (const [command, { success, failure }] of [...byCommand].sort((a, b) =>
+            a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0,
+          ))
+            lines.push(`- ${command}: ${success} success, ${failure} failure`);
+        }
+        if (verbose && buffered.length > 0) {
+          lines.push("Events:");
+          lines.push(...buffered.map((event) => `- ${JSON.stringify(event)}`));
+        }
+        if (!telemetryConfig.enabled)
+          lines.push(
+            "Note: telemetry is disabled, so no new events are recorded; the buffer keeps previously collected events until purged.",
+          );
+        return { exitCode: 0, output: lines.join("\n") };
+      }
       if (action === "status") {
         if (actionArgs.length !== 0) return { exitCode: 1, error: usage };
         const config = telemetryConfig;
@@ -2214,7 +2246,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };

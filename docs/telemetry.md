@@ -9,7 +9,9 @@ During an interactive `aiw install`, after the optional model questions, the ins
 ## Controls
 
 ```bash
-aiw telemetry status
+aiw telemetry show            # buffered events summarized by command and outcome
+aiw telemetry show --verbose  # ...plus each event verbatim
+aiw telemetry status          # configuration only
 aiw telemetry enable --commands=include --outcomes=include
 aiw telemetry enable --commands=exclude --outcomes=include
 aiw telemetry disable

@@ -343,7 +343,8 @@ The typed SDK is available from `@multileaf/ai-workflow/plugin-sdk`. It exports 
 Telemetry is disabled by default and requires explicit consent — offered once during interactive installation with an explicit default of No. Each event contains only the command name and its outcome; never arguments, file paths, or file contents. When telemetry is enabled but no host transport is configured, events accumulate in a rotated local buffer (`.aiw/telemetry-buffer.jsonl`, 200-event cap) that `aiw telemetry status --verbose` can inspect and `aiw telemetry disable` purges.
 
 ```bash
-npx @multileaf/ai-workflow telemetry status --verbose
+npx @multileaf/ai-workflow telemetry show             # summarized by command and outcome
+npx @multileaf/ai-workflow telemetry show --verbose   # events verbatim
 npx @multileaf/ai-workflow telemetry enable
 npx @multileaf/ai-workflow telemetry disable
 ```
