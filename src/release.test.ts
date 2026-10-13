@@ -58,5 +58,8 @@ describe("release package", () => {
     expect(workflow).toContain('npm run release:publish-check -- --tag="$GITHUB_REF_NAME"');
     expect(workflow).toContain("npm publish --access public --provenance");
     expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
+    expect(workflow).toContain("github-release:");
+    expect(workflow).toContain("needs: publish");
+    expect(workflow).toContain("gh release create");
   });
 });
