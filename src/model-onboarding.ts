@@ -27,23 +27,7 @@ const OLLAMA_BASE_URL = "http://localhost:11434";
 
 function isEmbeddingModel(name: string, families: string[]): boolean {
   if (name.toLowerCase().includes("embed")) return true;
-  if (families.includes("embedding")) return true;
-  if (families.length === 0) return false;
-  const generative = new Set([
-    "llama",
-    "gemma",
-    "qwen2",
-    "qwen3",
-    "mistral",
-    "gpt",
-    "gpt2",
-    "gptoss",
-    "bert",
-    "mllama",
-    "vision",
-    "code",
-  ]);
-  return families.every((family) => !generative.has(family.toLowerCase()));
+  return families.some((family) => family.toLowerCase() === "embedding");
 }
 
 export const defaultOnboardingRuntime: OnboardingRuntime = {
@@ -144,6 +128,7 @@ async function gatherCapabilitySetup(
   runtime: OnboardingRuntime,
   options: {
     label: string;
+    shortLabel: string;
     onlyEmbedding: boolean;
     fallbackModel: string;
     pullModel: string;
@@ -156,7 +141,7 @@ async function gatherCapabilitySetup(
       ? "external"
       : "ollama"
     : (await answer(
-        `Ollama is not reachable at ${OLLAMA_BASE_URL}. Configure an external provider instead. [Enter] `,
+        `Ollama not reachable at ${OLLAMA_BASE_URL}. Use an external provider. [Enter] `,
       ),
       "external");
   if (provider === "ollama") {
@@ -166,16 +151,16 @@ async function gatherCapabilitySetup(
     if (candidates.length === 0 && options.onlyEmbedding) {
       const pull = await askYesNo(
         answer,
-        `No embedding models were found locally. Run \`ollama pull ${options.pullModel}\` now? [y/N] `,
+        `No embedding models found. Pull ${options.pullModel}? [y/N] `,
       );
       if (pull) {
-        await answer(`Pulling ${options.pullModel}. This may take a few minutes. [Enter] `);
+        await answer(`Pulling ${options.pullModel}... [Enter] `);
         const pulled = await runtime.pullOllamaModel(options.pullModel);
         if (pulled) {
           const refreshed = await runtime.listOllamaModels(OLLAMA_BASE_URL);
           candidates = (refreshed ?? []).filter((model) => model.embedding);
         } else {
-          await answer("`ollama pull` failed. Falling back to manual selection. [Enter] ");
+          await answer("Pull failed. Enter a model manually. [Enter] ");
         }
       }
       if (candidates.length === 0) {
@@ -186,24 +171,22 @@ async function gatherCapabilitySetup(
     }
     const names = candidates.map((candidate) => candidate.name);
     const fallback = names.includes(options.fallbackModel) ? options.fallbackModel : names[0];
-    const model = await pickFromList(answer, `${options.label} model`, names, fallback);
+    const model = await pickFromList(answer, `${options.shortLabel} model`, names, fallback);
     return { baseUrl: OLLAMA_BASE_URL, model };
   }
-  const endpoint = (await answer(`${options.label} endpoint URL (OpenAI-compatible): `)).trim();
+  const endpoint = (await answer(`Endpoint URL: `)).trim();
   if (!/^https?:\/\//i.test(endpoint)) {
-    await answer("The endpoint must be an http(s) URL. [Enter] ");
+    await answer("Invalid URL. [Enter] ");
     return undefined;
   }
-  const model = (await answer(`${options.label} model name: `)).trim();
+  const model = (await answer(`Model name: `)).trim();
   if (model.length === 0) {
-    await answer("A model name is required for an external provider. [Enter] ");
+    await answer("Model name required. [Enter] ");
     return undefined;
   }
-  const rawEnv = (await answer(`API token environment variable (empty if none): `)).trim();
+  const rawEnv = (await answer(`Token env var (empty for none): `)).trim();
   if (rawEnv.length > 0 && !isValidEnvName(rawEnv)) {
-    await answer(
-      "The environment variable name must be uppercase letters, digits, or underscores. [Enter] ",
-    );
+    await answer("Invalid env var name. [Enter] ");
     return undefined;
   }
   return { baseUrl: endpoint, model, ...(rawEnv ? { apiKeyEnv: rawEnv } : {}) };
@@ -217,6 +200,7 @@ async function configureCapability(
   options: {
     section: "semantic" | "decision";
     label: string;
+    shortLabel: string;
     onlyEmbedding: boolean;
     fallbackModel: string;
     pullModel: string;
@@ -240,7 +224,7 @@ async function configureCapability(
     }
     const retry = await askYesNo(
       answer,
-      `Validation failed: ${options.label} model ${setup.model} is not reachable at ${setup.baseUrl}. Retry configuration? Answering no skips ${options.label} for now. [y/N] `,
+      `Validation failed for ${setup.model}. Retry? [y/N] (No = skip for now) `,
     );
     if (!retry) return [];
   }
@@ -258,7 +242,8 @@ export async function configureOptionalModels(
     enabled.push(
       ...(await configureCapability(fs, aiwPath, answer, runtime, {
         section: "semantic",
-        label: "semantic mapping with an embedding model",
+        label: "semantic embedding",
+        shortLabel: "embedding",
         onlyEmbedding: true,
         fallbackModel: DEFAULT_SEMANTIC_CONFIG.model,
         pullModel: DEFAULT_SEMANTIC_CONFIG.model,
@@ -277,7 +262,8 @@ export async function configureOptionalModels(
     enabled.push(
       ...(await configureCapability(fs, aiwPath, answer, runtime, {
         section: "decision",
-        label: "advisory decision triage with a decision model",
+        label: "advisory decision triage",
+        shortLabel: "decision",
         onlyEmbedding: false,
         fallbackModel: DEFAULT_DECISION_CONFIG.model,
         pullModel: DEFAULT_DECISION_CONFIG.model,

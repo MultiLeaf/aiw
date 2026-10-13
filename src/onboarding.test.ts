@@ -138,7 +138,7 @@ describe("model provider onboarding", () => {
       const providerQuestion = questions.find((q) => q.includes("Select provider"));
       expect(providerQuestion).toContain("1) ollama");
       expect(providerQuestion).toContain("2) external");
-      expect(questions.find((q) => q.includes("Select semantic mapping"))).toContain(
+      expect(questions.find((q) => q.includes("Select embedding model"))).toContain(
         "1) embeddinggemma-2:latest",
       );
       const settings = loadSettings(nodeFileSystem, aiw);
@@ -199,7 +199,7 @@ describe("model provider onboarding", () => {
         }),
       );
       expect(pulls).toBe(1);
-      expect(questions.some((q) => q.includes("ollama pull embeddinggemma-2:latest"))).toBe(true);
+      expect(questions.some((q) => q.includes("Pull embeddinggemma-2:latest"))).toBe(true);
       expect(enabled).toEqual(["semantic (embeddinggemma-2:latest)"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -252,7 +252,7 @@ describe("model provider onboarding", () => {
         },
         runtime(),
       );
-      expect(questions.some((q) => q.includes("Ollama is not reachable"))).toBe(true);
+      expect(questions.some((q) => q.includes("Ollama not reachable"))).toBe(true);
       const config = parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic);
       expect(config.baseUrl).toBe("https://api.example.com");
       expect(config.apiKeyEnv).toBeUndefined();
