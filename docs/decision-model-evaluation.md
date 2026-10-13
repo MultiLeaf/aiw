@@ -34,7 +34,7 @@ Observed behavior on real plans: an evidence-free plan scored `gate: ready` with
 
 ## Future integration points (advisory)
 
-- **Recommendation ranking**: order capability recommendations by decision-model relevance to the confirmed profile.
+- **Recommendation ranking**: order capability recommendations by decision-model relevance to the confirmed profile. _Status:_ implemented 2026-10-08 behind `decision.enabled` — `aiw recommend` sends one `score` question per recommendation (with the confirmed profile summary and the recommendation rationale/evidence) through `/v1/systemone`, orders the output by advisory relevance, and serializes `decision_relevance` / `decision_confidence` per item. The ranking is advisory: evidence, confidence, and selection logic are unchanged, and without a decision model the deterministic order is preserved.
 - **Semantic re-ranking**: combine embedding recall (`aiw semantic query`) with clef re-ranking for sharper context selection during interpretation.
 
 ## Hard boundary (unchanged)

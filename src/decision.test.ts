@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEvidenceTriageRequest,
+  buildRecommendationRankingRequest,
+  buildSemanticRerankRequest,
   parseDecisionConfig,
   parseDecisionResponse,
 } from "./decision.js";
@@ -59,5 +61,41 @@ describe("evidence triage request", () => {
     if (gate?.type !== "choice") throw new Error("gate must be a choice question");
     expect(Object.keys(gate.criteria)).toContain("ready");
     expect(Object.keys(gate.criteria)).toContain("needs-work");
+  });
+});
+
+describe("semantic rerank request", () => {
+  it("builds one score question per candidate with the query", () => {
+    const request = buildSemanticRerankRequest("how does install work", [
+      { id: "match_0", text: "src/install.ts\ninstalls idempotently" },
+      { id: "match_1", text: "docs/readme.md\nreadme" },
+    ]);
+    expect(request.state).toContain("how does install work");
+    expect(Object.keys(request.questions)).toEqual(["match_0", "match_1"]);
+    const first = request.questions.match_0;
+    if (first?.type !== "score") throw new Error("expected score questions");
+    expect(first.instructions).toContain("how does install work");
+    expect(first.instructions).toContain("src/install.ts");
+    expect(first.criteria).toHaveLength(2);
+  });
+});
+
+describe("recommendation ranking request", () => {
+  it("builds one score question per recommendation with the profile summary", () => {
+    const request = buildRecommendationRankingRequest("languages: typescript; testing: vitest", [
+      {
+        id: "tdd-development",
+        rationale: "Test-first with existing runner",
+        evidence: ["testing:vitest"],
+      },
+      { id: "security-review", rationale: "Security review", evidence: ["language:typescript"] },
+    ]);
+    expect(request.state).toContain("languages: typescript");
+    expect(Object.keys(request.questions)).toEqual(["tdd-development", "security-review"]);
+    const question = request.questions["tdd-development"];
+    if (question?.type !== "score") throw new Error("expected score questions");
+    expect(question.instructions).toContain("languages: typescript");
+    expect(question.instructions).toContain("Test-first with existing runner");
+    expect(question.instructions).toContain("testing:vitest");
   });
 });

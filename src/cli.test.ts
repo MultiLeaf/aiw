@@ -10,13 +10,16 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { run } from "./cli.js";
 import { nodeFileSystem } from "./files.js";
 import { runCommand } from "./workflow.js";
 import type { FileSystem } from "./types.js";
-import type { Interpreter } from "./interpreter.js";
+import type { AiProvider, Interpreter } from "./interpreter.js";
+import type { DecisionAnswer, DecisionProvider } from "./decision.js";
+import type { EmbeddingProvider } from "./semantic.js";
 import { checksumPackage } from "./package-integrity.js";
 import { parseOwnership } from "./ownership.js";
 import { parseProjectProfile } from "./profile.js";
@@ -803,6 +806,193 @@ tasks:
     expect(saved).toContain("key: architecture.style");
     expect(saved).toContain("state: inferred");
     expect(saved).toContain("requires_confirmation: true");
+  });
+
+  it("scopes interpreter context with semantic retrieval when an index exists", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "app" }));
+    await writeFile(join(cwd, "README.md"), "# app\n");
+    await writeFile(join(cwd, "src", "alpha.ts"), "export const alpha = 1;");
+    await writeFile(join(cwd, "src", "zulu.ts"), "export const zulu = 1;");
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+    );
+    await mkdir(join(cwd, ".aiw", "semantic"), { recursive: true });
+    const vector = [1, 0];
+    await writeFile(
+      join(cwd, ".aiw", "semantic", "index.json"),
+      JSON.stringify({
+        schema: 1,
+        model: "test-model",
+        chunks: [
+          { file: "src/zulu.ts", text: "zulu", vector },
+          { file: "src/alpha.ts", text: "alpha", vector },
+        ],
+      }),
+    );
+    const embeddingProvider: EmbeddingProvider = {
+      available: async () => true,
+      embed: async () => [[1, 0]],
+    };
+    const seen: string[][] = [];
+    const interpreter: Interpreter = {
+      interpret: async (request) => {
+        seen.push(request.files);
+        return [];
+      },
+    };
+    const result = await run(["scan"], cwd, { interpreter, embeddingProvider });
+    expect(result.exitCode).toBe(0);
+    expect(seen[0][0]).toBe("README.md"); // deterministic key file first
+    expect(seen[0]).toContain("package.json");
+    expect(seen[0]).toContain("src/alpha.ts");
+    expect(seen[0]).toContain("src/zulu.ts");
+    expect(seen[0].length).toBeLessThanOrEqual(4);
+  });
+
+  it("keeps alphabetical interpreter scoping when the semantic index is absent", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "feature.ts"), "export {};");
+    const seen: string[][] = [];
+    const interpreter: Interpreter = {
+      interpret: async (request) => {
+        seen.push(request.files);
+        return [];
+      },
+    };
+    expect((await run(["scan"], cwd, { interpreter })).exitCode).toBe(0);
+    expect(seen[0]).toEqual([...seen[0]].sort());
+  });
+
+  it("uses the built-in AI provider from settings when no interpreter is injected", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "feature.ts"), "export {};");
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "ai:\n  enabled: true\n  model: gpt-oss:20b\n  baseUrl: http://localhost:11434\n",
+    );
+    const aiProvider: AiProvider = {
+      generate: async () =>
+        JSON.stringify({
+          facts: [
+            {
+              key: "architecture.style",
+              value: "module-based",
+              confidence: 0.8,
+              evidence: [{ source: "src/feature.ts", reason: "Module boundary" }],
+            },
+          ],
+        }),
+    };
+    const result = await run(["scan"], cwd, { aiProvider });
+    expect(result.exitCode).toBe(0);
+    const saved = await readFile(join(cwd, ".aiw/profile.yml"), "utf8");
+    expect(saved).toContain("key: architecture.style");
+    expect(saved).toContain("method: ai-inference");
+  });
+
+  it("stays deterministic and offline without an ai settings section", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "feature.ts"), "export {};");
+    let calls = 0;
+    const aiProvider: AiProvider = {
+      generate: async () => {
+        calls += 1;
+        return "{}";
+      },
+    };
+    const result = await run(["scan"], cwd, { aiProvider });
+    expect(result.exitCode).toBe(0);
+    expect(calls).toBe(0);
+  });
+
+  it("orders recommendations by decision-model relevance when enabled", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "1" } }),
+    );
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "decision:\n  enabled: true\n  model: clef-flash\n  baseUrl: http://localhost:11434\n",
+    );
+    let asked = 0;
+    const decisionProvider: DecisionProvider = {
+      available: async () => true,
+      decide: async (request) => {
+        asked += 1;
+        const answers: Record<string, DecisionAnswer> = {};
+        for (const id of Object.keys(request.questions))
+          answers[id] = { type: "score", score: id.includes("tdd") ? 0.99 : 0.1, confidence: 0.8 };
+        return { model: "clef-flash", answers };
+      },
+    };
+    const result = await run(["recommend"], cwd, { decisionProvider });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Advisory decision-model ranking applied");
+    expect(asked).toBe(1);
+    const saved = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
+    expect(saved).toContain("decision_relevance: 0.99");
+    expect(saved).toContain("decision_confidence: 0.8");
+    const firstId = saved.match(/^\s{2}- id: (.+)$/m)?.[1];
+    expect(firstId).toBe("tdd-development");
+  });
+
+  it("keeps deterministic recommendation order without a decision model", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["recommend"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).not.toContain("decision-model ranking");
+    const saved = await readFile(join(cwd, ".aiw/recommendations.yml"), "utf8");
+    expect(saved).not.toContain("decision_relevance");
+  });
+
+  it("skips the telemetry prompt on non-interactive installs", async () => {
+    const cwd = await project();
+    const result = await run(["install"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).not.toContain("Telemetry");
+    expect(existsSync(join(cwd, ".aiw", "settings.yml"))).toBe(false);
+  });
+
+  it("shows buffered events with telemetry status --verbose and purges on disable", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(cwd, ".aiw"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw", "telemetry-buffer.jsonl"),
+      '{"schema":1,"command":"scan","outcome":"success"}\n{"schema":1,"command":"doctor","outcome":"failure"}\n',
+    );
+    const verbose = await run(["telemetry", "status", "--verbose"], cwd);
+    expect(verbose.exitCode).toBe(0);
+    expect(verbose.output).toContain("Local buffer: 2 events");
+    expect(verbose.output).toContain('{"schema":1,"command":"scan","outcome":"success"}');
+    expect(verbose.output).toContain('{"schema":1,"command":"doctor","outcome":"failure"}');
+    const plain = await run(["telemetry", "status"], cwd);
+    expect(plain.output).not.toContain("Local buffer");
+    const disabled = await run(["telemetry", "disable"], cwd);
+    expect(disabled.exitCode).toBe(0);
+    expect(disabled.output).toContain("Telemetry disabled.");
+    expect(existsSync(join(cwd, ".aiw", "telemetry-buffer.jsonl"))).toBe(false);
+    const purged = await run(["telemetry", "status", "--verbose"], cwd);
+    expect(purged.output).toContain("Local buffer: 0 events");
   });
 
   it("migrates the generated target and updates the manifest", async () => {

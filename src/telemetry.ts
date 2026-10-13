@@ -1,5 +1,5 @@
 import type { CommandResult, FileSystem } from "./types.js";
-import { loadSettings } from "./settings.js";
+import { loadSettings, saveSettingsSection } from "./settings.js";
 
 export type TelemetryConfig = {
   schema: 1;
@@ -24,6 +24,33 @@ export const DEFAULT_TELEMETRY_CONFIG: TelemetryConfig = {
   includeCommand: true,
   includeOutcome: true,
 };
+
+export const TELEMETRY_CONSENT_PROMPT =
+  "Enable anonymous telemetry? Each event contains only the command name and its outcome (success or failure) - never arguments, file paths, or file contents. [y/N] ";
+
+export async function offerTelemetryConsent(
+  fs: FileSystem,
+  aiwPath: string,
+  answer: (question: string) => Promise<string>,
+): Promise<boolean> {
+  const settings = loadSettings(fs, aiwPath);
+  if (settings !== undefined && "telemetry" in settings)
+    return loadTelemetryConfig(fs, aiwPath).enabled;
+  const response = (await answer(TELEMETRY_CONSENT_PROMPT)).trim().toLowerCase();
+  const enabled = response === "y" || response === "yes";
+  saveSettingsSection(
+    fs,
+    aiwPath,
+    "telemetry",
+    serializeTelemetryMapping({
+      schema: 1,
+      enabled,
+      includeCommand: true,
+      includeOutcome: true,
+    }),
+  );
+  return enabled;
+}
 
 const TELEMETRY_COMMANDS = new Set([
   "adr",
@@ -141,6 +168,45 @@ export function createTelemetryEvent(
   };
 }
 
+export const TELEMETRY_BUFFER_FILE = "telemetry-buffer.jsonl";
+export const TELEMETRY_BUFFER_CAP = 200;
+
+export function telemetryBufferPath(aiwPath: string): string {
+  return `${aiwPath}/${TELEMETRY_BUFFER_FILE}`;
+}
+
+export function readTelemetryBuffer(fs: FileSystem, aiwPath: string): TelemetryEvent[] {
+  const path = telemetryBufferPath(aiwPath);
+  if (!fs.exists(path)) return [];
+  return fs
+    .read(path)
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      const parsed = JSON.parse(line) as TelemetryEvent;
+      if (parsed.schema !== 1) throw new Error("Invalid buffered telemetry event");
+      return parsed;
+    });
+}
+
+export function appendTelemetryBuffer(
+  fs: FileSystem,
+  aiwPath: string,
+  event: TelemetryEvent,
+): void {
+  const buffered = [...readTelemetryBuffer(fs, aiwPath), event];
+  const rotated = buffered.slice(Math.max(0, buffered.length - TELEMETRY_BUFFER_CAP));
+  fs.write(
+    telemetryBufferPath(aiwPath),
+    `${rotated.map((item) => JSON.stringify(item)).join("\n")}\n`,
+  );
+}
+
+export function purgeTelemetryBuffer(fs: FileSystem, aiwPath: string): void {
+  const path = telemetryBufferPath(aiwPath);
+  if (fs.exists(path) && fs.remove) fs.remove(path);
+}
+
 export async function recordConfiguredTelemetry(
   fs: FileSystem,
   aiwPath: string,
@@ -148,7 +214,22 @@ export async function recordConfiguredTelemetry(
   command: string | undefined,
   result: CommandResult,
 ): Promise<void> {
-  if (!client) return;
+  if (!client) {
+    try {
+      const config = loadTelemetryConfig(fs, aiwPath);
+      const settings = loadSettings(fs, aiwPath);
+      const configured =
+        (settings !== undefined && "telemetry" in settings) ||
+        fs.exists(`${aiwPath}/telemetry.yml`);
+      if (configured) {
+        const event = createTelemetryEvent(command, result, config);
+        if (event) appendTelemetryBuffer(fs, aiwPath, event);
+      }
+    } catch {
+      // Telemetry must never affect the requested workflow operation.
+    }
+    return;
+  }
   try {
     const config = loadTelemetryConfig(fs, aiwPath);
     const settings = loadSettings(fs, aiwPath);

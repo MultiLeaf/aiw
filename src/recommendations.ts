@@ -294,6 +294,53 @@ export function recommendCapabilities(profile: ProjectProfile): CapabilityRecomm
   });
 }
 
+export type RecommendationRanking = {
+  id: string;
+  relevance: number;
+  confidence?: number;
+};
+export type RankedRecommendations = {
+  items: CapabilityRecommendation[];
+  ranking: RecommendationRanking[];
+  changedPositions: number;
+};
+export type DecisionRanker = (
+  profile: ProjectProfile,
+  recommendations: CapabilityRecommendation[],
+) => Promise<Record<string, { relevance?: number; confidence?: number }>>;
+
+export async function rankRecommendations(
+  items: CapabilityRecommendation[],
+  profile: ProjectProfile,
+  ranker: DecisionRanker,
+): Promise<RankedRecommendations> {
+  if (items.length === 0) return { items: [], ranking: [], changedPositions: 0 };
+  const answers = await ranker(profile, items);
+  const ranking: RecommendationRanking[] = [];
+  const relevanceById = new Map<string, number | undefined>();
+  for (const item of items) {
+    const answer = answers[item.id];
+    const relevance =
+      answer?.relevance !== undefined && Number.isFinite(answer.relevance)
+        ? (answer.relevance as number)
+        : undefined;
+    relevanceById.set(item.id, relevance);
+    if (relevance !== undefined)
+      ranking.push({
+        id: item.id,
+        relevance,
+        ...(answer?.confidence !== undefined ? { confidence: answer.confidence } : {}),
+      });
+  }
+  const ordered = [...items].sort(
+    (a, b) => (relevanceById.get(b.id) ?? -1) - (relevanceById.get(a.id) ?? -1),
+  );
+  let changedPositions = 0;
+  for (let index = 0; index < ordered.length; index += 1)
+    if (ordered[index].id !== items[index].id) changedPositions += 1;
+  return { items: ordered, ranking, changedPositions };
+}
+
 export function resourcesForCapabilities(ids: string[]): RecommendedResource[] {
   const normalizedIds = ids.map((id) => (id === "vitest-testing" ? "verification" : id));
   const selectedCapabilities = new Set(
@@ -315,11 +362,21 @@ export function resourcesForCapabilities(ids: string[]): RecommendedResource[] {
 export function serializeRecommendations(
   items: CapabilityRecommendation[],
   selected: string[] = [],
+  ranking: RecommendationRanking[] = [],
 ): string {
+  const rankingById = new Map(ranking.map((entry) => [entry.id, entry]));
   return `schema: 1\nrecommendations:\n${items
     .map(
       (item) =>
-        `  - id: ${item.id}\n    provider: ${item.provider}\n    confidence: ${item.confidence}\n    selected: ${selected.includes(item.id)}\n    requires: [${(item.requires ?? []).join(", ")}]\n    resources: [${item.resources.map(({ type, id }) => `${type}/${id}`).join(", ")}]\n    selected_resources: [${item.resources
+        `  - id: ${item.id}\n    provider: ${item.provider}\n    confidence: ${item.confidence}${
+          rankingById.has(item.id)
+            ? `\n    decision_relevance: ${rankingById.get(item.id)?.relevance}${
+                rankingById.get(item.id)?.confidence !== undefined
+                  ? `\n    decision_confidence: ${rankingById.get(item.id)?.confidence}`
+                  : ""
+              }`
+            : ""
+        }\n    selected: ${selected.includes(item.id)}\n    requires: [${(item.requires ?? []).join(", ")}]\n    resources: [${item.resources.map(({ type, id }) => `${type}/${id}`).join(", ")}]\n    selected_resources: [${item.resources
           .filter(({ type, id }) => selected.includes(`${type}/${id}`))
           .map(({ type, id }) => `${type}/${id}`)
           .join(

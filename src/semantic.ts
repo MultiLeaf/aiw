@@ -8,11 +8,19 @@ export type SemanticConfig = {
   baseUrl: string;
   chunkChars: number;
   topK: number;
+  excludeLockfiles: boolean;
 };
 
 export type SemanticIndexChunk = { file: string; text: string; vector: number[] };
 export type SemanticIndex = { schema: 1; model: string; chunks: SemanticIndexChunk[] };
 export type SemanticMatch = { file: string; score: number; excerpt: string };
+export type RerankedMatch = SemanticMatch & { rerankScore?: number };
+export type RerankOutcome = { matches: RerankedMatch[]; changedPositions: number };
+
+export type DecisionReranker = (
+  query: string,
+  candidates: { id: string; text: string }[],
+) => Promise<Record<string, number | undefined>>;
 
 export type EmbeddingProvider = {
   available(): Promise<boolean>;
@@ -28,7 +36,30 @@ export const DEFAULT_SEMANTIC_CONFIG: SemanticConfig = {
   baseUrl: "http://localhost:11434",
   chunkChars: 1200,
   topK: 8,
+  excludeLockfiles: true,
 };
+
+export const SEMANTIC_LOCKFILE_NAMES = new Set([
+  "bun.lock",
+  "bun.lockb",
+  "cargo.lock",
+  "composer.lock",
+  "deno.lock",
+  "flake.lock",
+  "gemfile.lock",
+  "go.sum",
+  "npm-shrinkwrap.json",
+  "package-lock.json",
+  "pipfile.lock",
+  "pnpm-lock.yaml",
+  "poetry.lock",
+  "uv.lock",
+  "yarn.lock",
+]);
+
+export function isExcludedIndexFile(file: string): boolean {
+  return SEMANTIC_LOCKFILE_NAMES.has(file.split("/").pop()?.toLowerCase() ?? "");
+}
 
 export function parseSemanticMapping(raw: unknown): SemanticConfig {
   if (!raw || typeof raw !== "object") throw new Error("semantic must be a YAML mapping");
@@ -38,23 +69,35 @@ export function parseSemanticMapping(raw: unknown): SemanticConfig {
   const baseUrl = raw2.baseUrl;
   const chunkChars = raw2.chunkChars;
   const topK = raw2.topK;
+  const rawExclude = raw2.excludeLockfiles;
   if (typeof enabled !== "boolean") throw new Error("semantic.enabled must be a boolean");
-  if (!enabled) return { ...DEFAULT_SEMANTIC_CONFIG, enabled: false };
+  const excludeLockfiles = rawExclude === undefined ? true : (rawExclude as boolean);
+  if (!enabled) return { ...DEFAULT_SEMANTIC_CONFIG, enabled: false, excludeLockfiles };
+  if (rawExclude !== undefined && typeof rawExclude !== "boolean")
+    throw new Error("semantic.excludeLockfiles must be a boolean");
   if (typeof model !== "string" || model.trim() === "")
     throw new Error("semantic.model must be a non-empty string when semantic mapping is enabled");
   if (typeof baseUrl !== "string" || !/^https?:\/\//i.test(baseUrl))
     throw new Error("semantic.baseUrl must be an http(s) URL when semantic mapping is enabled");
   const parsedChunk = chunkChars === undefined ? DEFAULT_SEMANTIC_CONFIG.chunkChars : chunkChars;
   const parsedTopK = topK === undefined ? DEFAULT_SEMANTIC_CONFIG.topK : topK;
+
   if (typeof parsedChunk !== "number" || !Number.isInteger(parsedChunk) || parsedChunk < 200)
     throw new Error("semantic.chunkChars must be an integer of at least 200");
   if (typeof parsedTopK !== "number" || !Number.isInteger(parsedTopK) || parsedTopK < 1)
     throw new Error("semantic.topK must be a positive integer");
-  return { enabled: true, model, baseUrl, chunkChars: parsedChunk, topK: parsedTopK };
+  return {
+    enabled: true,
+    model,
+    baseUrl,
+    chunkChars: parsedChunk,
+    topK: parsedTopK,
+    excludeLockfiles,
+  };
 }
 
 export function serializeSemanticConfig(config: SemanticConfig): string {
-  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n`;
+  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n  excludeLockfiles: ${config.excludeLockfiles}\n`;
 }
 
 export function loadSemanticConfig(fs: FileSystem, aiwPath: string): SemanticConfig | undefined {
@@ -80,8 +123,12 @@ export function parseSemanticConfig(text: string): SemanticConfig {
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-export function createOllamaEmbeddingProvider(config: SemanticConfig): EmbeddingProvider {
-  const fetchImpl: FetchLike = (url, init) => fetch(url, init);
+const EMBED_BATCH_SIZE = 64;
+
+export function createOllamaEmbeddingProvider(
+  config: SemanticConfig,
+  fetchImpl: FetchLike = (url, init) => fetch(url, init),
+): EmbeddingProvider {
   return {
     async available(): Promise<boolean> {
       try {
@@ -102,17 +149,24 @@ export function createOllamaEmbeddingProvider(config: SemanticConfig): Embedding
     },
     async embed(texts: string[]): Promise<number[][]> {
       const vectors: number[][] = [];
-      for (const text of texts) {
-        const response = await fetchImpl(`${config.baseUrl}/api/embeddings`, {
+      for (let offset = 0; offset < texts.length; offset += EMBED_BATCH_SIZE) {
+        const batch = texts.slice(offset, offset + EMBED_BATCH_SIZE);
+        const response = await fetchImpl(`${config.baseUrl}/api/embed`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model: config.model, prompt: text }),
+          body: JSON.stringify({ model: config.model, input: batch }),
         });
         if (!response.ok) throw new Error(`Embedding request failed for model ${config.model}`);
-        const body = (await response.json()) as { embedding?: unknown };
-        if (!Array.isArray(body.embedding) || body.embedding.some((v) => typeof v !== "number"))
-          throw new Error(`Embedding model ${config.model} returned an invalid vector`);
-        vectors.push(body.embedding as number[]);
+        const body = (await response.json()) as { embeddings?: unknown };
+        if (
+          !Array.isArray(body.embeddings) ||
+          body.embeddings.length !== batch.length ||
+          body.embeddings.some(
+            (vector) => !Array.isArray(vector) || vector.some((v) => typeof v !== "number"),
+          )
+        )
+          throw new Error(`Embedding model ${config.model} returned invalid vectors`);
+        vectors.push(...(body.embeddings as number[][]));
       }
       return vectors;
     },
@@ -158,6 +212,7 @@ export async function buildSemanticIndex(
 ): Promise<SemanticIndex> {
   const entries: { file: string; text: string }[] = [];
   for (const file of files) {
+    if (config.excludeLockfiles && isExcludedIndexFile(file)) continue;
     const content = await readContent(file);
     if (content === undefined) continue;
     for (const chunk of chunkText(content, config.chunkChars)) entries.push({ file, text: chunk });
@@ -211,4 +266,28 @@ export async function querySemanticIndex(
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, config.topK);
+}
+
+export async function rerankSemanticMatches(
+  matches: SemanticMatch[],
+  query: string,
+  reranker: DecisionReranker,
+): Promise<RerankOutcome> {
+  if (matches.length === 0) return { matches: [], changedPositions: 0 };
+  const candidates = matches.map((match, index) => ({
+    id: `match_${index}`,
+    text: `${match.file}\n${match.excerpt}`,
+  }));
+  const scores = await reranker(query, candidates);
+  const reranked: RerankedMatch[] = matches.map((match, index) => {
+    const rerankScore = scores[`match_${index}`];
+    return Number.isFinite(rerankScore)
+      ? { ...match, rerankScore: rerankScore as number }
+      : { ...match };
+  });
+  reranked.sort((a, b) => (b.rerankScore ?? b.score) - (a.rerankScore ?? a.score));
+  let changedPositions = 0;
+  for (let index = 0; index < reranked.length; index += 1)
+    if (reranked[index].file !== matches[index].file) changedPositions += 1;
+  return { matches: reranked, changedPositions };
 }

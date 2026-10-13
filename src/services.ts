@@ -1,12 +1,14 @@
 import type { ProjectProfile } from "./profile.js";
+import type { EmbeddingProvider } from "./semantic.js";
 import type { ProjectScan } from "./scanner.js";
 import type { CapabilityRecommendation } from "./recommendations.js";
-import type { Interpreter } from "./interpreter.js";
+import type { Interpreter, AiProvider } from "./interpreter.js";
 import type { CommandExecutor } from "./vercel-skills.js";
 import type { CommandResult, FileSystem } from "./types.js";
 import type { PackageSourceLoader } from "./providers.js";
 import type { PrivateRegistryClient } from "./team-configuration.js";
 import type { PolicyTracking } from "./policy-gate.js";
+import type { DecisionProvider } from "./decision.js";
 import type { TelemetryClient } from "./telemetry.js";
 import type { DashboardHandle } from "./dashboard.js";
 import type { AgentOrchestrator } from "./orchestration.js";
@@ -37,6 +39,9 @@ export interface WorkflowDependencies {
   telemetry?: TelemetryClient;
   dashboard?: { start(root: string, port: number): Promise<DashboardHandle> };
   orchestrator?: AgentOrchestrator;
+  embeddingProvider?: EmbeddingProvider;
+  aiProvider?: AiProvider;
+  decisionProvider?: DecisionProvider;
 }
 
 export interface WorkflowService {

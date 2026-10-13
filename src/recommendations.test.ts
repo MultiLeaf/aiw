@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  rankRecommendations,
   recommendCapabilities,
   resourcesForCapabilities,
   serializeRecommendations,
@@ -162,5 +163,49 @@ describe("capability recommendations", () => {
     expect(output).toContain("id: verification");
     expect(output).toContain("selected: true");
     expect(output).toContain("selected: false");
+  });
+});
+
+describe("decision-model recommendation ranking", () => {
+  it("orders recommendations by advisory relevance without changing evidence", async () => {
+    const items = recommendCapabilities(profile);
+    expect(items.length).toBeGreaterThan(1);
+    const baseline = items.map((item) => item.id);
+    const outcome = await rankRecommendations(items, profile, async (_p, recs) => {
+      const answers: Record<string, { relevance?: number; confidence?: number }> = {};
+      for (const [index, item] of recs.entries())
+        answers[item.id] =
+          index % 2 === 0 ? { relevance: 0.1, confidence: 0.9 } : { relevance: 0.95 };
+      return answers;
+    });
+    expect(outcome.items[0].id).not.toBe(baseline[0]);
+    expect(outcome.changedPositions).toBeGreaterThan(0);
+    // Advisory: the recommendation payloads themselves are untouched.
+    for (const item of outcome.items) {
+      const original = items.find((entry) => entry.id === item.id);
+      expect(item.confidence).toBe(original?.confidence);
+      expect(item.evidence).toEqual(original?.evidence);
+    }
+    expect(outcome.ranking.every((entry) => entry.relevance >= 0)).toBe(true);
+  });
+
+  it("keeps the original order when no relevance is returned", async () => {
+    const items = recommendCapabilities(profile);
+    const outcome = await rankRecommendations(items, profile, async () => ({}));
+    expect(outcome.items.map((item) => item.id)).toEqual(items.map((item) => item.id));
+    expect(outcome.changedPositions).toBe(0);
+    expect(outcome.ranking).toEqual([]);
+  });
+
+  it("serializes advisory ranking fields when provided", () => {
+    const items = recommendCapabilities(profile).slice(0, 2);
+    const output = serializeRecommendations(
+      items,
+      [],
+      [{ id: items[0].id, relevance: 0.75, confidence: 0.6 }],
+    );
+    expect(output).toContain(`decision_relevance: 0.75`);
+    expect(output).toContain(`decision_confidence: 0.6`);
+    expect(output.match(/decision_relevance/g)).toHaveLength(1);
   });
 });

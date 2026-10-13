@@ -142,6 +142,47 @@ export function createOllamaDecisionProvider(config: DecisionConfig): DecisionPr
   };
 }
 
+export type RecommendationRankingCandidate = {
+  id: string;
+  rationale: string;
+  evidence: string[];
+};
+
+export function buildRecommendationRankingRequest(
+  profileSummary: string,
+  candidates: RecommendationRankingCandidate[],
+): DecisionRequest {
+  const questions: Record<string, DecisionQuestion> = {};
+  for (const candidate of candidates) {
+    questions[candidate.id] = {
+      type: "score",
+      instructions: `Confirmed project profile: ${profileSummary}.\nRate from 0 to 1 how relevant this capability recommendation is to that profile.\n\nRecommendation ${candidate.id}: ${candidate.rationale}\nEvidence: ${candidate.evidence.join(", ")}`,
+      criteria: [
+        "0 = irrelevant to the confirmed profile",
+        "1 = highly relevant to the confirmed profile",
+      ],
+    };
+  }
+  return { state: `Capability recommendation ranking for: ${profileSummary}`, questions };
+}
+
+export type SemanticRerankCandidate = { id: string; text: string };
+
+export function buildSemanticRerankRequest(
+  query: string,
+  candidates: SemanticRerankCandidate[],
+): DecisionRequest {
+  const questions: Record<string, DecisionQuestion> = {};
+  for (const candidate of candidates) {
+    questions[candidate.id] = {
+      type: "score",
+      instructions: `Rate from 0 to 1 how well this retrieval candidate answers the user query "${query}".\n\nCandidate:\n${candidate.text}`,
+      criteria: ["0 = irrelevant to the query", "1 = directly and completely answers the query"],
+    };
+  }
+  return { state: `Semantic retrieval rerank for query: ${query}`, questions };
+}
+
 export function buildEvidenceTriageRequest(artifact: string): DecisionRequest {
   return {
     state: artifact,

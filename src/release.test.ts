@@ -47,6 +47,10 @@ describe("release package", () => {
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("node-version: 24");
+    expect(workflow).toContain("actions/checkout@v5");
+    expect(workflow).toContain("actions/setup-node@v5");
+    expect(workflow).not.toContain("actions/checkout@v4");
+    expect(workflow).not.toContain("actions/setup-node@v4");
     expect(workflow).toContain("npm@11.5.1");
     expect(workflow).toContain("git merge-base --is-ancestor HEAD origin/main");
     expect(workflow).toContain("npm ci");

@@ -6,8 +6,13 @@ import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { loadSettings, readFactOverrides, saveSettingsSection } from "./settings.js";
-import { parseSemanticMapping } from "./semantic.js";
-import { parseDecisionMapping } from "./decision.js";
+import { DEFAULT_SEMANTIC_CONFIG, parseSemanticMapping } from "./semantic.js";
+import { DEFAULT_DECISION_CONFIG, parseDecisionMapping } from "./decision.js";
+import {
+  offerTelemetryConsent,
+  parseTelemetryMapping,
+  serializeTelemetryMapping,
+} from "./telemetry.js";
 
 function tempProject(): { root: string; aiw: string } {
   const root = mkdtempSync(join(tmpdir(), "aiw-onboarding-"));
@@ -23,6 +28,7 @@ describe("optional model onboarding", () => {
         nodeFileSystem,
         aiw,
         async () => answers.shift() ?? "",
+        async () => undefined,
       );
       expect(enabled).toHaveLength(2);
       expect(enabled[0]).toContain("semantic");
@@ -53,10 +59,15 @@ describe("optional model onboarding", () => {
         baseUrl: "http://remote:11434",
       });
       const questions: string[] = [];
-      const skipped = await configureOptionalModels(nodeFileSystem, aiw, async (question) => {
-        questions.push(question);
-        return "n";
-      });
+      const skipped = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          questions.push(question);
+          return "n";
+        },
+        async () => undefined,
+      );
       expect(skipped).toEqual([]);
       expect(questions).toHaveLength(1);
       expect(questions[0]).toContain("decision");
@@ -101,6 +112,167 @@ describe("settings overrides", () => {
       expect(readFactOverrides(nodeFileSystem, aiw)).toEqual([
         { key: "package-manager", action: "reject" },
       ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("telemetry consent", () => {
+  it("asks after the model questions, defaults to No, and records the decision", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const questions: string[] = [];
+      const answers = ["y", "yes", ""];
+      await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          questions.push(question);
+          return answers.shift() ?? "";
+        },
+        async () => undefined,
+      );
+      const enabled = await offerTelemetryConsent(nodeFileSystem, aiw, async (question) => {
+        questions.push(question);
+        return "";
+      });
+      expect(enabled).toBe(false); // explicit default of No
+      expect(questions).toHaveLength(3);
+      const consentQuestion = questions[2];
+      expect(consentQuestion).toContain("[y/N]");
+      expect(consentQuestion).toContain("command name");
+      expect(consentQuestion).toContain("outcome");
+      expect(consentQuestion).toContain("never arguments, file paths, or file contents");
+      const settings = loadSettings(nodeFileSystem, aiw);
+      expect(parseTelemetryMapping(settings?.telemetry).enabled).toBe(false);
+      expect(nodeFileSystem.exists(join(aiw, "telemetry.yml"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("records consent and stays reversible through telemetry enable/disable", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const enabled = await offerTelemetryConsent(nodeFileSystem, aiw, async () => "y");
+      expect(enabled).toBe(true);
+      expect(parseTelemetryMapping(loadSettings(nodeFileSystem, aiw)?.telemetry)).toEqual({
+        schema: 1,
+        enabled: true,
+        includeCommand: true,
+        includeOutcome: true,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("never re-asks once a telemetry decision exists", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      saveSettingsSection(
+        nodeFileSystem,
+        aiw,
+        "telemetry",
+        serializeTelemetryMapping({
+          schema: 1,
+          enabled: true,
+          includeCommand: false,
+          includeOutcome: true,
+        }),
+      );
+      let asked = 0;
+      const enabled = await offerTelemetryConsent(nodeFileSystem, aiw, async () => {
+        asked += 1;
+        return "";
+      });
+      expect(asked).toBe(0);
+      expect(enabled).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("local model detection during install", () => {
+  it("lists real local models and records the user's selection", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const probed: string[] = [];
+      const questions: string[] = [];
+      const answers = ["y", "custom-embed", "yes", "clef-flash"];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          questions.push(question);
+          return answers.shift() ?? "";
+        },
+        async (baseUrl) => {
+          probed.push(baseUrl);
+          return ["clef-flash", "custom-embed", "embeddinggemma-2:latest"];
+        },
+      );
+      expect(probed).toEqual(["http://localhost:11434"]);
+      expect(enabled).toEqual(["semantic (custom-embed)", "decision (clef-flash)"]);
+      expect(questions[0]).toContain("Available embedding models: clef-flash, custom-embed");
+      expect(questions[2]).toContain("Available decision models: clef-flash, custom-embed");
+      expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
+        "custom-embed",
+      );
+      expect(parseDecisionMapping(loadSettings(nodeFileSystem, aiw)?.decision).model).toBe(
+        "clef-flash",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the first available model when the default is absent", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const answers = ["y", "", "yes", ""];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async () => answers.shift() ?? "",
+        async () => ["mreforge:latest"],
+      );
+      expect(enabled).toEqual(["semantic (mreforge:latest)", "decision (mreforge:latest)"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("continues with defaults when no server or models are found", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const questions: string[] = [];
+      const answers = ["y", "yes"];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          questions.push(question);
+          return answers.shift() ?? "";
+        },
+        async () => undefined,
+      );
+      expect(enabled).toEqual([
+        `semantic (${DEFAULT_SEMANTIC_CONFIG.model})`,
+        `decision (${DEFAULT_DECISION_CONFIG.model})`,
+      ]);
+      for (const question of questions) expect(question).not.toContain("Available");
+      expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
+        DEFAULT_SEMANTIC_CONFIG.model,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -20,11 +20,20 @@ import type { CommandResult, FileSystem, HumanApprovalStage } from "./types.js";
 import type { FactOverride } from "./confirmation.js";
 import { applyOverrides } from "./confirmation.js";
 import { mergeFacts } from "./intelligence.js";
-import { createInterpretationRequest } from "./interpreter.js";
+import {
+  createInterpretationRequest,
+  createOpenAiCompatibleProvider,
+  createProjectInterpreter,
+  buildInterpreterQuery,
+  loadAiProviderConfig,
+  selectInterpreterKeyFiles,
+} from "./interpreter.js";
 import {
   recommendCapabilities,
+  rankRecommendations,
   resourcesForCapabilities,
   serializeRecommendations,
+  type RankedRecommendations,
 } from "./recommendations.js";
 import { selectRecommendations } from "./selection.js";
 import { createInterface } from "node:readline/promises";
@@ -51,6 +60,8 @@ import {
 } from "./settings.js";
 import {
   buildEvidenceTriageRequest,
+  buildRecommendationRankingRequest,
+  buildSemanticRerankRequest,
   createOllamaDecisionProvider,
   DEFAULT_DECISION_CONFIG,
   loadDecisionConfig,
@@ -62,6 +73,8 @@ import {
   loadSemanticConfig,
   parseSemanticIndex,
   querySemanticIndex,
+  rerankSemanticMatches,
+  type RerankedMatch,
   SEMANTIC_INDEX_PATH,
   serializeSemanticIndex,
 } from "./semantic.js";
@@ -146,8 +159,13 @@ import { enforcePolicyGate, gitPolicyTracking } from "./policy-gate.js";
 import {
   DEFAULT_TELEMETRY_CONFIG,
   loadTelemetryConfig,
+  offerTelemetryConsent,
   parseTelemetryConfig,
+  purgeTelemetryBuffer,
+  readTelemetryBuffer,
   serializeTelemetryMapping,
+  TELEMETRY_BUFFER_CAP,
+  TELEMETRY_BUFFER_FILE,
 } from "./telemetry.js";
 import {
   createPluginScaffold,
@@ -475,10 +493,14 @@ export async function runCommand(
         [...BASE_DIRECTORIES.map((directory) => join(aiw, directory)), join(root, ".context/adrs")],
       );
       let optionalModels: string[] = [];
+      let telemetryEnabled: boolean | undefined;
       if (stdin.isTTY) {
         const terminal = createInterface({ input: stdin, output: stdout });
         try {
           optionalModels = await configureOptionalModels(fs, aiw, (question) =>
+            terminal.question(question),
+          );
+          telemetryEnabled = await offerTelemetryConsent(fs, aiw, (question) =>
             terminal.question(question),
           );
         } finally {
@@ -491,6 +513,11 @@ export async function runCommand(
           `AI Workflow initialized for target: ${target} with only the ai-init skill. Run /ai-init to scan the project and choose which resources to install.` +
           (optionalModels.length
             ? ` Optional models enabled: ${optionalModels.join(", ")}. They activate once the models are available.`
+            : "") +
+          (telemetryEnabled !== undefined
+            ? telemetryEnabled
+              ? " Telemetry enabled (command name and outcome only); disable anytime with `aiw telemetry disable`."
+              : " Telemetry disabled; enable anytime with `aiw telemetry enable`."
             : ""),
       };
     }
@@ -498,20 +525,31 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const usage =
-        "Usage: aiw telemetry <status|enable|disable> [--commands=include|exclude] [--outcomes=include|exclude]";
+        "Usage: aiw telemetry <status|enable|disable> [--verbose] [--commands=include|exclude] [--outcomes=include|exclude]";
       const action = args[1];
       if (!action) return { exitCode: 1, error: usage };
       const telemetryConfig = loadTelemetryConfig(fs, aiw);
+      const actionArgs = args.slice(2).filter((arg) => arg !== "--verbose");
+      const verbose = args.includes("--verbose");
       if (action === "status") {
-        if (args.length !== 2) return { exitCode: 1, error: usage };
+        if (actionArgs.length !== 0) return { exitCode: 1, error: usage };
         const config = telemetryConfig;
+        const buffered = verbose ? readTelemetryBuffer(fs, aiw) : undefined;
         return {
           exitCode: 0,
-          output: `Telemetry is ${config.enabled ? "enabled" : "disabled"}. Command collection: ${config.includeCommand ? "included" : "excluded"}. Outcome collection: ${config.includeOutcome ? "included" : "excluded"}.`,
+          output:
+            `Telemetry is ${config.enabled ? "enabled" : "disabled"}. Command collection: ${config.includeCommand ? "included" : "excluded"}. Outcome collection: ${config.includeOutcome ? "included" : "excluded"}.` +
+            (buffered !== undefined
+              ? `\nLocal buffer: ${buffered.length} event${buffered.length === 1 ? "" : "s"} (cap ${TELEMETRY_BUFFER_CAP}, .aiw/${TELEMETRY_BUFFER_FILE}).` +
+                (buffered.length > 0
+                  ? `\n${buffered.map((event) => `- ${JSON.stringify(event)}`).join("\n")}`
+                  : "")
+              : ""),
         };
       }
       if (action === "disable") {
-        if (args.length !== 2) return { exitCode: 1, error: usage };
+        if (actionArgs.length !== 0) return { exitCode: 1, error: usage };
+        purgeTelemetryBuffer(fs, aiw);
         saveSettingsSection(
           fs,
           aiw,
@@ -521,7 +559,7 @@ export async function runCommand(
         return { exitCode: 0, output: "Telemetry disabled." };
       }
       if (action === "enable") {
-        const options = args.slice(2);
+        const options = args.slice(2).filter((arg) => arg !== "--verbose");
         if (
           options.some((option) => !/^--(?:commands|outcomes)=(?:include|exclude)$/.test(option)) ||
           new Set(options.map((option) => option.slice(0, option.indexOf("=")))).size !==
@@ -579,10 +617,48 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
-      if (services.interpreter) {
+      let interpreter = services.interpreter;
+      if (!interpreter) {
+        const aiConfig = loadAiProviderConfig(fs, aiw);
+        if (aiConfig?.enabled)
+          interpreter = createProjectInterpreter(
+            root,
+            services.aiProvider ?? createOpenAiCompatibleProvider(aiConfig),
+          );
+      }
+      if (interpreter) {
         const scan = await (services.scanner?.scan(root) ?? scanProject(root));
-        const inferred = await services.interpreter.interpret(
-          createInterpretationRequest(profile, scan.files),
+        let scopedFiles = scan.files;
+        let priorityFiles: string[] | undefined;
+        const contextConfig = loadSemanticConfig(fs, aiw);
+        const contextIndexPath = join(aiw, SEMANTIC_INDEX_PATH);
+        if (contextConfig?.enabled && fs.exists(contextIndexPath)) {
+          try {
+            const index = parseSemanticIndex(fs.read(contextIndexPath));
+            if (index.model === contextConfig.model && index.chunks.length > 0) {
+              const embedding =
+                services.embeddingProvider ?? createOllamaEmbeddingProvider(contextConfig);
+              if (await embedding.available()) {
+                const matches = await querySemanticIndex(
+                  index,
+                  buildInterpreterQuery(profile),
+                  embedding,
+                  contextConfig,
+                );
+                priorityFiles = [
+                  ...selectInterpreterKeyFiles(scan.files),
+                  ...matches.map((match) => match.file),
+                ];
+                const allowed = new Set(priorityFiles);
+                scopedFiles = scan.files.filter((file) => allowed.has(file));
+              }
+            }
+          } catch {
+            // An unreadable index keeps the scan deterministic with alphabetical scoping.
+          }
+        }
+        const inferred = await interpreter.interpret(
+          createInterpretationRequest(profile, scopedFiles, 4000, priorityFiles),
         );
         profile.facts = mergeFacts(profile.facts, inferred);
       }
@@ -607,7 +683,8 @@ export async function runCommand(
       );
       const semanticConfig = loadSemanticConfig(fs, aiw);
       if (semanticConfig?.enabled) {
-        const provider = createOllamaEmbeddingProvider(semanticConfig);
+        const provider =
+          services.embeddingProvider ?? createOllamaEmbeddingProvider(semanticConfig);
         if (!(await provider.available()))
           return {
             exitCode: 1,
@@ -681,7 +758,7 @@ export async function runCommand(
       return { exitCode: 1, error: usage };
     }
     if (command === "semantic") {
-      const usage = "Usage: aiw semantic query --text=<query> | aiw semantic status";
+      const usage = "Usage: aiw semantic query --text=<query> [--rerank] | aiw semantic status";
       const action = args[1];
       if (action === "status") {
         const config = loadSemanticConfig(fs, aiw);
@@ -700,7 +777,9 @@ export async function runCommand(
         };
       }
       if (action === "query") {
-        const parsed = parseNamedOptions(args.slice(2), ["text"]);
+        const queryArgs = args.slice(2).filter((arg) => arg !== "--rerank");
+        const rerankRequested = args.slice(2).includes("--rerank");
+        const parsed = parseNamedOptions(queryArgs, ["text"]);
         if (!parsed?.text) return { exitCode: 1, error: usage };
         const config = loadSemanticConfig(fs, aiw);
         if (!config?.enabled)
@@ -723,17 +802,49 @@ export async function runCommand(
           provider,
           config,
         );
+        let ranked: RerankedMatch[] = matches.map((match) => ({ ...match }));
+        let influence: string | undefined;
+        if (rerankRequested) {
+          const decisionConfig = loadDecisionConfig(fs, aiw);
+          if (!decisionConfig?.enabled)
+            return {
+              exitCode: 1,
+              error:
+                "Decision model is disabled. Set decision.enabled=true in .aiw/settings.yml to use --rerank.",
+            };
+          const decisionProvider = createOllamaDecisionProvider(decisionConfig);
+          if (!(await decisionProvider.available()))
+            return {
+              exitCode: 1,
+              error: `Decision model ${decisionConfig.model} is not available at ${decisionConfig.baseUrl}.`,
+            };
+          const outcome = await rerankSemanticMatches(
+            matches,
+            parsed.text,
+            async (query, candidates) => {
+              const response = await decisionProvider.decide(
+                buildSemanticRerankRequest(query, candidates),
+              );
+              const scores: Record<string, number | undefined> = {};
+              for (const [id, answer] of Object.entries(response.answers))
+                scores[id] = typeof answer.score === "number" ? answer.score : undefined;
+              return scores;
+            },
+          );
+          ranked = outcome.matches;
+          influence = `rerank influence: ${outcome.changedPositions}/${outcome.matches.length} positions reordered (advisory; cosine recall unchanged)`;
+        }
         return {
           exitCode: 0,
           output:
-            matches.length === 0
+            ranked.length === 0
               ? "No semantic matches."
-              : matches
+              : `${ranked
                   .map(
                     (match) =>
-                      `- ${match.file} (score ${match.score.toFixed(3)})\n  ${match.excerpt}`,
+                      `- ${match.file} (score ${match.score.toFixed(3)}${match.rerankScore !== undefined ? `, rerank ${match.rerankScore.toFixed(3)}` : ""})\n  ${match.excerpt}`,
                   )
-                  .join("\n"),
+                  .join("\n")}${influence ? `\n${influence}` : ""}`,
         };
       }
       return { exitCode: 1, error: usage };
@@ -1120,6 +1231,36 @@ export async function runCommand(
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       const recommendations =
         services.recommender?.recommend(profile) ?? recommendCapabilities(profile);
+      let ordered = recommendations;
+      let ranked: RankedRecommendations | undefined;
+      const rankingConfig = loadDecisionConfig(fs, aiw);
+      if (rankingConfig?.enabled) {
+        const decisionProvider =
+          services.decisionProvider ?? createOllamaDecisionProvider(rankingConfig);
+        if (!(await decisionProvider.available()))
+          return {
+            exitCode: 1,
+            error: `Decision model ${rankingConfig.model} is not available at ${rankingConfig.baseUrl}.`,
+          };
+        ranked = await rankRecommendations(recommendations, profile, async (scoped, recs) => {
+          const response = await decisionProvider.decide(
+            buildRecommendationRankingRequest(profileSummaryForRanking(scoped), recs),
+          );
+          const answers: Record<string, { relevance?: number; confidence?: number }> = {};
+          for (const [id, answer] of Object.entries(response.answers))
+            answers[id] =
+              typeof answer.score === "number"
+                ? {
+                    relevance: answer.score,
+                    ...(typeof answer.confidence === "number"
+                      ? { confidence: answer.confidence }
+                      : {}),
+                  }
+                : {};
+          return answers;
+        });
+        ordered = ranked.items;
+      }
       const selectedOption = args.find((arg) => arg.startsWith("--select="));
       const selectedArg = selectedOption?.slice("--select=".length) ?? "";
       let selection: string[];
@@ -1132,21 +1273,23 @@ export async function runCommand(
       else if (!stdin.isTTY) selection = [];
       else {
         const terminal = createInterface({ input: stdin, output: stdout });
-        selection = await selectRecommendations(recommendations, (question) =>
-          terminal.question(question),
-        );
+        selection = await selectRecommendations(ordered, (question) => terminal.question(question));
         terminal.close();
       }
       fs.write(
         join(aiw, "recommendations.yml"),
-        serializeRecommendations(recommendations, selection),
+        serializeRecommendations(ordered, selection, ranked?.ranking),
       );
+      const rankingNote = ranked
+        ? ` Advisory decision-model ranking applied (${ranked.changedPositions} positions reordered); evidence states are unchanged.`
+        : "";
       return {
         exitCode: 0,
-        output:
+        output: `${ordered.length} recommendations generated${
           selectedOption === undefined && !stdin.isTTY
-            ? `${recommendations.length} recommendations generated without selection; review .aiw/recommendations.yml, then record user choices with --select=id,id.`
-            : `${recommendations.length} recommendations generated.`,
+            ? " without selection; review .aiw/recommendations.yml, then record user choices with --select=id,id."
+            : "."
+        }${rankingNote}`,
       };
     }
     if (command === "skills") {
@@ -2102,47 +2245,99 @@ function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
 
 export type ConfirmQuestion = (question: string) => Promise<string>;
 
+export type ModelProbe = (baseUrl: string) => Promise<string[] | undefined>;
+
+async function defaultModelProbe(baseUrl: string): Promise<string[] | undefined> {
+  try {
+    const response = await fetch(`${baseUrl}/api/tags`);
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as { models?: { name?: string }[] };
+    const names = [
+      ...new Set(
+        (body.models ?? [])
+          .map((entry) => entry.name)
+          .filter((name): name is string => typeof name === "string"),
+      ),
+    ];
+    return names.length > 0 ? names.sort() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultModelFor(available: string[] | undefined, fallback: string): string {
+  if (!available || available.length === 0) return fallback;
+  return available.includes(fallback) ? fallback : available[0];
+}
+
 export async function configureOptionalModels(
   fs: FileSystem,
   aiwPath: string,
   answer: ConfirmQuestion,
+  listModels: ModelProbe = defaultModelProbe,
 ): Promise<string[]> {
   const enabled: string[] = [];
   const settings = loadSettings(fs, aiwPath) ?? {};
+  let availableModels: string[] | undefined;
+  if (!("semantic" in settings) || !("decision" in settings))
+    availableModels = await listModels(DEFAULT_SEMANTIC_CONFIG.baseUrl);
   if (!("semantic" in settings)) {
+    const defaultEmbedding = defaultModelFor(availableModels, DEFAULT_SEMANTIC_CONFIG.model);
+    const catalog =
+      availableModels && availableModels.length > 0
+        ? ` Available embedding models: ${availableModels.join(", ")}.`
+        : "";
     const response = (
       await answer(
-        `Enable semantic mapping with a local embedding model (default: ${DEFAULT_SEMANTIC_CONFIG.model} at ${DEFAULT_SEMANTIC_CONFIG.baseUrl})? [y/N] `,
+        `Enable semantic mapping with a local embedding model (default: ${defaultEmbedding} at ${DEFAULT_SEMANTIC_CONFIG.baseUrl})?${catalog} [y/N] `,
       )
     )
       .trim()
       .toLowerCase();
     if (response === "y" || response === "yes") {
+      let model = defaultEmbedding;
+      if (availableModels && availableModels.length > 0) {
+        const selection = (
+          await answer(`Use which embedding model? [${defaultEmbedding}] `)
+        ).trim();
+        if (selection.length > 0 && availableModels.includes(selection)) model = selection;
+      }
       saveSettingsSection(fs, aiwPath, "semantic", {
         enabled: true,
-        model: DEFAULT_SEMANTIC_CONFIG.model,
+        model,
         baseUrl: DEFAULT_SEMANTIC_CONFIG.baseUrl,
         chunkChars: DEFAULT_SEMANTIC_CONFIG.chunkChars,
         topK: DEFAULT_SEMANTIC_CONFIG.topK,
+        excludeLockfiles: DEFAULT_SEMANTIC_CONFIG.excludeLockfiles,
       });
-      enabled.push(`semantic (${DEFAULT_SEMANTIC_CONFIG.model})`);
+      enabled.push(`semantic (${model})`);
     }
   }
   if (!("decision" in settings)) {
+    const defaultDecision = defaultModelFor(availableModels, DEFAULT_DECISION_CONFIG.model);
+    const catalog =
+      availableModels && availableModels.length > 0
+        ? ` Available decision models: ${availableModels.join(", ")}.`
+        : "";
     const response = (
       await answer(
-        `Enable advisory decision triage with a local decision model (default: ${DEFAULT_DECISION_CONFIG.model} at ${DEFAULT_DECISION_CONFIG.baseUrl})? [y/N] `,
+        `Enable advisory decision triage with a local decision model (default: ${defaultDecision} at ${DEFAULT_DECISION_CONFIG.baseUrl})?${catalog} [y/N] `,
       )
     )
       .trim()
       .toLowerCase();
     if (response === "y" || response === "yes") {
+      let model = defaultDecision;
+      if (availableModels && availableModels.length > 0) {
+        const selection = (await answer(`Use which decision model? [${defaultDecision}] `)).trim();
+        if (selection.length > 0 && availableModels.includes(selection)) model = selection;
+      }
       saveSettingsSection(fs, aiwPath, "decision", {
         enabled: true,
-        model: DEFAULT_DECISION_CONFIG.model,
+        model,
         baseUrl: DEFAULT_DECISION_CONFIG.baseUrl,
       });
-      enabled.push(`decision (${DEFAULT_DECISION_CONFIG.model})`);
+      enabled.push(`decision (${model})`);
     }
   }
   return enabled;
@@ -2573,6 +2768,16 @@ function safeProjectSignal(value: string): string {
     .join("")
     .replace(/\s+/g, " ")
     .slice(0, 180);
+}
+
+function profileSummaryForRanking(profile: ProjectProfile): string {
+  return [
+    `languages: ${profile.runtime.languages.join(", ") || "none"}`,
+    `frameworks: ${profile.frameworks.join(", ") || "none"}`,
+    `package-manager: ${profile.packageManager}`,
+    `testing: ${profile.testing?.name ?? "none"}`,
+    `linter: ${profile.quality.linter?.name ?? "none"}`,
+  ].join("; ");
 }
 
 function readSelectedRecommendations(fs: FileSystem, aiw: string): string[] {

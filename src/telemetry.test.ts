@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   createTelemetryEvent,
+  purgeTelemetryBuffer,
+  readTelemetryBuffer,
+  recordConfiguredTelemetry,
+  serializeTelemetryMapping,
+  TELEMETRY_BUFFER_CAP,
   parseTelemetryConfig,
   serializeTelemetryConfig,
   type TelemetryConfig,
 } from "./telemetry.js";
+import type { FileSystem } from "./types.js";
+import { saveSettingsSection } from "./settings.js";
 
 const enabled: TelemetryConfig = {
   schema: 1,
@@ -54,3 +61,86 @@ describe("telemetry privacy", () => {
     );
   });
 });
+
+describe("local telemetry buffer", () => {
+  it("accumulates events in a rotated local buffer without a host client", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    saveSettingsSection(fs, ".aiw", "telemetry", serializeTelemetryMapping(enabled));
+    await recordConfiguredTelemetry(fs, ".aiw", undefined, "scan", { exitCode: 0 });
+    await recordConfiguredTelemetry(fs, ".aiw", undefined, "doctor", { exitCode: 1 });
+    const buffered = readTelemetryBuffer(fs, ".aiw");
+    expect(buffered).toEqual([
+      { schema: 1, command: "scan", outcome: "success" },
+      { schema: 1, command: "doctor", outcome: "failure" },
+    ]);
+  });
+
+  it("keeps only the most recent events up to the retention cap", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    saveSettingsSection(fs, ".aiw", "telemetry", serializeTelemetryMapping(enabled));
+    for (let index = 0; index < TELEMETRY_BUFFER_CAP + 5; index += 1)
+      await recordConfiguredTelemetry(fs, ".aiw", undefined, "scan", { exitCode: 0 });
+    const buffered = readTelemetryBuffer(fs, ".aiw");
+    expect(buffered).toHaveLength(TELEMETRY_BUFFER_CAP);
+    expect(files[".aiw/telemetry-buffer.jsonl"].trim().split("\n")).toHaveLength(
+      TELEMETRY_BUFFER_CAP,
+    );
+  });
+
+  it("records nothing locally when telemetry is disabled or unconfigured", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    await recordConfiguredTelemetry(fs, ".aiw", undefined, "scan", { exitCode: 0 });
+    expect(fs.exists(".aiw/telemetry-buffer.jsonl")).toBe(false);
+    saveSettingsSection(
+      fs,
+      ".aiw",
+      "telemetry",
+      serializeTelemetryMapping({ ...enabled, enabled: false }),
+    );
+    await recordConfiguredTelemetry(fs, ".aiw", undefined, "scan", { exitCode: 0 });
+    expect(fs.exists(".aiw/telemetry-buffer.jsonl")).toBe(false);
+  });
+
+  it("prefers the host client and never buffers alongside it", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    saveSettingsSection(fs, ".aiw", "telemetry", serializeTelemetryMapping(enabled));
+    const recorded: unknown[] = [];
+    await recordConfiguredTelemetry(
+      fs,
+      ".aiw",
+      { record: async (e) => void recorded.push(e) },
+      "scan",
+      { exitCode: 0 },
+    );
+    expect(recorded).toEqual([{ schema: 1, command: "scan", outcome: "success" }]);
+    expect(fs.exists(".aiw/telemetry-buffer.jsonl")).toBe(false);
+  });
+
+  it("purges the buffer", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    saveSettingsSection(fs, ".aiw", "telemetry", serializeTelemetryMapping(enabled));
+    await recordConfiguredTelemetry(fs, ".aiw", undefined, "scan", { exitCode: 0 });
+    expect(readTelemetryBuffer(fs, ".aiw")).toHaveLength(1);
+    purgeTelemetryBuffer(fs, ".aiw");
+    expect(readTelemetryBuffer(fs, ".aiw")).toEqual([]);
+  });
+});
+
+function memoryFs(files: Record<string, string>): FileSystem {
+  return {
+    exists: (path: string): boolean => path in files,
+    read: (path: string): string => files[path],
+    write: (path: string, content: string): void => {
+      files[path] = content;
+    },
+    mkdir: (): void => {},
+    remove: (path: string): void => {
+      delete files[path];
+    },
+  };
+}

@@ -4,10 +4,12 @@ import {
   buildSemanticIndex,
   chunkText,
   cosineSimilarity,
+  createOllamaEmbeddingProvider,
   DEFAULT_SEMANTIC_CONFIG,
   parseSemanticConfig,
   parseSemanticIndex,
   querySemanticIndex,
+  rerankSemanticMatches,
   serializeSemanticIndex,
   type EmbeddingProvider,
   type SemanticConfig,
@@ -50,8 +52,8 @@ const enabledConfig: SemanticConfig = {
   baseUrl: "http://localhost:11434",
   chunkChars: 1200,
   topK: 2,
+  excludeLockfiles: true,
 };
-
 describe("semantic configuration", () => {
   it("disables semantic mapping when enabled is false", () => {
     const config = parseSemanticConfig("semantic:\n  enabled: false\n");
@@ -143,6 +145,24 @@ describe("semantic index", () => {
     expect(matches[0].score).toBeGreaterThan(matches[1].score);
   });
 
+  it("excludes lockfiles from the index unless disabled", async () => {
+    const files = ["src/a.ts", "package-lock.json", "pnpm-lock.yaml"];
+    const included = await buildSemanticIndex(
+      files,
+      async (file) => `content of ${file}`,
+      fakeProvider(new Map()),
+      enabledConfig,
+    );
+    expect(included.chunks.map((chunk) => chunk.file)).toEqual(["src/a.ts"]);
+    const overridden = await buildSemanticIndex(
+      files,
+      async (file) => `content of ${file}`,
+      fakeProvider(new Map()),
+      { ...enabledConfig, excludeLockfiles: false },
+    );
+    expect(overridden.chunks.map((chunk) => chunk.file)).toEqual(files);
+  });
+
   it("rejects queries against an index built with a different model", async () => {
     const index = await buildSemanticIndex(
       ["a.ts"],
@@ -156,6 +176,66 @@ describe("semantic index", () => {
         model: "other-model",
       }),
     ).rejects.toThrow(/other-model/);
+  });
+
+  it("reranks matches with the decision model and reports influence", async () => {
+    const matches = [
+      { file: "alpha.ts", score: 0.9, excerpt: "alpha" },
+      { file: "beta.ts", score: 0.8, excerpt: "beta" },
+      { file: "gamma.ts", score: 0.7, excerpt: "gamma" },
+    ];
+    const outcome = await rerankSemanticMatches(matches, "query", async () => ({
+      match_0: 0.1,
+      match_1: 0.9,
+      match_2: undefined,
+    }));
+    expect(outcome.matches.map((match) => match.file)).toEqual(["beta.ts", "gamma.ts", "alpha.ts"]);
+    expect(outcome.changedPositions).toBe(3);
+    expect(outcome.matches[0].rerankScore).toBe(0.9);
+    expect(outcome.matches[2].rerankScore).toBe(0.1);
+    expect(outcome.matches[1].rerankScore).toBeUndefined();
+  });
+
+  it("leaves the order untouched when no decision scores are provided", async () => {
+    const matches = [
+      { file: "alpha.ts", score: 0.9, excerpt: "alpha" },
+      { file: "beta.ts", score: 0.8, excerpt: "beta" },
+    ];
+    const outcome = await rerankSemanticMatches(matches, "query", async () => ({}));
+    expect(outcome.matches.map((match) => match.file)).toEqual(["alpha.ts", "beta.ts"]);
+    expect(outcome.changedPositions).toBe(0);
+  });
+
+  it("handles empty match sets", async () => {
+    const outcome = await rerankSemanticMatches([], "query", async () => ({}));
+    expect(outcome).toEqual({ matches: [], changedPositions: 0 });
+  });
+});
+
+describe("ollama embedding provider", () => {
+  const calls: { url: string; body: string }[] = [];
+  const fetchLike = async (url: string, init?: RequestInit): Promise<Response> => {
+    calls.push({ url, body: String(init?.body ?? "") });
+    const input = (JSON.parse(String(init?.body ?? "{}")) as { input: string[] }).input;
+    return new Response(JSON.stringify({ embeddings: input.map((_, index) => [index, 1]) }), {
+      status: 200,
+    });
+  };
+  it("embeds in batches through /api/embed", async () => {
+    calls.length = 0;
+    const provider = createOllamaEmbeddingProvider(enabledConfig, fetchLike as typeof fetch);
+    const vectors = await provider.embed(Array.from({ length: 130 }, (_, i) => `t${i}`));
+    expect(vectors).toHaveLength(130);
+    expect(calls.every((call) => call.url.endsWith("/api/embed"))).toBe(true);
+    expect(calls).toHaveLength(3);
+    expect(JSON.parse(calls[0].body).input).toHaveLength(64);
+    expect(JSON.parse(calls[2].body).input).toHaveLength(2);
+  });
+  it("fails on malformed batch responses", async () => {
+    const bad = async (): Promise<Response> =>
+      new Response(JSON.stringify({ embeddings: [[0, 0]] }), { status: 200 });
+    const provider = createOllamaEmbeddingProvider(enabledConfig, bad as typeof fetch);
+    await expect(provider.embed(["a", "b"])).rejects.toThrow(/invalid vectors/i);
   });
 });
 

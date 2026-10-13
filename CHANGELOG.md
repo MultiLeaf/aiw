@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-08
+
+### Added
+
+- Batched semantic indexing: embedding requests now use the Ollama batch endpoint (`POST /api/embed`) with up to 64 chunks per request instead of one request per chunk, and lockfiles and generated vendor manifests (`package-lock.json`, `yarn.lock`, `go.sum`, and others) are excluded from the index by default (`semantic.excludeLockfiles` overrides).
+- Optional decision-model re-ranking for `aiw semantic query --rerank`: when a decision model is enabled, each retrieved candidate is scored 0-1 for query relevance and the output is reordered with a reported ranking influence; cosine recall without a decision model is unchanged.
+- Semantic interpreter scoping during `aiw scan`: when semantic mapping is enabled and an index exists, the AI interpreter receives deterministic key files plus the top semantically relevant files for a profile-derived query instead of the alphabetically ordered file list, reducing token usage.
+- Built-in OpenAI-compatible `AiProvider` configured through an `ai` section in `.aiw/settings.yml` (for example Ollama `gpt-oss:20b`), so the scoped interpreter works without a host-injected provider; secrets redaction, token ceilings, and scoped-context validation apply unchanged, and missing configuration keeps scans deterministic and offline.
+- Advisory decision-model ranking for `aiw recommend`: when a decision model is enabled, recommendations are ordered by relevance to the confirmed profile and serialized with `decision_relevance` / `decision_confidence`; evidence states never change.
+- Telemetry consent during interactive `aiw install`, asked after the optional model questions with an explicit default of No, stating the exact event payload (command name and outcome only); the decision is recorded in `.aiw/settings.yml` and reversible through `aiw telemetry enable/disable`. Non-interactive installs skip the prompt.
+- Local telemetry buffer: when telemetry is enabled and no host client is present, events accumulate in a rotated `.aiw/telemetry-buffer.jsonl` (retention cap of 200 events); `aiw telemetry status --verbose` displays buffered events and `aiw telemetry disable` purges the buffer. No network transport was added.
+- Local model detection during interactive install: the installer probes the configured Ollama endpoint (`/api/tags`), lists the embedding and decision models actually available, and records the user's selection in `.aiw/settings.yml`; when no server or models are found it continues with defaults.
+
+### Changed
+
+- GitHub Actions now use Node 24-native `actions/checkout@v5` and `actions/setup-node@v5`, and CI runs on Node 24.
 ## [0.4.1] - 2026-10-08
 
 ### Fixed

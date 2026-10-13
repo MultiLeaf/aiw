@@ -11,7 +11,11 @@ describe("continuous integration", () => {
     expect(workflow).toContain("npm run policy:check");
     expect(workflow).toContain("permissions:");
     expect(workflow).toContain("contents: read");
-    expect(workflow).toContain("node-version: 20");
+    expect(workflow).toContain("node-version: 24");
+    expect(workflow).toContain("actions/checkout@v5");
+    expect(workflow).toContain("actions/setup-node@v5");
+    expect(workflow).not.toContain("actions/checkout@v4");
+    expect(workflow).not.toContain("actions/setup-node@v4");
     expect(workflow).toContain("cache: npm");
   });
 });

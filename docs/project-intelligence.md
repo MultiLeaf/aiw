@@ -58,4 +58,16 @@ Before a provider call, the interpreter:
 - redacts common credential assignments, bearer tokens, and private keys;
 - rejects inferred evidence that cites any file outside the scoped request.
 
-The workflow accepts an injected interpreter service. A configured interpreter runs during `aiw scan`, and its structured facts are stored in `.aiw/profile.yml` alongside deterministic facts. Facts below the confidence threshold are marked `requires_confirmation: true`. Without a configured provider, scans remain deterministic and do not make a network request.
+The workflow accepts an injected interpreter service. Additionally, a built-in OpenAI-compatible provider can be configured through an `ai` section in `.aiw/settings.yml` so the interpreter works without a host-injected service:
+
+```yaml
+ai:
+  enabled: true
+  model: gpt-oss:20b # any model served by an OpenAI-compatible endpoint
+  baseUrl: http://localhost:11434 # local (Ollama) or remote
+  apiKeyEnv: AIW_AI_KEY # optional; bearer token read from this environment variable
+```
+
+The provider posts to `<baseUrl>/v1/chat/completions` with a JSON response format and the interpreter's token ceiling; all existing guardrails (secrets redaction, scoped-context validation, binary and sensitive-file exclusion) apply unchanged because the same interpreter pipeline is used. An injected interpreter service always takes precedence. Without an `ai` section, scans remain deterministic and do not make a network request.
+
+A configured interpreter runs during `aiw scan`, and its structured facts are stored in `.aiw/profile.yml` alongside deterministic facts. Facts below the confidence threshold are marked `requires_confirmation: true`.

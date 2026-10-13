@@ -3,8 +3,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  buildInterpreterQuery,
   createInterpretationRequest,
+  createOpenAiCompatibleProvider,
   createProjectInterpreter,
+  parseAiProviderMapping,
+  selectInterpreterKeyFiles,
   type AiProvider,
   type Interpreter,
 } from "./interpreter.js";
@@ -43,6 +47,41 @@ describe("scoped AI interpreter", () => {
     expect(request.files.join(" ")).not.toContain(".env");
     expect(request.maxTokens).toBe(4000);
     expect(request.estimatedTokens).toBeLessThanOrEqual(request.maxTokens);
+  });
+
+  it("orders priority files first and keeps the rest alphabetical", () => {
+    const request = createInterpretationRequest(
+      profile,
+      ["src/app.ts", "README.md", "package.json", "src/zzz.ts"],
+      4000,
+      ["src/zzz.ts", "README.md"],
+    );
+    expect(request.files).toEqual(["src/zzz.ts", "README.md", "package.json", "src/app.ts"]);
+  });
+
+  it("drops unsafe or unknown priority files", () => {
+    const request = createInterpretationRequest(profile, ["src/app.ts"], 4000, [
+      ".env",
+      "missing.ts",
+      "src/app.ts",
+    ]);
+    expect(request.files).toEqual(["src/app.ts"]);
+  });
+
+  it("selects deterministic key files in declared priority order", () => {
+    const keyFiles = selectInterpreterKeyFiles([
+      "src/nested/package.json",
+      "docs/readme.md",
+      "package.json",
+      "src/app.ts",
+    ]);
+    expect(keyFiles).toEqual(["docs/readme.md", "src/nested/package.json"]);
+  });
+
+  it("builds a deterministic analysis query from the profile", () => {
+    const query = buildInterpreterQuery(profile);
+    expect(query).toContain("Project conventions");
+    expect(query).not.toContain("unknown");
   });
 
   it("rejects an invalid token budget", () => {
@@ -205,5 +244,105 @@ describe("scoped AI interpreter", () => {
       createInterpretationRequest(profile, ["src/app.ts"]),
     );
     expect(result[0]).toMatchObject({ state: "inferred", method: "ai-inference" });
+  });
+});
+
+describe("built-in AI provider configuration", () => {
+  it("validates the ai settings section", () => {
+    expect(parseAiProviderMapping({ enabled: false })).toEqual({
+      enabled: false,
+      model: "gpt-oss:20b",
+      baseUrl: "http://localhost:11434",
+    });
+    const config = parseAiProviderMapping({
+      enabled: true,
+      model: "gpt-oss:20b",
+      baseUrl: "http://localhost:11434",
+      apiKeyEnv: "AIW_AI_KEY",
+    });
+    expect(config).toEqual({
+      enabled: true,
+      model: "gpt-oss:20b",
+      baseUrl: "http://localhost:11434",
+      apiKeyEnv: "AIW_AI_KEY",
+    });
+    expect(() => parseAiProviderMapping({ enabled: true })).toThrow(/ai\.model/);
+    expect(() => parseAiProviderMapping({ enabled: true, model: "m", baseUrl: "ftp://h" })).toThrow(
+      /ai\.baseUrl/,
+    );
+    expect(() =>
+      parseAiProviderMapping({ enabled: true, model: "m", baseUrl: "http://h", apiKeyEnv: "no" }),
+    ).toThrow(/ai\.apiKeyEnv/);
+  });
+});
+
+describe("openai-compatible provider", () => {
+  const config = {
+    enabled: true,
+    model: "gpt-oss:20b",
+    baseUrl: "http://localhost:11434",
+    apiKeyEnv: "AIW_AI_KEY",
+  } as const;
+
+  it("sends a chat completion request with json response format and bearer key", async () => {
+    const seen: { url: string; init: RequestInit }[] = [];
+    const provider = createOpenAiCompatibleProvider(
+      { ...config },
+      async (url, init) => {
+        seen.push({ url, init: init ?? {} });
+        return new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), {
+          status: 200,
+        });
+      },
+      { AIW_AI_KEY: "secret-key" },
+    );
+    const output = await provider.generate({
+      system: "sys",
+      prompt: "pr",
+      maxTokens: 500,
+      responseFormat: "json",
+    });
+    expect(output).toBe("{}");
+    expect(seen[0].url).toBe("http://localhost:11434/v1/chat/completions");
+    const body = JSON.parse(String(seen[0].init.body));
+    expect(body.model).toBe("gpt-oss:20b");
+    expect(body.response_format).toEqual({ type: "json_object" });
+    expect(body.max_tokens).toBe(500);
+    expect(body.messages).toEqual([
+      { role: "system", content: "sys" },
+      { role: "user", content: "pr" },
+    ]);
+    expect((seen[0].init.headers as Record<string, string>).authorization).toBe(
+      "Bearer secret-key",
+    );
+  });
+
+  it("omits authorization when the environment variable is unset", async () => {
+    const provider = createOpenAiCompatibleProvider(
+      { ...config },
+      async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), {
+          status: 200,
+        }),
+      {},
+    );
+    await provider.generate({ system: "s", prompt: "p", maxTokens: 10, responseFormat: "json" });
+  });
+
+  it("fails with an actionable error on provider failures", async () => {
+    const failing = createOpenAiCompatibleProvider(
+      { ...config },
+      async () => new Response("boom", { status: 500 }),
+    );
+    await expect(
+      failing.generate({ system: "s", prompt: "p", maxTokens: 10, responseFormat: "json" }),
+    ).rejects.toThrow(/gpt-oss:20b/);
+    const empty = createOpenAiCompatibleProvider(
+      { ...config },
+      async () => new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+    );
+    await expect(
+      empty.generate({ system: "s", prompt: "p", maxTokens: 10, responseFormat: "json" }),
+    ).rejects.toThrow(/no message content/);
   });
 });
