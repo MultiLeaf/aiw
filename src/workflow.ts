@@ -5,6 +5,7 @@ import {
   detectTarget,
   isTarget,
   renderAiInit,
+  describeResource,
   renderAiInitPath,
   renderResourcePath,
 } from "./adapter.js";
@@ -1005,7 +1006,11 @@ export async function runCommand(
         for (const migration of migrations) {
           const oldPath = join(
             root,
-            renderResourcePath(previousTarget, migration.type, migration.id),
+            renderResourcePath(
+              previousTarget,
+              migration.type as Parameters<typeof renderResourcePath>[1],
+              migration.id,
+            ),
           );
           oldTargetPaths.add(oldPath);
           if (oldPath !== join(root, migration.destination)) inspectOwnedRemoval(oldPath);
@@ -2531,6 +2536,28 @@ function syncSelectedResources(
     generatedFiles.set(join(aiw, path), content);
     const rule = path.match(/^generated\/rules\/(project-quality|tdd-project-policy)\.md$/);
     if (rule) addResource("rules", rule[1], content);
+    const rootContext = path === "generated/context/root-context.md";
+    if (rootContext) {
+      const neutralContextPath = join(
+        root,
+        describeResource("universal", "context", "project").path,
+      );
+      addOwned(neutralContextPath, content, {
+        kind: "neutral-resource",
+        target: "universal",
+        resourceType: "context",
+        resourceId: "project",
+      });
+      const targetContextPath = describeResource(target, "context", "project").path;
+      if (targetContextPath !== renderAiInitPath(target)) {
+        addOwned(join(root, targetContextPath), content, {
+          kind: "target-resource",
+          target,
+          resourceType: "context",
+          resourceId: "project",
+        });
+      }
+    }
   });
 
   const ownershipPath = join(aiw, "ownership.yml");

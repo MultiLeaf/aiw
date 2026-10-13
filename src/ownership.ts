@@ -9,7 +9,7 @@ export type OwnedFile = {
   checksum: string;
   kind?: "neutral-resource" | "target-resource" | "ai-init" | "supporting-file";
   target?: Target;
-  resourceType?: ResourceType;
+  resourceType?: ResourceType | "context";
   resourceId?: string;
 };
 export type OwnershipMetadata = Omit<OwnedFile, "path" | "checksum">;
@@ -76,7 +76,9 @@ export function parseOwnership(content: string): OwnedFile[] {
       throw new Error(`Ownership inventory target is invalid: ${file.path}`);
     if (
       file.resourceType !== undefined &&
-      !(RESOURCE_TYPES as readonly string[]).includes(String(file.resourceType))
+      !([...(RESOURCE_TYPES as readonly string[]), "context"] as readonly string[]).includes(
+        String(file.resourceType),
+      )
     )
       throw new Error(`Ownership inventory resource type is invalid: ${file.path}`);
     if (

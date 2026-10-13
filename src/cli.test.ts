@@ -2931,3 +2931,55 @@ resources:
     await expect(stat(join(cwd, ".aiw/generated/rules/project-quality.md"))).resolves.toBeTruthy();
   });
 });
+
+describe("root context rendering", () => {
+  it("renders the generated context to the target root file during sync and migrates it", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        scripts: { test: "vitest run", lint: "eslint ." },
+        devDependencies: { vitest: "1", eslint: "1", typescript: "1" },
+      }),
+    );
+    await run(["scan"], cwd);
+    await run(["recommend", "--select=brainstorming"], cwd);
+    const preview = await run(["sync", "--preview"], cwd);
+    const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+    expect(fingerprint).toBeTruthy();
+    const applied = await run(["sync", `--approve-plan=${fingerprint}`], cwd);
+    expect(applied.exitCode).toBe(0);
+    const agents = await readFile(join(cwd, "AGENTS.md"), "utf8");
+    expect(agents).toContain("AI Workflow Project Context");
+    expect(agents).toContain("Lint: `eslint .`");
+    expect(agents).toContain(".aiw/profile.yml");
+
+    const migrated = await run(["target", "claude"], cwd);
+    expect(migrated.exitCode).toBe(0);
+    const claude = await readFile(join(cwd, "CLAUDE.md"), "utf8");
+    expect(claude).toContain("AI Workflow Project Context");
+    await expect(stat(join(cwd, "AGENTS.md"))).rejects.toThrow();
+  });
+
+  it("reports a conflict instead of overwriting an existing root context file", async () => {
+    const cwd = await project();
+    await run(["install", "--target", "codex"], cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "1" } }),
+    );
+    await writeFile(join(cwd, "AGENTS.md"), "# Hand-written instructions\n");
+    await run(["scan"], cwd);
+    await run(["recommend", "--select=brainstorming"], cwd);
+    const preview = await run(["sync", "--preview"], cwd);
+    expect(preview.exitCode).toBe(0);
+    const conflicts = JSON.parse(preview.output ?? "{}").plan.conflicts as string[];
+    expect(conflicts).toContain("AGENTS.md");
+    const fingerprint = preview.output?.match(/"fingerprint": "(sha256-[a-f0-9]{64})"/)?.[1];
+    const blocked = await run(["sync", `--approve-plan=${fingerprint}`], cwd);
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.error).toContain("AGENTS.md");
+    expect(await readFile(join(cwd, "AGENTS.md"), "utf8")).toBe("# Hand-written instructions\n");
+  });
+});

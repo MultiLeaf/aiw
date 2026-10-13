@@ -50,6 +50,10 @@ export function generateProjectResources(
       `# Confirmed Project Profile\n\n- Languages: ${profile.runtime.languages.join(", ") || "none detected"}\n- Frameworks: ${profile.frameworks.join(", ") || "none detected"}\n- Package manager: ${profile.packageManager}\n- All generated content is in English.\n`,
     );
     write(
+      resolveGeneratedPath("context/root-context.md"),
+      `# AI Workflow Project Context\n\nThis repository is managed by AI Workflow (\`.aiw/\` holds the neutral project state).\n\n- Languages: ${profile.runtime.languages.join(", ") || "none detected"}\n- Frameworks: ${profile.frameworks.join(", ") || "none detected"}\n- Package manager: ${profile.packageManager}${linterCommand ? `\n- Lint: \`${linterCommand}\`` : ""}${formatterCommand ? `\n- Format: \`${formatterCommand}\`` : ""}${uniqueTestCommands.map(({ scope, command }) => `\n- Tests (${scope}): \`${command}\``).join("")}\n\nBefore completing changes, run the project quality commands listed above. Follow installed AI Workflow skills, rules, and agents; the confirmed profile lives in \`.aiw/profile.yml\` and workflow evidence in \`.aiw/checkpoints/\`.\n`,
+    );
+    write(
       resolveGeneratedPath("hooks/quality-check.md"),
       `# Quality Check Hook\n\nRun the available project quality commands before completion.${linterCommand ? `\n\n- Linter: \`${linterCommand}\`` : ""}${formatterCommand ? `\n- Formatter: \`${formatterCommand}\`` : ""}${uniqueTestCommands.map(({ scope, command }) => `\n- ${scope} tests: \`${command}\``).join("")}\n`,
     );

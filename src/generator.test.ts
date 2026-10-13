@@ -39,6 +39,7 @@ describe("project resource generator", () => {
     expect(paths).toEqual([
       "generated/rules/project-quality.md",
       "generated/context/project-profile.md",
+      "generated/context/root-context.md",
       "generated/hooks/quality-check.md",
     ]);
   });

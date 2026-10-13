@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- Root context rendering: syncing a non-empty resource selection now writes the generated project context to the active target's root file (`AGENTS.md` for Codex/Cursor, `CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI), and `aiw target` migrates it between targets. The file is owned by AI Workflow, listed in the sync preview, and an existing hand-written root context is reported as a conflict instead of being overwritten.
+
 ## [0.6.0] - 2026-10-13
 
 ### Added

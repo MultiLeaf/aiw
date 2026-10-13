@@ -7,7 +7,7 @@ import type { Target } from "./types.js";
 export type ResourceMigration = {
   source: string;
   destination: string;
-  type: ResourceType;
+  type: ResourceType | "context";
   id: string;
   neutralSource: boolean;
 };
@@ -21,6 +21,8 @@ export type MigrationCheckpoint = {
   snapshots: MigrationSnapshot[];
   postMigrationSnapshots?: MigrationSnapshot[];
 };
+
+const MIGRATABLE_TYPES: readonly string[] = [...RESOURCE_TYPES, "context"];
 
 export function planNeutralResourceMigration(
   neutralRoot: string,
@@ -40,11 +42,7 @@ export function planNeutralResourceMigration(
       diagnostics.push({ path: relative, reason: "path is not normalized and project-relative" });
       continue;
     }
-    if (
-      extra ||
-      parts.length !== 3 ||
-      !(RESOURCE_TYPES as readonly string[]).includes(candidateType)
-    ) {
+    if (extra || parts.length !== 3 || !MIGRATABLE_TYPES.includes(candidateType)) {
       diagnostics.push({ path: relative, reason: "unsupported neutral resource path" });
       continue;
     }
@@ -52,7 +50,7 @@ export function planNeutralResourceMigration(
       diagnostics.push({ path: relative, reason: "resource identifier is invalid" });
       continue;
     }
-    const type = candidateType as ResourceType;
+    const type = candidateType as ResourceType | "context";
     if (type === "skills" && id === "ai-init") {
       diagnostics.push({
         path: relative,
@@ -67,7 +65,10 @@ export function planNeutralResourceMigration(
     }
     migrations.push({
       source: join(neutralRoot, relative),
-      destination: renderResourcePath(target, type, id),
+      destination:
+        type === "context"
+          ? renderResourcePath(target, type as never, id)
+          : renderResourcePath(target, type, id),
       type,
       id,
       neutralSource: target === "universal",
