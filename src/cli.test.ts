@@ -3019,3 +3019,70 @@ describe("telemetry show", () => {
     expect(result.output).not.toContain("By command:");
   });
 });
+
+describe("ticket-driven task", () => {
+  it("starts a task from a ticket and records it in the session", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(
+      ["task", "start", "--ticket=PROJ-142", "--title=Export endpoint"],
+      cwd,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Task started for ticket PROJ-142");
+    expect(result.output).toContain("Export endpoint");
+    expect(result.output).toContain("aiw skip brainstorming");
+    expect(result.output).toContain(`aiw spec --ticket=PROJ-142`);
+    const session = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
+    expect(session).toContain("ticket: PROJ-142");
+    expect(session).toContain("title: Export endpoint");
+  });
+
+  it("rejects malformed ticket ids", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--ticket=invalid"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("TEAM-123");
+  });
+
+  it("reports ticket, stages, and next step in task status", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["task", "start", "--ticket=PROJ-142", "--title=Export endpoint"], cwd);
+    const status = await run(["task", "status"], cwd);
+    expect(status.exitCode).toBe(0);
+    expect(status.output).toContain("Ticket: PROJ-142 — Export endpoint");
+    expect(status.output).toContain("Stages:");
+    expect(status.output).toContain("brainstorming: not-started");
+    expect(status.output).toContain("ticket PROJ-142 already provides the requirement");
+  });
+
+  it("links the specification scaffold to the ticket", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["task", "start", "--ticket=PROJ-142"], cwd);
+    await run(["skip", "brainstorming", "--reason=provided by ticket"], cwd);
+    await run(["spec", "--ticket=PROJ-142", "--title=Export endpoint"], cwd);
+    const spec = await readFile(
+      join(cwd, ".aiw", "generated", "specs", "specification.md"),
+      "utf8",
+    );
+    expect(spec).toContain("> Ticket: PROJ-142");
+  });
+
+  it("recommends the ticket-driven capability", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "1" } }),
+    );
+    await run(["scan"], cwd);
+    await run(["recommend"], cwd);
+    const recommendations = await readFile(join(cwd, ".aiw", "recommendations.yml"), "utf8");
+    expect(recommendations).toContain("ticket-driven-development");
+    expect(recommendations).toContain("skills/ticket");
+  });
+});

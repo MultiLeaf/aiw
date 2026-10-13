@@ -204,6 +204,13 @@ npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 
 # Track a feature from its first artifact through final human approval.
 npx @multileaf/ai-workflow workflow start
+
+# Or start directly from a ticket / already-clear requirement (no brainstorm needed).
+npx @multileaf/ai-workflow task start --ticket=PROJ-142 --title="Add export endpoint"
+npx @multileaf/ai-workflow task status
+# Record an accepted brainstorm skip, then link the specification to the ticket:
+npx @multileaf/ai-workflow skip brainstorming --reason="Requirement provided by ticket PROJ-142"
+npx @multileaf/ai-workflow spec --ticket=PROJ-142 --title="Add export endpoint"
 npx @multileaf/ai-workflow brainstorm --title="Feature name"
 npx @multileaf/ai-workflow gate brainstorming
 # Present evidence and wait for a human reply before each approve command.

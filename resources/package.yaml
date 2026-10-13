@@ -31,6 +31,7 @@ resources:
     - { id: nestjs-development, version: 0.1.0, path: skills/nestjs-development.md }
     - { id: prisma-data-access, version: 0.1.0, path: skills/prisma-data-access.md }
     - { id: vite-frontend, version: 0.1.0, path: skills/vite-frontend.md }
+    - { id: ticket, version: 0.1.0, path: skills/ticket.md }
   rules:
     - { id: language-policy, version: 0.1.0, path: rules/language-policy.md }
     - { id: tdd-policy, version: 0.1.0, path: rules/tdd-policy.md }

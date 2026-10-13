@@ -25,7 +25,14 @@ export type WorkflowSession = {
   status: "active" | "complete";
   startedAt: string;
   updatedAt: string;
+  ticket?: string;
+  title?: string;
 };
+
+export function validateTaskTicket(ticket: string): void {
+  if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(ticket))
+    throw new Error("Task ticket must match TEAM-123, for example PROJ-142.");
+}
 export type ApprovalStageDefinition = {
   optional: boolean;
   requiresQualityGate: boolean;
@@ -52,7 +59,15 @@ const APPROVAL_RECORD_KEYS = new Set([
   "updatedAt",
 ]);
 const LEDGER_KEYS = new Set(["schema", "workflowId", "stages"]);
-const SESSION_KEYS = new Set(["schema", "workflowId", "status", "startedAt", "updatedAt"]);
+const SESSION_KEYS = new Set([
+  "schema",
+  "workflowId",
+  "status",
+  "startedAt",
+  "updatedAt",
+  "ticket",
+  "title",
+]);
 
 export function createApprovalLedger(workflowId: string): ApprovalLedger {
   assertWorkflowId(workflowId);
@@ -78,12 +93,19 @@ export function parseWorkflowSession(content: string): WorkflowSession {
     throw new Error("Workflow session status must be active or complete.");
   if (typeof value.startedAt !== "string" || typeof value.updatedAt !== "string")
     throw new Error("Workflow session requires start and update timestamps.");
+  if (value.ticket !== undefined && typeof value.ticket !== "string")
+    throw new Error("Workflow session ticket must be a string.");
+  if (value.title !== undefined && typeof value.title !== "string")
+    throw new Error("Workflow session title must be a string.");
+  if (typeof value.ticket === "string") validateTaskTicket(value.ticket);
   const session: WorkflowSession = {
     schema: 1,
     workflowId: value.workflowId,
     status: value.status,
     startedAt: value.startedAt,
     updatedAt: value.updatedAt,
+    ...(value.ticket === undefined ? {} : { ticket: value.ticket }),
+    ...(value.title === undefined ? {} : { title: value.title }),
   };
   validateWorkflowSession(session);
   return session;
@@ -265,7 +287,7 @@ function assertTimestamp(value: string): void {
     throw new Error("Approval timestamp must be a valid date-time.");
 }
 
-function assertWorkflowId(value: string): void {
+export function assertWorkflowId(value: string): void {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value))
     throw new Error(
       "Workflow ID must be 1–64 characters using letters, numbers, dot, underscore, or hyphen.",

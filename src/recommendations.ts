@@ -37,6 +37,21 @@ const CATALOG: Capability[] = [
         : undefined,
   },
   {
+    id: "ticket-driven-development",
+    provider: "multileaf",
+    rationale:
+      "Work often arrives as a ticket or an already-clear requirement; this entry point starts the SDD flow from the ticket without a brainstorming phase.",
+    permissions: [],
+    resources: local([
+      { type: "skills", id: "ticket" },
+      { type: "templates", id: "task" },
+    ]),
+    matches: (profile) =>
+      hasProjectSignals(profile)
+        ? { evidence: projectEvidence(profile), confidence: 0.9 }
+        : undefined,
+  },
+  {
     id: "requirements-specification",
     provider: "multileaf",
     rationale:

@@ -117,6 +117,8 @@ import {
 } from "./token-usage.js";
 import {
   APPROVAL_STAGES,
+  assertWorkflowId,
+  validateTaskTicket,
   approveStage,
   beginStageApproval,
   createApprovalLedger,
@@ -183,6 +185,56 @@ import {
 
 export type WorkflowServices = WorkflowDependencies;
 
+function beginWorkflowSession(
+  fs: FileSystem,
+  aiw: string,
+  options: { id?: string; ticket?: string; title?: string },
+): CommandResult {
+  const sessionPath = join(aiw, "workflow.yml");
+  const ledgerPath = join(aiw, "approvals.yml");
+  if (fs.exists(sessionPath)) {
+    const previous = parseWorkflowSession(fs.read(sessionPath));
+    if (previous.status === "active")
+      return {
+        exitCode: 1,
+        error: `Workflow ${previous.workflowId} is still active. Complete it before starting another.`,
+      };
+    if (!fs.exists(ledgerPath))
+      return { exitCode: 1, error: "Completed workflow is missing its approval ledger." };
+    const archive = join(aiw, `checkpoints/workflow-${previous.workflowId}-approvals.yml`);
+    if (fs.exists(archive))
+      return { exitCode: 1, error: `Workflow approval archive already exists: ${archive}` };
+    fs.mkdir(join(aiw, "checkpoints"));
+    fs.write(archive, fs.read(ledgerPath));
+  } else if (fs.exists(ledgerPath)) {
+    return {
+      exitCode: 1,
+      error: "Approval ledger exists without a workflow session; run doctor.",
+    };
+  }
+  const workflowId = options.id ?? randomUUID();
+  const priorRun = join(aiw, `checkpoints/workflow-${workflowId}-approvals.yml`);
+  if (fs.exists(priorRun))
+    return {
+      exitCode: 1,
+      error: `Workflow ID has already been used: ${workflowId}. Choose a new ID.`,
+    };
+  const now = new Date().toISOString();
+  const session = {
+    schema: 1 as const,
+    workflowId,
+    status: "active" as const,
+    startedAt: now,
+    updatedAt: now,
+    ...(options.ticket ? { ticket: options.ticket } : {}),
+    ...(options.title ? { title: options.title } : {}),
+  };
+  const ledger = createApprovalLedger(workflowId);
+  fs.write(ledgerPath, serializeApprovalLedger(ledger));
+  fs.write(sessionPath, serializeWorkflowSession(session));
+  return { exitCode: 0, output: `Workflow started: ${workflowId}.` };
+}
+
 export async function runCommand(
   args: string[],
   root: string,
@@ -193,54 +245,75 @@ export async function runCommand(
   try {
     fs = withSafeProjectWrites(fs, root);
     const command = args[0] ?? "help";
+    if (command === "task") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const usage =
+        "Usage: aiw task start --ticket=TEAM-123 [--title=text] [--id=workflow-id] | aiw task status";
+      const action = args[1];
+      const sessionPath = join(aiw, "workflow.yml");
+      if (action === "start") {
+        const options = parseNamedOptions(args.slice(2), ["ticket", "title", "id"]);
+        if (!options?.ticket) return { exitCode: 1, error: usage };
+        validateTaskTicket(options.ticket);
+        if (options.id !== undefined) {
+          try {
+            assertWorkflowId(options.id);
+          } catch {
+            return { exitCode: 1, error: "Workflow ID must be a UUID." };
+          }
+        }
+        const result = beginWorkflowSession(fs, aiw, {
+          ...(options.id ? { id: options.id } : {}),
+          ticket: options.ticket,
+          ...(options.title ? { title: options.title } : {}),
+        });
+        if (result.exitCode !== 0) return result;
+        const title = options.title ? ` titled "${options.title}"` : "";
+        return {
+          exitCode: 0,
+          output:
+            `Task started for ticket ${options.ticket}${title}: ${result.output}\n` +
+            `Next steps: ask the user whether the requirement is clear enough to skip brainstorming (record an accepted skip with \`aiw skip brainstorming --reason="Requirement provided by ticket ${options.ticket}"\`), then create the specification with \`aiw spec --ticket=${options.ticket} --title=...\`.`,
+        };
+      }
+      if (action === "status") {
+        if (!fs.exists(sessionPath))
+          return {
+            exitCode: 0,
+            output: "No SDD workflow is active. Start one with `aiw task start --ticket=TEAM-123`.",
+          };
+        const { session, ledger } = readWorkflowState(aiw, fs, false);
+        const lines = [
+          ...(session.ticket
+            ? [`Ticket: ${session.ticket}${session.title ? ` — ${session.title}` : ""}`]
+            : []),
+          `Workflow: ${session.workflowId} (${session.status})`,
+          "Stages:",
+          ...APPROVAL_STAGES.map(
+            (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
+          ),
+        ];
+        const next = APPROVAL_STAGES.find(
+          (stage) => (ledger.stages[stage]?.status ?? "not-started") === "not-started",
+        );
+        if (session.status === "active" && next)
+          lines.push(
+            `Next: ${next === "brainstorming" && session.ticket ? `decide brainstorm or record an accepted skip (ticket ${session.ticket} already provides the requirement)` : `advance ${next} (gate, approval)`}.`,
+          );
+        return { exitCode: 0, output: lines.join("\n") };
+      }
+      return { exitCode: 1, error: usage };
+    }
     if (command === "workflow") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const action = args[1];
       const sessionPath = join(aiw, "workflow.yml");
-      const ledgerPath = join(aiw, "approvals.yml");
       if (action === "start") {
         const options = parseNamedOptions(args.slice(2), ["id"]);
         if (!options) return { exitCode: 1, error: "Usage: aiw workflow start [--id=workflow-id]" };
-        if (fs.exists(sessionPath)) {
-          const previous = parseWorkflowSession(fs.read(sessionPath));
-          if (previous.status === "active")
-            return {
-              exitCode: 1,
-              error: `Workflow ${previous.workflowId} is still active. Complete it before starting another.`,
-            };
-          if (!fs.exists(ledgerPath))
-            return { exitCode: 1, error: "Completed workflow is missing its approval ledger." };
-          const archive = join(aiw, `checkpoints/workflow-${previous.workflowId}-approvals.yml`);
-          if (fs.exists(archive))
-            return { exitCode: 1, error: `Workflow approval archive already exists: ${archive}` };
-          fs.mkdir(join(aiw, "checkpoints"));
-          fs.write(archive, fs.read(ledgerPath));
-        } else if (fs.exists(ledgerPath)) {
-          return {
-            exitCode: 1,
-            error: "Approval ledger exists without a workflow session; run doctor.",
-          };
-        }
-        const workflowId = options.id ?? randomUUID();
-        const priorRun = join(aiw, `checkpoints/workflow-${workflowId}-approvals.yml`);
-        if (fs.exists(priorRun))
-          return {
-            exitCode: 1,
-            error: `Workflow ID has already been used: ${workflowId}. Choose a new ID.`,
-          };
-        const now = new Date().toISOString();
-        const session = {
-          schema: 1 as const,
-          workflowId,
-          status: "active" as const,
-          startedAt: now,
-          updatedAt: now,
-        };
-        const ledger = createApprovalLedger(workflowId);
-        fs.write(ledgerPath, serializeApprovalLedger(ledger));
-        fs.write(sessionPath, serializeWorkflowSession(session));
-        return { exitCode: 0, output: `Workflow started: ${workflowId}.` };
+        return beginWorkflowSession(fs, aiw, { id: options.id });
       }
       if (action === "status") {
         if (!fs.exists(sessionPath)) return { exitCode: 0, output: "No SDD workflow is active." };
@@ -1734,10 +1807,12 @@ export async function runCommand(
       assertStageReady(aiw, fs, "specification");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Specification";
+      const ticket = args.find((arg) => arg.startsWith("--ticket="))?.slice(9);
+      if (ticket !== undefined) validateTaskTicket(ticket);
       const path = join(aiw, "generated/specs/specification.md");
       fs.write(
         path,
-        `# ${title}\n\n## Context\n\n## Requirements\n\n### REQ-001: Requirement title\n\n- **Description:**\n- **Acceptance criteria:**\n  - Given\n  - When\n  - Then\n\n## Non-functional Requirements\n\n## Constraints\n\n## Open Questions\n\n`,
+        `# ${title}\n${ticket ? `\n> Ticket: ${ticket}\n` : ""}\n## Context\n\n## Requirements\n\n### REQ-001: Requirement title\n\n- **Description:**\n- **Acceptance criteria:**\n  - Given\n  - When\n  - Then\n\n## Non-functional Requirements\n\n## Constraints\n\n## Open Questions\n\n`,
       );
       return { exitCode: 0, output: `Specification artifact created: ${path}` };
     }
@@ -2277,7 +2352,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
