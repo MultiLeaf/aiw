@@ -960,6 +960,8 @@ tasks:
     expect(saved).toContain("decision_confidence: 0.8");
     const firstId = saved.match(/^\s{2}- id: (.+)$/m)?.[1];
     expect(firstId).toBe("tdd-development");
+    const usage = await readFile(join(cwd, ".aiw", "usage.yml"), "utf8");
+    expect(usage).toMatch(/recommend\.decision\|\d+\|\d+/);
   });
 
   it("keeps deterministic recommendation order without a decision model", async () => {

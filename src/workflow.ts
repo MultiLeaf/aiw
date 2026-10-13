@@ -1289,10 +1289,18 @@ export async function runCommand(
             exitCode: 1,
             error: `Decision model ${rankingConfig.model} is not available at ${rankingConfig.baseUrl}.`,
           };
+        let decisionTokens = 0;
         ranked = await rankRecommendations(recommendations, profile, async (scoped, recs) => {
-          const response = await decisionProvider.decide(
-            buildRecommendationRankingRequest(profileSummaryForRanking(scoped), recs),
+          const request = buildRecommendationRankingRequest(profileSummaryForRanking(scoped), recs);
+          decisionTokens += Math.ceil(
+            (request.state.length +
+              Object.values(request.questions).reduce(
+                (total, question) => total + question.instructions.length,
+                0,
+              )) /
+              4,
           );
+          const response = await decisionProvider.decide(request);
           const answers: Record<string, { relevance?: number; confidence?: number }> = {};
           for (const [id, answer] of Object.entries(response.answers))
             answers[id] =
@@ -1306,6 +1314,18 @@ export async function runCommand(
                 : {};
           return answers;
         });
+        const usagePath = join(aiw, "usage.yml");
+        const entries = fs.exists(usagePath) ? parseTokenUsage(fs.read(usagePath)) : [];
+        fs.write(
+          usagePath,
+          serializeTokenUsage(
+            recordTokenUsage(entries, {
+              stage: "recommend.decision",
+              budget: decisionTokens,
+              used: decisionTokens,
+            }),
+          ),
+        );
         ordered = ranked.items;
       }
       const selectedOption = args.find((arg) => arg.startsWith("--select="));

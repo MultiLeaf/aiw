@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-13
+
+### Added
+
+- Root context rendering: syncing a non-empty resource selection now writes the generated project context to the active target's root file (`AGENTS.md` for Codex/Cursor, `CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI), and `aiw target` migrates it between targets. The file is owned by AI Workflow, listed in the sync preview, and an existing hand-written root context is reported as a conflict instead of being overwritten.
+- Decision-model usage in `aiw recommend` is now recorded in `.aiw/usage.yml` (`recommend.decision`) alongside the scan stages.
+
+### Changed
+
+- Release workflows require a single protected-environment approval: the `github-release` job no longer declares the `npm` environment it did not need.
+
 ### Added
 
 - Root context rendering: syncing a non-empty resource selection now writes the generated project context to the active target's root file (`AGENTS.md` for Codex/Cursor, `CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI), and `aiw target` migrates it between targets. The file is owned by AI Workflow, listed in the sync preview, and an existing hand-written root context is reported as a conflict instead of being overwritten.
@@ -21,6 +32,7 @@ All notable changes to this project are documented in this file. The format foll
 
 - Interactive onboarding messages shortened to single-line prompts.
 - Embedding-model classification during onboarding now requires positive evidence (model name contains "embed" or Ollama family "embedding"); the previous heuristic misclassified `gpt-oss:20b` as an embedding model.
+
 ## [0.5.0] - 2026-10-08
 
 ### Added
@@ -37,6 +49,7 @@ All notable changes to this project are documented in this file. The format foll
 ### Changed
 
 - GitHub Actions now use Node 24-native `actions/checkout@v5` and `actions/setup-node@v5`, and CI runs on Node 24.
+
 ## [0.4.1] - 2026-10-08
 
 ### Fixed
