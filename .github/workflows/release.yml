@@ -33,7 +33,6 @@ jobs:
 
   github-release:
     needs: publish
-    environment: npm
     runs-on: ubuntu-latest
     permissions:
       contents: write
