@@ -847,6 +847,8 @@ tasks:
     };
     const result = await run(["scan"], cwd, { interpreter, embeddingProvider });
     expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("embedding: test-model — indexed");
+    expect(result.output).toContain("batch requests");
     expect(seen[0][0]).toBe("README.md"); // deterministic key file first
     expect(seen[0]).toContain("package.json");
     expect(seen[0]).toContain("src/alpha.ts");
@@ -896,6 +898,11 @@ tasks:
     };
     const result = await run(["scan"], cwd, { aiProvider });
     expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Models used:");
+    expect(result.output).toContain("interpreter: gpt-oss:20b — 1 facts");
+    expect(result.output).toMatch(/~[\d,]+ tokens/);
+    const usage = await readFile(join(cwd, ".aiw", "usage.yml"), "utf8");
+    expect(usage).toContain("scan.interpreter|");
     const saved = await readFile(join(cwd, ".aiw/profile.yml"), "utf8");
     expect(saved).toContain("key: architecture.style");
     expect(saved).toContain("method: ai-inference");
@@ -917,6 +924,8 @@ tasks:
     const result = await run(["scan"], cwd, { aiProvider });
     expect(result.exitCode).toBe(0);
     expect(calls).toBe(0);
+    expect(result.output).toContain("Models used: none (deterministic scan).");
+    expect(existsSync(join(cwd, ".aiw", "usage.yml"))).toBe(false);
   });
 
   it("orders recommendations by decision-model relevance when enabled", async () => {

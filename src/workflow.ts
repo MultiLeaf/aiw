@@ -612,14 +612,18 @@ export async function runCommand(
         return { exitCode: 1, error: "Run `aiw install` first." };
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       let interpreter = services.interpreter;
+      let interpreterModel: string | undefined;
       if (!interpreter) {
         const aiConfig = loadAiProviderConfig(fs, aiw);
-        if (aiConfig?.enabled)
+        if (aiConfig?.enabled) {
           interpreter = createProjectInterpreter(
             root,
             services.aiProvider ?? createOpenAiCompatibleProvider(aiConfig),
           );
-      }
+          interpreterModel = aiConfig.model;
+        }
+      } else interpreterModel = "host-injected";
+      const modelUsage: { label: string; tokens: number; detail: string }[] = [];
       if (interpreter) {
         const scan = await (services.scanner?.scan(root) ?? scanProject(root));
         let scopedFiles = scan.files;
@@ -645,16 +649,30 @@ export async function runCommand(
                 ];
                 const allowed = new Set(priorityFiles);
                 scopedFiles = scan.files.filter((file) => allowed.has(file));
+                modelUsage.push({
+                  label: "embedding",
+                  tokens: Math.ceil(buildInterpreterQuery(profile).length / 4),
+                  detail: `${contextConfig.model} — scoped interpreter context to ${matches.length} semantic matches`,
+                });
               }
             }
           } catch {
             // An unreadable index keeps the scan deterministic with alphabetical scoping.
           }
         }
-        const inferred = await interpreter.interpret(
-          createInterpretationRequest(profile, scopedFiles, 4000, priorityFiles),
+        const interpretationRequest = createInterpretationRequest(
+          profile,
+          scopedFiles,
+          4000,
+          priorityFiles,
         );
+        const inferred = await interpreter.interpret(interpretationRequest);
         profile.facts = mergeFacts(profile.facts, inferred);
+        modelUsage.push({
+          label: "interpreter",
+          tokens: interpretationRequest.estimatedTokens,
+          detail: `${interpreterModel} — ${inferred.length} facts from ${interpretationRequest.files.length} files`,
+        });
       }
       const overrides = readFactOverrides(fs, aiw);
       const rejectedKeys = new Set(
@@ -702,8 +720,38 @@ export async function runCommand(
         );
         fs.mkdir(join(aiw, "semantic"));
         fs.write(join(aiw, SEMANTIC_INDEX_PATH), serializeSemanticIndex(index));
+        const indexedChars = index.chunks.reduce((total, chunk) => total + chunk.text.length, 0);
+        modelUsage.push({
+          label: "embedding",
+          tokens: Math.ceil(indexedChars / 4),
+          detail: `${semanticConfig.model} — indexed ${index.chunks.length} chunks in ${Math.ceil(index.chunks.length / 64)} batch requests`,
+        });
       }
-      return { exitCode: 0, output: "Project profile generated." };
+      if (modelUsage.length > 0) {
+        const usagePath = join(aiw, "usage.yml");
+        const entries = fs.exists(usagePath) ? parseTokenUsage(fs.read(usagePath)) : [];
+        let next = entries;
+        for (const usage of modelUsage)
+          next = recordTokenUsage(next, {
+            stage: `scan.${usage.label}`,
+            budget: usage.tokens,
+            used: usage.tokens,
+          });
+        fs.write(usagePath, serializeTokenUsage(next));
+      }
+      return {
+        exitCode: 0,
+        output:
+          "Project profile generated." +
+          (modelUsage.length > 0
+            ? `\nModels used:\n${modelUsage
+                .map(
+                  (usage) =>
+                    `- ${usage.label}: ${usage.detail} (~${usage.tokens.toLocaleString("en-US")} tokens)`,
+                )
+                .join("\n")}`
+            : "\nModels used: none (deterministic scan)."),
+      };
     }
     if (command === "decision") {
       const usage = "Usage: aiw decision triage --artifact=<path> | aiw decision status";

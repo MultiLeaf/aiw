@@ -253,7 +253,7 @@ AI Workflow can use local models served by an OpenAI-compatible endpoint (Ollama
 - **Advisory decision triage** (`decision` section): `aiw decision triage` returns advisory evidence-completeness and gate decisions with confidence, and `aiw recommend` orders capability recommendations by decision-model relevance to the confirmed profile. Ranking is advisory and never changes evidence states or bypasses human approval. See [Decision Model Evaluation](docs/decision-model-evaluation.md).
 - **Built-in AI interpretation** (`ai` section): the scoped project interpreter works without a host-injected provider.
 
-All model-driven features verify model availability before use and degrade to fully deterministic behavior when unconfigured.
+All model-driven features verify model availability before use and degrade to fully deterministic behavior when unconfigured. Every `aiw scan` reports which models were actually used — embedding (chunks indexed or retrieval queries) and interpreter (facts inferred, estimated tokens) — and records token estimates per stage in `.aiw/usage.yml`, inspectable with `aiw token-usage`. Token accounting is local project state; telemetry never carries token counts or any content.
 
 ## Resource packages and recommendations
 

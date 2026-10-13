@@ -35,6 +35,19 @@ When semantic mapping is enabled, `aiw scan` additionally:
 
 The index stores the model name; queries against an index built with a different model fail explicitly.
 
+## Usage visibility
+
+Every `aiw scan` reports the models it actually used, for example:
+
+```text
+Project profile generated.
+Models used:
+- embedding: embeddinggemma-2:latest — indexed 824 chunks in 13 batch requests (~45,000 tokens)
+- interpreter: gpt-oss:20b — 5 facts from 12 files (~3,800 tokens)
+```
+
+Token estimates are also recorded per stage in `.aiw/usage.yml` (`scan.embedding`, `scan.interpreter`; the latest scan overwrites its stage entry) and can be inspected with `aiw token-usage`. Scans that use no models report `Models used: none (deterministic scan).`
+
 ## Queries during the flow
 
 `aiw semantic query --text="<natural language>" [--rerank]` ranks indexed chunks by cosine similarity and returns the top `topK` matches with file, score, and excerpt. With `--rerank`, and only when a decision model is also enabled and available, the decision model additionally scores each retrieved candidate 0–1 for query relevance and the output is reordered by that advisory score; matches without a decision score keep their cosine order. The command reports the ranking influence (how many positions were reordered) and the per-match `rerank` score; cosine recall itself is unchanged and reranking never creates confirmed facts. `aiw semantic status` reports whether mapping is configured and whether the index is built.
