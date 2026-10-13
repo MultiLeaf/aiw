@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+### Added
+
+- Guided provider onboarding during interactive `aiw install`: each capability (semantic embedding, then decision triage) asks whether to configure it, offers Ollama or an external OpenAI-compatible provider (external only when Ollama is unreachable), lists the locally available models (embedding-only filtering for semantic), asks permission to run `ollama pull embeddinggemma-2` when no embedding models exist, collects endpoint URL, model name, and an optional token environment variable for external providers, and validates the setup with a live request before saving — with retry or skip on failure.
+- External provider support: `semantic` and `decision` settings accept `apiKeyEnv` (an uppercase environment variable name); the token is read from the environment at call time and never stored. Semantic requests go to `<baseUrl>/v1/embeddings` with bearer authentication and decision requests send `Authorization` headers.
+- Model usage reporting: every `aiw scan` states which models were actually used — embedding (chunks indexed or retrieval queries, batch request count, estimated tokens) and interpreter (model, facts inferred, scoped files, estimated tokens) — or reports `Models used: none (deterministic scan).`
+- Per-stage token estimates recorded in `.aiw/usage.yml` (`scan.embedding`, `scan.interpreter`) and inspectable with `aiw token-usage`. Token counts are local project state; telemetry never carries them.
+
+### Fixed
+
+- Interactive onboarding messages shortened to single-line prompts.
+- Embedding-model classification during onboarding now requires positive evidence (model name contains "embed" or Ollama family "embedding"); the previous heuristic misclassified `gpt-oss:20b` as an embedding model.
 ## [0.5.0] - 2026-10-08
 
 ### Added
