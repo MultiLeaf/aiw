@@ -26,6 +26,7 @@ import {
   createInterpretationRequest,
   createOpenAiCompatibleProvider,
   createProjectInterpreter,
+  type AiProviderUsage,
   buildInterpreterQuery,
   loadAiProviderConfig,
   selectInterpreterKeyFiles,
@@ -108,7 +109,12 @@ import {
   parseSummaryCache,
   serializeSummaryCache,
 } from "./context-cache.js";
-import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "./token-usage.js";
+import {
+  parseTokenUsage,
+  recordTokenUsage,
+  serializeTokenUsage,
+  summarizeUsageByModel,
+} from "./token-usage.js";
 import {
   APPROVAL_STAGES,
   approveStage,
@@ -646,17 +652,24 @@ export async function runCommand(
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       let interpreter = services.interpreter;
       let interpreterModel: string | undefined;
+      let interpreterUsage: AiProviderUsage | undefined;
       if (!interpreter) {
         const aiConfig = loadAiProviderConfig(fs, aiw);
         if (aiConfig?.enabled) {
           interpreter = createProjectInterpreter(
             root,
             services.aiProvider ?? createOpenAiCompatibleProvider(aiConfig),
+            undefined,
+            {
+              onUsage: (usage) => {
+                interpreterUsage = usage;
+              },
+            },
           );
           interpreterModel = aiConfig.model;
         }
       } else interpreterModel = "host-injected";
-      const modelUsage: { label: string; tokens: number; detail: string }[] = [];
+      const modelUsage: { label: string; tokens: number; detail: string; model: string }[] = [];
       if (interpreter) {
         const scan = await (services.scanner?.scan(root) ?? scanProject(root));
         let scopedFiles = scan.files;
@@ -686,6 +699,7 @@ export async function runCommand(
                   label: "embedding",
                   tokens: Math.ceil(buildInterpreterQuery(profile).length / 4),
                   detail: `${contextConfig.model} — scoped interpreter context to ${matches.length} semantic matches`,
+                  model: contextConfig.model,
                 });
               }
             }
@@ -701,10 +715,14 @@ export async function runCommand(
         );
         const inferred = await interpreter.interpret(interpretationRequest);
         profile.facts = mergeFacts(profile.facts, inferred);
+        const actualTokens = interpreterUsage
+          ? interpreterUsage.promptTokens + interpreterUsage.completionTokens
+          : undefined;
         modelUsage.push({
           label: "interpreter",
-          tokens: interpretationRequest.estimatedTokens,
-          detail: `${interpreterModel} — ${inferred.length} facts from ${interpretationRequest.files.length} files`,
+          tokens: actualTokens ?? interpretationRequest.estimatedTokens,
+          detail: `${interpreterModel} — ${inferred.length} facts from ${interpretationRequest.files.length} files${actualTokens !== undefined ? " (measured)" : ""}`,
+          model: interpreterModel ?? "unknown",
         });
       }
       const overrides = readFactOverrides(fs, aiw);
@@ -758,6 +776,7 @@ export async function runCommand(
           label: "embedding",
           tokens: Math.ceil(indexedChars / 4),
           detail: `${semanticConfig.model} — indexed ${index.chunks.length} chunks in ${Math.ceil(index.chunks.length / 64)} batch requests`,
+          model: semanticConfig.model,
         });
       }
       if (modelUsage.length > 0) {
@@ -769,6 +788,7 @@ export async function runCommand(
             stage: `scan.${usage.label}`,
             budget: usage.tokens,
             used: usage.tokens,
+            model: usage.model,
           });
         fs.write(usagePath, serializeTokenUsage(next));
       }
@@ -1355,6 +1375,7 @@ export async function runCommand(
               stage: "recommend.decision",
               budget: decisionTokens,
               used: decisionTokens,
+              model: rankingConfig.model,
             }),
           ),
         );
@@ -2195,7 +2216,17 @@ export async function runCommand(
         fs.write(usagePath, serializeTokenUsage(next));
         return { exitCode: 0, output: `Token usage recorded: ${stage} (${used}/${budget})` };
       }
-      return { exitCode: 0, output: serializeTokenUsage(entries) };
+      if (entries.length === 0) return { exitCode: 0, output: "No token usage recorded yet." };
+      const summary = summarizeUsageByModel(entries);
+      return {
+        exitCode: 0,
+        output: `Token usage by model:\n${summary
+          .map(
+            (entry) =>
+              `- ${entry.model}: ${entry.tokens.toLocaleString("en-US")} tokens (${entry.stages.join(", ")})`,
+          )
+          .join("\n")}\n\nRaw records:\n${serializeTokenUsage(entries)}`,
+      };
     }
     if (command === "context-quality") {
       const metrics = measureContextQuality(readContextStore(root, fs));

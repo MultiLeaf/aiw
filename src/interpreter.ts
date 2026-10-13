@@ -12,11 +12,13 @@ export type InterpretationRequest = {
   estimatedTokens: number;
 };
 export type Interpreter = { interpret(request: InterpretationRequest): Promise<EvidenceFact[]> };
+export type AiProviderUsage = { promptTokens: number; completionTokens: number };
 export type AiProviderRequest = {
   system: string;
   prompt: string;
   maxTokens: number;
   responseFormat: "json";
+  onUsage?: (usage: AiProviderUsage) => void;
 };
 export type AiProvider = { generate(request: AiProviderRequest): Promise<string> };
 export type ContextReader = (absolutePath: string) => Promise<string>;
@@ -301,7 +303,16 @@ export function createOpenAiCompatibleProvider(
         );
       const body = (await response.json()) as {
         choices?: { message?: { content?: unknown } }[];
+        usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
       };
+      if (
+        typeof body.usage?.prompt_tokens === "number" &&
+        typeof body.usage?.completion_tokens === "number"
+      )
+        request.onUsage?.({
+          promptTokens: body.usage.prompt_tokens,
+          completionTokens: body.usage.completion_tokens,
+        });
       const content = body.choices?.[0]?.message?.content;
       if (typeof content !== "string")
         throw new Error(`AI provider ${config.model} returned no message content`);
@@ -315,6 +326,7 @@ export function createProjectInterpreter(
   provider: AiProvider,
   contextReader: ContextReader = async (path) =>
     new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path)),
+  options: { onUsage?: (usage: AiProviderUsage) => void } = {},
 ): Interpreter {
   const projectRoot = resolve(root);
   return {
@@ -351,6 +363,7 @@ export function createProjectInterpreter(
         prompt: `Detected profile:\n${safeProfile}\n\nScoped project context:\n${sections.join("\n\n")}`,
         maxTokens: scoped.maxTokens,
         responseFormat: "json",
+        ...(options.onUsage ? { onUsage: options.onUsage } : {}),
       });
       return parseFacts(output, new Set(scoped.files));
     },

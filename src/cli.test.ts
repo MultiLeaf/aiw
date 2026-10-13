@@ -902,7 +902,11 @@ tasks:
     expect(result.output).toContain("interpreter: gpt-oss:20b — 1 facts");
     expect(result.output).toMatch(/~[\d,]+ tokens/);
     const usage = await readFile(join(cwd, ".aiw", "usage.yml"), "utf8");
-    expect(usage).toContain("scan.interpreter|");
+    expect(usage).toMatch(/scan\.interpreter\|\d+\|\d+\|gpt-oss:20b/);
+    const summary = await run(["token-usage"], cwd);
+    expect(summary.output).toContain("Token usage by model:");
+    expect(summary.output).toContain("- gpt-oss:20b:");
+    expect(summary.output).toContain("scan.interpreter");
     const saved = await readFile(join(cwd, ".aiw/profile.yml"), "utf8");
     expect(saved).toContain("key: architecture.style");
     expect(saved).toContain("method: ai-inference");
