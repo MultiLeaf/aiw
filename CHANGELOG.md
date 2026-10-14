@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-13
+
+### Added
+
+- Ticket-driven task entry point: `aiw task start --ticket=TEAM-123 [--title=text]` starts an SDD session that records the ticket, and `aiw task status` reports the ticket, stage statuses, and the next pending step with ticket-aware guidance. `aiw spec --ticket=TEAM-123` links the specification scaffold to the ticket. A new `ticket` skill (recommended as the `ticket-driven-development` capability) drives the flow in the host agent, keeping the brainstorming skip an explicit human decision.
+- `aiw telemetry show` summarizes buffered events by command and outcome (fill level against the retention cap, per-command success/failure counts); `--verbose` adds each event verbatim. `telemetry status` keeps reporting configuration only.
+- Per-model token usage: `usage.yml` records carry model attribution (`stage|budget|used|model`; legacy three-column rows still parse) and `aiw token-usage` summarizes total consumption by model. The OpenAI-compatible provider reports the response usage block, so interpreter usage is measured (marked `(measured)`) when the endpoint provides it and estimated otherwise; `scan.embedding`, `scan.interpreter`, and `recommend.decision` all record their model.
+
 ## [0.6.1] - 2026-10-13
 
 ### Added
