@@ -136,6 +136,44 @@ import {
   type WorkflowSession,
 } from "./human-approval.js";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
+import {
+  collectContextBench,
+  compareContextBench,
+  parseContextBench,
+  serializeContextBench,
+} from "./context-benchmark.js";
+import {
+  materializeParityTask,
+  parseParityTask,
+  runParitySuite,
+  serializeParitySuite,
+  TASK_ASSEMBLER,
+} from "./task-parity.js";
+import {
+  appendUsageSidecarEntry,
+  parseUsageSidecar,
+  serializeUsageSidecar,
+  serializeUsageSidecarSummary,
+  summarizeUsageSidecar,
+  USAGE_SIDECAR_PATH,
+  USAGE_TIERS,
+  type UsageSidecarEntry,
+} from "./usage-sidecar.js";
+import {
+  computeCostAttribution,
+  serializeCostAttribution,
+  serializeTaskUsage,
+  summarizeTaskUsage,
+} from "./cost-attribution.js";
+import {
+  defaultRoutingTable,
+  parseRoutingTable,
+  resolveRoute,
+  ROUTING_TABLE_PATH,
+  serializeResolvedRoute,
+  serializeRoutingTable,
+} from "./model-routing.js";
+import { parseTraceabilityGraph } from "./traceability.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
@@ -719,6 +757,107 @@ export async function runCommand(
       }
       return { exitCode: 1, error: usage };
     }
+    if (command === "context-bench") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const saveCount = args.filter((arg) => arg === "--save").length;
+      if (saveCount > 1)
+        return { exitCode: 1, error: "Usage: aiw context-bench [--baseline=path] [--save]" };
+      const save = saveCount === 1;
+      const parsed = parseNamedOptions(
+        args.slice(1).filter((arg) => arg !== "--save"),
+        ["baseline"],
+      );
+      if (!parsed)
+        return { exitCode: 1, error: "Usage: aiw context-bench [--baseline=path] [--save]" };
+      const report = collectContextBench(root, fs);
+      const serialized = serializeContextBench(report);
+      const lines: string[] = [serialized.trimEnd()];
+      if (parsed.baseline) {
+        const baselinePath = safeProjectFile(root, parsed.baseline, fs);
+        if (!fs.exists(baselinePath))
+          return { exitCode: 1, error: `Baseline not found: ${parsed.baseline}` };
+        const comparison = compareContextBench(parseContextBench(fs.read(baselinePath)), report);
+        lines.push(
+          `Baseline: ${parsed.baseline} (bundle ${comparison.bundleChanged ? "changed" : "identical"}, token delta ${comparison.totalTokenDelta >= 0 ? "+" : ""}${comparison.totalTokenDelta})`,
+        );
+        if (comparison.regressions.length)
+          return {
+            exitCode: 1,
+            error: `Standing context regressed against baseline:\n${comparison.regressions.map((regression) => `- ${regression}`).join("\n")}`,
+            output: lines.join("\n"),
+          };
+        lines.push("No regressions against baseline.");
+      }
+      if (save) {
+        const checkpoint = join(aiw, `checkpoints/context-bench-${report.bundleHash}.yml`);
+        if (!fs.createExclusive)
+          return { exitCode: 1, error: "The filesystem does not support atomic checkpoints." };
+        if (!fs.createExclusive(checkpoint, serialized)) {
+          if (fs.read(checkpoint) !== serialized)
+            return {
+              exitCode: 1,
+              error: `Checkpoint already exists with different content: ${checkpoint}`,
+            };
+          lines.push(`Checkpoint already recorded: ${checkpoint}`);
+        } else {
+          lines.push(`Checkpoint saved: ${checkpoint}`);
+        }
+      }
+      return { exitCode: 0, output: lines.join("\n") };
+    }
+    if (command === "parity") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const parsed = parseNamedOptions(args.slice(1), ["tasks"]);
+      if (!parsed) return { exitCode: 1, error: "Usage: aiw parity [--tasks=directory]" };
+      const tasksPath = parsed.tasks;
+      if (tasksPath && (isAbsolute(tasksPath) || tasksPath.split(/[\\/]/).includes("..")))
+        return {
+          exitCode: 1,
+          error: "Parity tasks directory must be a safe project-relative path.",
+        };
+      const tasksDirectory = tasksPath ? join(root, tasksPath) : join(aiw, "parity");
+      if (fs.pathType?.(tasksDirectory) !== "directory" || !fs.list)
+        return {
+          exitCode: 1,
+          error: `Parity tasks directory not found: ${relative(root, tasksDirectory).split(sep).join("/")}. Add YAML tasks (see docs/token-efficiency.md).`,
+        };
+      const taskFiles = (fs.list(tasksDirectory) ?? [])
+        .filter((name) => name.endsWith(".yml"))
+        .sort();
+      if (!taskFiles.length)
+        return {
+          exitCode: 1,
+          error: `No parity tasks found in ${relative(root, tasksDirectory).split(sep).join("/")}. Each task is one YAML file with schema, id, layers, critical_facts, and completion_markers.`,
+        };
+      const tasks = taskFiles.map((name) => {
+        const path = join(tasksDirectory, name);
+        try {
+          return materializeParityTask(parseParityTask(fs.read(path)), (source) => {
+            const absolute = join(root, source);
+            if (fs.pathType?.(absolute) !== "file") throw new Error("source is not a file");
+            return fs.read(absolute);
+          });
+        } catch (error) {
+          throw new Error(`${name}: ${(error as Error).message}`, { cause: error });
+        }
+      });
+      const suite = runParitySuite(tasks, TASK_ASSEMBLER);
+      const serialized = serializeParitySuite(suite);
+      if (suite.failed)
+        return {
+          exitCode: 1,
+          output: serialized.trimEnd(),
+          error: `Task parity failed for ${suite.failed} of ${suite.total} task(s): critical facts or completion markers were lost by the ${TASK_ASSEMBLER.name} assembler. Fix context assembly or move the facts to a retrieved layer; do not delete the expectations.`,
+        };
+      return {
+        exitCode: 0,
+        output:
+          serialized.trimEnd() +
+          `\nTask parity passed: every critical fact survived the ${TASK_ASSEMBLER.name} assembler.`,
+      };
+    }
     if (command === "scan") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -864,6 +1003,28 @@ export async function runCommand(
             model: usage.model,
           });
         fs.write(usagePath, serializeTokenUsage(next));
+        const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
+        const ledger = fs.exists(sidecarPath) ? parseUsageSidecar(fs.read(sidecarPath)) : [];
+        let sidecar = ledger;
+        for (const usage of modelUsage) {
+          const measured = usage.detail.includes("(measured)");
+          const isInterpreter = usage.label === "interpreter" && measured && interpreterUsage;
+          sidecar = appendUsageSidecarEntry(sidecar, {
+            command: `scan.${usage.label}`,
+            label: measured ? "measured" : "estimated",
+            tiers: isInterpreter
+              ? {
+                  "cache-read": 0,
+                  "fresh-input": interpreterUsage!.promptTokens,
+                  "cache-write": 0,
+                  output: interpreterUsage!.completionTokens,
+                }
+              : { "cache-read": 0, "fresh-input": usage.tokens, "cache-write": 0, output: 0 },
+            model: usage.model,
+            harness: "aiw-cli",
+          });
+        }
+        fs.write(sidecarPath, serializeUsageSidecar(sidecar));
       }
       return {
         exitCode: 0,
@@ -2270,6 +2431,200 @@ export async function runCommand(
       }
       fs.write(cachePath, serializeSummaryCache(createSummaryCache(context, summaryArg)));
       return { exitCode: 0, output: summaryArg };
+    }
+    if (command === "routing") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const usage = "Usage: aiw routing init | show | resolve --category=name";
+      const action = args[1];
+      const routingPath = join(aiw, ROUTING_TABLE_PATH);
+      if (action === "init") {
+        if (fs.exists(routingPath))
+          return {
+            exitCode: 1,
+            error: `Routing table already exists: .aiw/${ROUTING_TABLE_PATH}. Edit it directly instead of re-initializing.`,
+          };
+        fs.write(
+          routingPath,
+          serializeRoutingTable(defaultRoutingTable()) +
+            "# Add one rule per task category (dot-separated kebab-case, e.g. scan.interpreter).\n" +
+            "# Name the evidence behind every rule — a benchmark, parity run, or ADR — before trusting it.\n" +
+            "# Routing is advisory: humans can always override the resolved model.\n",
+        );
+        return {
+          exitCode: 0,
+          output: `Routing table created: .aiw/${ROUTING_TABLE_PATH}. Add rules with named evidence, then resolve with \`aiw routing resolve --category=...\`.`,
+        };
+      }
+      if (action === "show") {
+        if (!fs.exists(routingPath))
+          return {
+            exitCode: 1,
+            error: `No routing table found. Run \`aiw routing init\` to create .aiw/${ROUTING_TABLE_PATH}.`,
+          };
+        return {
+          exitCode: 0,
+          output: serializeRoutingTable(parseRoutingTable(fs.read(routingPath))).trimEnd(),
+        };
+      }
+      if (action === "resolve") {
+        const category = args.find((arg) => arg.startsWith("--category="))?.slice(11);
+        if (!category) return { exitCode: 1, error: usage };
+        if (!fs.exists(routingPath))
+          return {
+            exitCode: 1,
+            error: `No routing table found. Run \`aiw routing init\` first.`,
+          };
+        let route;
+        try {
+          route = resolveRoute(parseRoutingTable(fs.read(routingPath)), category);
+        } catch (error) {
+          throw new Error(`Routing failed: ${(error as Error).message}`, { cause: error });
+        }
+        return {
+          exitCode: 0,
+          output:
+            serializeResolvedRoute(route) +
+            "\noverride: advisory only — a human may choose a different model at any time.",
+        };
+      }
+      return { exitCode: 1, error: usage };
+    }
+    if (command === "task-usage") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const parsed = parseNamedOptions(args.slice(1), ["workflow"]);
+      if (!parsed) return { exitCode: 1, error: "Usage: aiw task-usage [--workflow=id-or-ticket]" };
+      const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
+      if (!fs.exists(sidecarPath))
+        return {
+          exitCode: 1,
+          error:
+            "No usage sidecar recorded yet. Correlate runs with `aiw usage-sidecar record --workflow=<id-or-ticket>` or run `aiw scan`.",
+        };
+      const sessionPath = join(aiw, "workflow.yml");
+      const workflow =
+        parsed.workflow ??
+        (fs.exists(sessionPath)
+          ? (parseWorkflowSession(fs.read(sessionPath)).ticket ??
+            parseWorkflowSession(fs.read(sessionPath)).workflowId)
+          : undefined);
+      if (!workflow)
+        return {
+          exitCode: 1,
+          error: "No workflow specified and no active SDD task. Pass --workflow=<id-or-ticket>.",
+        };
+      const summary = summarizeTaskUsage(parseUsageSidecar(fs.read(sidecarPath)), workflow);
+      return {
+        exitCode: 0,
+        output: serializeTaskUsage(summary),
+      };
+    }
+    if (command === "cost-report") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
+      if (!fs.exists(sidecarPath))
+        return {
+          exitCode: 1,
+          error:
+            "No usage sidecar recorded yet. Record runs with `aiw usage-sidecar record` or run `aiw scan`.",
+        };
+      const tracePath = join(aiw, "generated/artifacts/traceability.yml");
+      if (!fs.exists(tracePath))
+        return {
+          exitCode: 1,
+          error:
+            "Traceability graph is missing. Run `aiw trace` to build it from the approved specification and plan.",
+        };
+      const attribution = computeCostAttribution(
+        parseUsageSidecar(fs.read(sidecarPath)),
+        parseTraceabilityGraph(fs.read(tracePath)),
+      );
+      return {
+        exitCode: 0,
+        output:
+          serializeCostAttribution(attribution) +
+          "\nSources: .aiw/checkpoints/usage-sidecar.yml + .aiw/generated/artifacts/traceability.yml (verified = linked evidence present).",
+      };
+    }
+    if (command === "usage-sidecar") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const usage =
+        "Usage: aiw usage-sidecar record --command=name (--cache-read=N | --fresh-input=N | --cache-write=N | --output=N) [--model=name] [--harness=name] [--harness-version=text] [--estimated] | aiw usage-sidecar report";
+      const action = args[1];
+      const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
+      if (action === "report") {
+        const entries = fs.exists(sidecarPath) ? parseUsageSidecar(fs.read(sidecarPath)) : [];
+        return {
+          exitCode: 0,
+          output:
+            serializeUsageSidecarSummary(summarizeUsageSidecar(entries)) +
+            (entries.length
+              ? `\nLedger: .aiw/${USAGE_SIDECAR_PATH} (${entries.length} entries, sequence-ordered, no timestamps)`
+              : ""),
+        };
+      }
+      if (action === "record") {
+        const recordArgs = args.slice(2).filter((arg) => arg !== "--estimated");
+        if (recordArgs.some((arg) => arg !== "--estimated" && !arg.startsWith("--")))
+          return { exitCode: 1, error: usage };
+        const parsed = parseNamedOptions(recordArgs, [
+          "command",
+          "model",
+          "harness",
+          "harness-version",
+          "requirement",
+          "workflow",
+          ...USAGE_TIERS,
+        ]);
+        if (!parsed?.command) return { exitCode: 1, error: usage };
+        const tierValues = USAGE_TIERS.map((tier) => [tier, parsed[tier]] as const).filter(
+          ([, value]) => value !== undefined,
+        );
+        if (!tierValues.length)
+          return {
+            exitCode: 1,
+            error:
+              "At least one token tier is required: --cache-read, --fresh-input, --cache-write, or --output.",
+          };
+        for (const [, value] of tierValues)
+          if (!/^\d+$/.test(value))
+            return { exitCode: 1, error: "Token tiers must be non-negative integers." };
+        const entry = {
+          command: parsed.command,
+          label: (args.includes("--estimated") ? "estimated" : "measured") as
+            "measured" | "estimated",
+          tiers: Object.fromEntries(
+            USAGE_TIERS.map((tier) => [tier, Number(parsed[tier] ?? 0)]),
+          ) as Record<(typeof USAGE_TIERS)[number], number>,
+          ...(parsed.model ? { model: parsed.model } : {}),
+          ...(parsed.harness ? { harness: parsed.harness } : {}),
+          ...(parsed["harness-version"] ? { harnessVersion: parsed["harness-version"] } : {}),
+          ...(parsed.requirement ? { requirement: parsed.requirement } : {}),
+          ...(parsed.workflow ? { workflow: parsed.workflow } : {}),
+        };
+        let ledger: UsageSidecarEntry[];
+        try {
+          ledger = fs.exists(sidecarPath) ? parseUsageSidecar(fs.read(sidecarPath)) : [];
+        } catch (error) {
+          throw new Error(`Usage sidecar is unreadable: ${(error as Error).message}`, {
+            cause: error,
+          });
+        }
+        const next = appendUsageSidecarEntry(ledger, entry);
+        fs.write(sidecarPath, serializeUsageSidecar(next));
+        return {
+          exitCode: 0,
+          output: `Usage recorded (seq ${next[next.length - 1].seq}, ${entry.label}): ${entry.command} — ${USAGE_TIERS.filter(
+            (tier) => entry.tiers[tier] > 0,
+          )
+            .map((tier) => `${tier} ${entry.tiers[tier].toLocaleString("en-US")}`)
+            .join(", ")}`,
+        };
+      }
+      return { exitCode: 1, error: usage };
     }
     if (command === "token-usage") {
       const usagePath = join(aiw, "usage.yml");

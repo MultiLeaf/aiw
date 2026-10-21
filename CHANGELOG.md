@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-20
+
+### Added
+
+- Standing-context benchmark: `aiw context-bench` measures the persistent context AI Workflow renders into every agent session (root context file, neutral resources under `.aiw/resources/`, `.aiw/context/` layers) per category, offline and deterministically. Byte and file counts are measured; tokens are estimated (characters/4) and labeled as such; a content hash pins the fixture and the report contains no timestamps. `--save` records a checkpoint under `.aiw/checkpoints/` and `--baseline=<path>` exits nonzero on any token regression, giving context changes a cost gate.
+- Task parity suite: `aiw parity [--tasks=directory]` runs YAML parity tasks (`.aiw/parity/` by default) that pin quality constraints on context assembly. Each task compares the full composed context against the just-in-time task-retrieval assembler and fails, naming the exact fact, when a critical fact or completion marker does not survive retrieval. Exit nonzero on any failure makes it a CI gate for context changes; estimated token cost is reported but never gates here. Inter-stage tasks load real artifacts via `sources` (project-relative paths into any layer) and enforce `required_patterns` — every extracted identifier (e.g. `REQ-\d+` from the approved specification) must survive assembly, guarding the identifiers traceability links depend on.
+- Usage sidecar: `aiw usage-sidecar record/report` maintains a versioned ledger at `.aiw/checkpoints/usage-sidecar.yml` with per-run tokens split into billing tiers (cache-read, fresh-input, cache-write, output), a `measured`/`estimated` label that propagates pessimistically to aggregates, and attribution by model and harness (with version). The report exposes `cache_hit_rate` (cache-read over billable input); dollar conversion is intentionally left out. `aiw scan` auto-records interpreter and embedding usage into the ledger with their real measurement label.
+- Cost attribution: `aiw cost-report` joins the usage sidecar with the traceability graph (`aiw trace`) to report tokens per verified requirement — the outcome-denominated cost metric — with attributed and unattributed tokens shown side by side. Sidecar entries accept `--requirement=REQ-###`, and `parseTraceabilityGraph` round-trips the serialized graph.
+- Model routing table: `aiw routing init|show|resolve --category=name` maintains a static, evidence-linked table at `.aiw/routing.yml`. Rules map task categories to models deterministically; each rule names its evidence, and the resolver reports its advisory level (`evidenced`, `unevidenced-rule`, `default-fallback`, `default-unset`). Routing is advisory only and never invokes a model.
+- Task-lifecycle token usage: `aiw task-usage [--workflow=id-or-ticket]` aggregates sidecar entries correlated by `--workflow` into one task's totals — input tokens (all billing tiers), output tokens, cache hit rate, per-stage breakdown with models, requirements touched, and harness attribution. Tokens are the model-invariant metric, so lifecycle totals stay comparable across model routing changes; `usage-sidecar record` accepts `--workflow` for correlation.
+
 ## [0.7.0] - 2026-10-13
 
 ### Added

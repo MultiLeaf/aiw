@@ -9,6 +9,41 @@ export type TraceabilityLink = {
 
 export type TraceabilityGraph = { schema: 1; links: TraceabilityLink[] };
 
+/** Parse a serialized traceability graph (round-trips serializeTraceabilityGraph). */
+export function parseTraceabilityGraph(content: string): TraceabilityGraph {
+  if (!content.trim()) throw new Error("Traceability graph is empty.");
+  const schema = content.match(/^schema: (\d+)$/m)?.[1];
+  if (schema !== "1") throw new Error("Traceability graph schema must be version 1.");
+  const links: TraceabilityLink[] = [];
+  for (const match of content.matchAll(/^ {2}- requirement: (REQ-\d+)$/gm)) {
+    const requirement = match[1];
+    const blockStart = (match.index ?? 0) + match[0].length;
+    const next = content.slice(blockStart).match(/^ {2}- requirement: /m);
+    const block = content.slice(
+      blockStart,
+      next?.index === undefined ? undefined : blockStart + next.index,
+    );
+    const listOf = (field: string): string[] => {
+      const raw = block?.match(new RegExp(`^ {4}${field}: (.+)$`, "m"))?.[1] ?? "[]";
+      if (raw === "[]") return [];
+      return raw
+        .slice(1, -1)
+        .split(/,\s*/)
+        .map((value) => (value.startsWith('"') && value.endsWith('"') ? JSON.parse(value) : value));
+    };
+    links.push({
+      requirement,
+      decisions: listOf("decisions"),
+      tasks: listOf("tasks"),
+      code: listOf("code"),
+      tests: listOf("tests"),
+      evidence: listOf("evidence"),
+    });
+  }
+  if (!links.length) throw new Error("Traceability graph has no requirement links.");
+  return { schema: 1, links };
+}
+
 type TraceabilityInput = {
   specification: string;
   plan: string;

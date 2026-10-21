@@ -12,6 +12,8 @@ AI Workflow is a portable, spec-driven development system for AI coding agents. 
 - [Security and trust](security.md)
 - [Quality and testing](quality.md)
 - [Token efficiency](token-efficiency.md)
+- [Token efficiency research](token-efficiency-research.md)
+- [Token efficiency study notes](token-efficiency-study-notes.md)
 - [Project intelligence](project-intelligence.md)
 - [Semantic mapping](semantic-mapping.md)
 - [Decision model evaluation](decision-model-evaluation.md)
