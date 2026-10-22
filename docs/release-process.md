@@ -2,6 +2,14 @@
 
 AI Workflow releases are reproducible, evidence-backed, and published only from a clean protected branch.
 
+## How a release ships
+
+1. A contributor opens a pull request with the changes, the version bump in `package.json`, and the dated `CHANGELOG.md` entry, and requests review.
+2. A maintainer reviews and merges the pull request into `main`.
+3. The `Auto-tag releases` workflow notices that the merged version has no `v<version>` tag yet, creates the tag on the merge commit, and the `Release` workflow takes over: it validates the tagged source and publishes with npm trusted publishing and provenance.
+
+No manual tagging and no environment approvals: merging an reviewed pull request with a version bump is the entire release action. Merges that do not bump the version are ignored by the auto-tag workflow.
+
 ## Preconditions
 
 - The release version follows Semantic Versioning and matches the intended Git tag.
@@ -24,7 +32,7 @@ Install the exact candidate tarball in a new temporary project and exercise at l
 
 ## Publication
 
-After human review of the package contents and legal license, create and push a signed version tag. The release workflow validates the exact tagged source and publishes with npm trusted publishing and provenance:
+After human review of the pull request, the auto-tag workflow creates the version tag on the merge commit (the manual equivalent, if ever needed, is `git tag v<version> && git push origin v<version>`). The release workflow validates the exact tagged source and publishes with npm trusted publishing and provenance:
 
 ```bash
 git tag -s v0.1.0 -m "AI Workflow v0.1.0"

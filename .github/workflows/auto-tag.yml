@@ -1,0 +1,43 @@
+name: Auto-tag releases
+
+# When a pull request merges into main, the release version in package.json
+# decides what happens next: if no tag exists for that version, create it.
+# Creating the tag triggers release.yml, which validates and publishes.
+# The intended flow: contributors open a PR with the version bump and
+# changelog entry; a maintainer reviews and merges; the release follows
+# automatically. No manual tagging, no environment approvals.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: github.repository == 'MultiLeaf/aiw'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Tag the merged version if it is not tagged yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          TAG="v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "${TAG} already exists; nothing to release."
+            exit 0
+          fi
+          echo "Creating ${TAG} at $GITHUB_SHA"
+          gh api --method POST repos/${GITHUB_REPOSITORY}/git/refs \
+            -f "ref=refs/tags/${TAG}" -f "sha=${GITHUB_SHA}"
+      - name: Release check runs in the Release workflow
+        run: echo "Tag pushed; release.yml validates and publishes v$(node -p 'require("./package.json").version')."
