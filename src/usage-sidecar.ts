@@ -30,6 +30,7 @@ export type UsageSidecarEntry = {
   label: UsageLabel;
   tiers: Record<UsageTier, number>;
   model?: string;
+  provider?: string;
   harness?: string;
   harnessVersion?: string;
   requirement?: string;
@@ -44,6 +45,7 @@ export type UsageSidecarSummary = {
   cacheHitRate?: number;
   byModel: { model: string; tokens: number; label: UsageLabel }[];
   byHarness: { harness: string; tokens: number; label: UsageLabel }[];
+  byProvider: { provider: string; tokens: number; label: UsageLabel }[];
 };
 
 export function validateUsageSidecarEntry(entry: UsageSidecarEntry): UsageSidecarEntry {
@@ -59,6 +61,8 @@ export function validateUsageSidecarEntry(entry: UsageSidecarEntry): UsageSideca
     throw new Error("Usage sidecar entry needs at least one non-zero tier.");
   if (entry.model !== undefined && !entry.model.trim())
     throw new Error("Usage sidecar model must be a non-empty string when present.");
+  if (entry.provider !== undefined && !entry.provider.trim())
+    throw new Error("Usage sidecar provider must be a non-empty string when present.");
   if (entry.requirement !== undefined && !/^REQ-\d+$/.test(entry.requirement))
     throw new Error("Usage sidecar requirement must use the REQ-### identifier format.");
   if (entry.workflow !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(entry.workflow))
@@ -114,6 +118,7 @@ export function parseUsageSidecar(content: string): UsageSidecarEntry[] {
         number
       >,
       ...(optional("model") === undefined ? {} : { model: optional("model") }),
+      ...(optional("provider") === undefined ? {} : { provider: optional("provider") }),
       ...(optional("harness") === undefined ? {} : { harness: optional("harness") }),
       ...(optional("harness_version") === undefined
         ? {}
@@ -138,6 +143,7 @@ export function serializeUsageSidecar(entries: UsageSidecarEntry[]): string {
       "    tiers:",
       ...USAGE_TIERS.map((tier) => `      ${tier}: ${entry.tiers[tier]}`),
       ...(entry.model === undefined ? [] : [`    model: ${entry.model}`]),
+      ...(entry.provider === undefined ? [] : [`    provider: ${entry.provider}`]),
       ...(entry.harness === undefined ? [] : [`    harness: ${entry.harness}`]),
       ...(entry.harnessVersion === undefined
         ? []
@@ -173,6 +179,7 @@ export function summarizeUsageSidecar(entries: UsageSidecarEntry[]): UsageSideca
       tiers: Object.fromEntries(USAGE_TIERS.map((tier) => [tier, 0])) as Record<UsageTier, number>,
       cacheHitRate: undefined,
       byModel: [],
+      byProvider: [],
       byHarness: [],
     };
   const tiers = Object.fromEntries(
@@ -183,7 +190,7 @@ export function summarizeUsageSidecar(entries: UsageSidecarEntry[]): UsageSideca
   ) as Record<UsageTier, number>;
   const billableInput = tiers["cache-read"] + tiers["fresh-input"];
   const group = (
-    key: "model" | "harness",
+    key: "model" | "harness" | "provider",
   ): { name: string; tokens: number; label: UsageLabel }[] => {
     const map = new Map<string, { tokens: number; measured: boolean }>();
     for (const entry of entries) {
@@ -207,6 +214,9 @@ export function summarizeUsageSidecar(entries: UsageSidecarEntry[]): UsageSideca
     tiers,
     ...(billableInput > 0 ? { cacheHitRate: tiers["cache-read"] / billableInput } : {}),
     byModel: group("model").map(({ name, tokens, label }) => ({ model: name, tokens, label })),
+    byProvider: group("provider")
+      .filter(({ name }) => name !== "unattributed")
+      .map(({ name, tokens, label }) => ({ provider: name, tokens, label })),
     byHarness: group("harness").map(({ name, tokens, label }) => ({
       harness: name,
       tokens,
@@ -242,6 +252,15 @@ export function serializeUsageSidecarSummary(summary: UsageSidecarSummary): stri
           ...summary.byHarness.map(
             ({ harness, tokens, label }) =>
               `  - ${harness}: ${tokens.toLocaleString("en-US")} (${label})`,
+          ),
+        ]
+      : []),
+    ...(summary.byProvider.length
+      ? [
+          "by provider:",
+          ...summary.byProvider.map(
+            ({ provider, tokens, label }) =>
+              `  - ${provider}: ${tokens.toLocaleString("en-US")} (${label})`,
           ),
         ]
       : []),
