@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-21
+
 ## [0.8.0] - 2026-10-20
 
 ### Added
@@ -14,6 +16,8 @@ All notable changes to this project are documented in this file. The format foll
 - Cost attribution: `aiw cost-report` joins the usage sidecar with the traceability graph (`aiw trace`) to report tokens per verified requirement — the outcome-denominated cost metric — with attributed and unattributed tokens shown side by side. Sidecar entries accept `--requirement=REQ-###`, and `parseTraceabilityGraph` round-trips the serialized graph.
 - Model routing table: `aiw routing init|show|resolve --category=name` maintains a static, evidence-linked table at `.aiw/routing.yml`. Rules map task categories to models deterministically; each rule names its evidence, and the resolver reports its advisory level (`evidenced`, `unevidenced-rule`, `default-fallback`, `default-unset`). Routing is advisory only and never invokes a model.
 - Task-lifecycle token usage: `aiw task-usage [--workflow=id-or-ticket]` aggregates sidecar entries correlated by `--workflow` into one task's totals — input tokens (all billing tiers), output tokens, cache hit rate, per-stage breakdown with models, requirements touched, and harness attribution. Tokens are the model-invariant metric, so lifecycle totals stay comparable across model routing changes; `usage-sidecar record` accepts `--workflow` for correlation.
+- Harness log import: `aiw usage-sidecar import --from=claude-code|codex|gemini|pi` turns local harness session logs into measured ledger entries with all billing tiers, model, and harness attribution. Claude Code imports deduplicate stream chunks by message id; Codex sessions are scoped to the project via `session_meta.cwd` with cached input separated from fresh; Gemini planner responses are imported without project scoping (transcripts record no working directory); Pi imports per-message usage with provider attribution and dedicated usage entries (for example cache warming), scoped by project directory. Import is idempotent via stable per-event identities, so reruns never double-count. Sidecar entries and reports now attribute tokens by provider alongside model and harness, and the docs ship a harness support matrix declaring per-harness capabilities (with Pi recommended as the fullest experience).
+- Session heartbeat: `aiw heartbeat` records beats from harness hooks (`aiw hooks install --target=claude-code` wires Stop and UserPromptSubmit) and decides by idle gap — inside the warn window (default 4 min) it saves a compact checkpoint while the provider cache is still warm; past the TTL it saves one so the next gap resumes cheap. No timers or keep-alive pings: the gap is measured on the next beat, guaranteeing a session never pays the full-price prefix rebuild twice in a row. Thresholds are configurable, state lives in `.aiw/heartbeats.yml`, and hook installation is project-scoped, merge-safe, and idempotent.
 
 ## [0.7.0] - 2026-10-13
 

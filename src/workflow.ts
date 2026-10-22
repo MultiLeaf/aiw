@@ -1,4 +1,5 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
 import {
@@ -41,6 +42,20 @@ import {
 import { selectRecommendations } from "./selection.js";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+
+async function readStdin(): Promise<string> {
+  const terminal = createInterface({ input: stdin });
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      let data = "";
+      stdin.on("data", (chunk) => (data += chunk));
+      stdin.on("end", () => resolve(data));
+      stdin.on("error", reject);
+    });
+  } finally {
+    terminal.close();
+  }
+}
 import { generateProjectResources } from "./generator.js";
 import { detectDrift } from "./drift.js";
 import { parseManifest, serializeManifest } from "./manifest.js";
@@ -159,6 +174,33 @@ import {
   USAGE_TIERS,
   type UsageSidecarEntry,
 } from "./usage-sidecar.js";
+import {
+  mergeImportedEvents,
+  parseClaudeCodeTranscript,
+  parseCodexSession,
+  parseGeminiTranscript,
+  parsePiSession,
+  summarizeImport,
+  type ImportResult,
+  type ImportSource,
+} from "./usage-import.js";
+import {
+  describeHeartbeatOutcome,
+  emptyHeartbeatState,
+  HEARTBEAT_STATE_PATH,
+  HEARTBEAT_TTL_SECONDS,
+  HEARTBEAT_WARN_SECONDS,
+  parseHeartbeatState,
+  recordBeat,
+  serializeHeartbeatCheckpoint,
+  serializeHeartbeatState,
+  validateHeartbeatThresholds,
+} from "./heartbeat.js";
+import {
+  installHeartbeatHooks,
+  parseClaudeSettings,
+  writeClaudeSettings,
+} from "./hook-installer.js";
 import {
   computeCostAttribution,
   serializeCostAttribution,
@@ -2548,6 +2590,117 @@ export async function runCommand(
           "\nSources: .aiw/checkpoints/usage-sidecar.yml + .aiw/generated/artifacts/traceability.yml (verified = linked evidence present).",
       };
     }
+    if (command === "heartbeat") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const parsed = parseNamedOptions(args.slice(1), ["session", "warn", "ttl"]);
+      if (!parsed)
+        return {
+          exitCode: 1,
+          error: "Usage: aiw heartbeat --session=id [--warn=seconds] [--ttl=seconds]",
+        };
+      const warnSeconds = parsed.warn === undefined ? HEARTBEAT_WARN_SECONDS : Number(parsed.warn);
+      const ttlSeconds = parsed.ttl === undefined ? HEARTBEAT_TTL_SECONDS : Number(parsed.ttl);
+      try {
+        validateHeartbeatThresholds(warnSeconds, ttlSeconds);
+      } catch (error) {
+        return { exitCode: 1, error: (error as Error).message };
+      }
+      let session = parsed.session;
+      if (!session && !stdin.isTTY) {
+        // Claude Code hooks deliver a JSON payload with session_id on stdin.
+        try {
+          const payload: unknown = JSON.parse(await readStdin());
+          if (
+            payload &&
+            typeof payload === "object" &&
+            typeof (payload as { session_id?: unknown }).session_id === "string"
+          )
+            session = (payload as { session_id: string }).session_id;
+        } catch {
+          // No parseable payload: fall through to the explicit error below.
+        }
+      }
+      if (!session)
+        return {
+          exitCode: 1,
+          error:
+            "A session id is required: pass --session=id or pipe a harness hook JSON payload on stdin.",
+        };
+      const statePath = join(aiw, HEARTBEAT_STATE_PATH);
+      const state = fs.exists(statePath)
+        ? parseHeartbeatState(fs.read(statePath))
+        : emptyHeartbeatState();
+      const { state: nextState, outcome } = recordBeat(
+        state,
+        session,
+        new Date(),
+        warnSeconds,
+        ttlSeconds,
+      );
+      fs.write(statePath, serializeHeartbeatState(nextState));
+      const lines = [describeHeartbeatOutcome(outcome)];
+      if (outcome.checkpoint) {
+        const checkpointPath = join(
+          aiw,
+          `checkpoints/heartbeat-${session}-${outcome.checkpoint.index}.yml`,
+        );
+        fs.write(
+          checkpointPath,
+          serializeHeartbeatCheckpoint(outcome.checkpoint, outcome.gapSeconds ?? 0, ttlSeconds),
+        );
+        lines.push(`checkpoint: ${relative(root, checkpointPath).split(sep).join("/")}`);
+      }
+      return { exitCode: 0, output: lines.join("\n") };
+    }
+    if (command === "hooks") {
+      if (!fs.exists(join(aiw, "manifest.yml")))
+        return { exitCode: 1, error: "Run `aiw install` first." };
+      const action = args[1];
+      if (action !== "install")
+        return {
+          exitCode: 1,
+          error:
+            "Usage: aiw hooks install --target=claude-code (codex and gemini adapters follow the same command)",
+        };
+      const parsed = parseNamedOptions(args.slice(2), ["target"]);
+      if (!parsed?.target)
+        return { exitCode: 1, error: "Usage: aiw hooks install --target=claude-code" };
+      if (parsed.target !== "claude-code")
+        return {
+          exitCode: 1,
+          error: `Harness hook adapter not available yet for: ${parsed.target}. Claude Code is wired; codex and gemini follow the same pattern.`,
+        };
+      const settingsPath = join(root, ".claude/settings.json");
+      let settings;
+      try {
+        settings = parseClaudeSettings(fs.exists(settingsPath) ? fs.read(settingsPath) : "");
+      } catch (error) {
+        return {
+          exitCode: 1,
+          error: `Existing .claude/settings.json is not a valid hooks file; fix or move it first: ${(error as Error).message}`,
+        };
+      }
+      const result = installHeartbeatHooks(settings);
+      if (fs.pathType?.(settingsPath) === "symlink")
+        return {
+          exitCode: 1,
+          error: ".claude/settings.json is a symbolic link; install hooks manually.",
+        };
+      writeClaudeSettings(fs, settingsPath, result.settings);
+      return {
+        exitCode: 0,
+        output:
+          `Heartbeat hooks installed into .claude/settings.json (project-scoped):\n` +
+          [...result.added, ...result.alreadyPresent]
+            .map(
+              (event) =>
+                `- ${event}: ${result.added.includes(event) ? "added" : "already present"} → aiw heartbeat on every event`,
+            )
+            .join("\n") +
+          "\nSessions now record beats; idle gaps inside the warn window save a compact checkpoint while the cache is still warm.",
+      };
+    }
     if (command === "usage-sidecar") {
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
@@ -2564,6 +2717,101 @@ export async function runCommand(
             (entries.length
               ? `\nLedger: .aiw/${USAGE_SIDECAR_PATH} (${entries.length} entries, sequence-ordered, no timestamps)`
               : ""),
+        };
+      }
+      if (action === "import") {
+        const parsed = parseNamedOptions(args.slice(2), ["from", "path"]);
+        const source = parsed?.from as ImportSource | undefined;
+        if (!parsed || !source || !["claude-code", "codex", "gemini", "pi"].includes(source))
+          return {
+            exitCode: 1,
+            error:
+              "Usage: aiw usage-sidecar import --from=claude-code|codex|gemini|pi [--path=logs-directory]",
+          };
+        if (!fs.list)
+          return { exitCode: 1, error: "The filesystem cannot enumerate harness logs." };
+        const home = homedir();
+        const defaultRoot =
+          source === "claude-code"
+            ? join(home, ".claude/projects", root.split("/").join("-"))
+            : source === "codex"
+              ? join(home, ".codex/sessions")
+              : source === "pi"
+                ? join(home, ".pi/agent/sessions")
+                : join(home, ".gemini/antigravity-cli/brain");
+        const scanRoot = parsed.path ? resolve(parsed.path) : defaultRoot;
+        if (fs.pathType?.(scanRoot) !== "directory")
+          return {
+            exitCode: 1,
+            error: `Harness log directory not found: ${scanRoot}. Pass --path to point at the ${source} logs.`,
+          };
+        const wanted = (name: string): boolean =>
+          source === "claude-code"
+            ? name.endsWith(".jsonl")
+            : source === "codex"
+              ? /^rollout-.*\.jsonl$/.test(name)
+              : name === "transcript_full.jsonl";
+        const files: string[] = [];
+        const listDirectory = fs.list;
+        if (source === "pi") {
+          // Pi groups sessions into directories named after the project path.
+          const munged = root.split("/").join("-");
+          for (const name of listDirectory(scanRoot) ?? []) {
+            if (!name.includes(munged)) continue;
+            const directory = join(scanRoot, name);
+            if (fs.pathType?.(directory) !== "directory") continue;
+            for (const file of listDirectory(directory) ?? [])
+              if (file.endsWith(".jsonl") && fs.pathType?.(join(directory, file)) === "file")
+                files.push(join(directory, file));
+          }
+        } else {
+          const walk = (directory: string, depth: number): void => {
+            if (depth > 6) return;
+            for (const name of listDirectory(directory) ?? []) {
+              const absolute = join(directory, name);
+              const type = fs.pathType?.(absolute);
+              if (type === "directory") walk(absolute, depth + 1);
+              else if (type === "file" && wanted(name)) files.push(absolute);
+            }
+          };
+          walk(scanRoot, 0);
+        }
+        files.sort();
+        const events = [];
+        for (const file of files) {
+          const content = fs.read(file);
+          if (source === "claude-code") events.push(...parseClaudeCodeTranscript(content));
+          else if (source === "codex") {
+            const parsedEvents = parseCodexSession(content, root);
+            if (parsedEvents) events.push(...parsedEvents);
+          } else if (source === "pi") events.push(...parsePiSession(content));
+          else events.push(...parseGeminiTranscript(content));
+        }
+        let ledger: UsageSidecarEntry[];
+        try {
+          ledger = fs.exists(sidecarPath) ? parseUsageSidecar(fs.read(sidecarPath)) : [];
+        } catch (error) {
+          throw new Error(`Usage sidecar is unreadable: ${(error as Error).message}`, {
+            cause: error,
+          });
+        }
+        const merged = mergeImportedEvents(ledger, events);
+        fs.write(sidecarPath, serializeUsageSidecar(merged.ledger));
+        const result: ImportResult = {
+          source,
+          files: files.length,
+          events: events.length,
+          imported: merged.imported,
+          skipped: merged.skipped,
+        };
+        return {
+          exitCode: 0,
+          output:
+            summarizeImport(result) +
+            (source === "gemini"
+              ? "\nnote: Gemini transcripts do not record a working directory, so imports cannot be scoped to this project."
+              : "") +
+            `\nLedger: .aiw/${USAGE_SIDECAR_PATH} (rerun safely: already-imported events are skipped).`,
         };
       }
       if (action === "record") {

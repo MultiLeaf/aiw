@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --package=@multileaf/ai-workflow -- aiw heartbeat",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --package=@multileaf/ai-workflow -- aiw heartbeat",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

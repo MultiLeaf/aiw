@@ -83,6 +83,59 @@ Every entry carries `measured` or `estimated`, and aggregates propagate the labe
 
 `aiw scan` auto-records sidecar entries for interpreter and embedding usage with their real measurement label, so the ledger fills without manual effort.
 
+### Importing harness session logs
+
+`aiw usage-sidecar import` turns local harness session logs into measured entries — the same lifecycle coverage as the manual `record`, without friction. Formats were validated against real logs:
+
+```bash
+aiw usage-sidecar import --from=claude-code   # ~/.claude/projects/<this-project>
+aiw usage-sidecar import --from=codex         # ~/.codex/sessions (sessions scoped by cwd)
+aiw usage-sidecar import --from=gemini        # ~/.gemini/antigravity-cli/brain transcripts
+```
+
+- **Claude Code**: per-message usage with all four tiers (including cache), model and CLI version, deduplicated by message id.
+- **Codex**: `token_usage_record` entries; cached input is separated from fresh; sessions are scoped to this project via `session_meta.cwd`.
+- **Gemini**: planner responses with input/cache-read/output. Transcripts do not record a working directory, so Gemini imports cannot be scoped per project (the command says so).
+
+Import is idempotent: every event derives a stable identity (`import.<source>.<hash>`) and already-present events are skipped, so reruns never double-count. Entries land with label `measured` and full harness attribution. Cursor and GitHub Copilot remain outside this coverage: they do not expose per-request usage to the user, so for them the estimate stays the ceiling.
+
+## Session heartbeat (cache-TTL management)
+
+Provider prompt caches expire on a TTL (typically 5 minutes); the cost lands when a session is resumed after expiry, because the next request rebuilds the whole prefix at full input price. Keeping a cache alive with provider pings has its own economics and AIW is not in the call path — but the gap can be measured for free on every event:
+
+```bash
+aiw hooks install --target=claude-code   # wires Stop + UserPromptSubmit to `aiw heartbeat`
+aiw heartbeat --session=<id>              # what the hooks call; also accepts hook JSON on stdin
+```
+
+Each beat measures the gap since the previous one and decides:
+
+- gap < warn (default 4 min): active session, nothing to do;
+- warn ≤ gap < TTL: the cache is still warm (this request just read it at cache price) — a compact checkpoint is saved now, so an idle past the TTL resumes cheap;
+- gap ≥ TTL: the cache expired and this request paid the rebuild — a compact checkpoint is saved so the _next_ gap hurts an order of magnitude less.
+
+No timers and no keep-alive pings: the decision always happens on the next beat, which costs nothing locally. The guarantee is that a session never pays the full-price prefix rebuild twice in a row on the same context. Thresholds are configurable (`--warn=seconds --ttl=seconds`), state lives in `.aiw/heartbeats.yml`, and every action writes an inspectable checkpoint under `.aiw/checkpoints/`. Hook installers are project-scoped, merge without touching foreign hook entries, and are idempotent; Codex (`notify`) and Gemini (`hooks.json`) adapters follow the same command.
+
+## Harness support matrix
+
+AI Workflow's core — the SDD workflow, quality and cost gates, token ledger, cost attribution, task-lifecycle usage, and routing — is harness-agnostic and behaves identically everywhere. What varies per harness is the edge: measured log import and live beats. The matrix declares exactly what is and is not available, because silent degradation is worse than an explicit limitation.
+
+| Capability                                      | Pi                                                               | Claude Code                          | Codex                                | Gemini                              | Cursor                     | Copilot CLI                |
+| ----------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------ | ------------------------------------ | ----------------------------------- | -------------------------- | -------------------------- |
+| Neutral core (gates, ledger, reports, routing)  | ✅                                                               | ✅                                   | ✅                                   | ✅                                  | ✅                         | ✅                         |
+| Manual usage recording (`usage-sidecar record`) | ✅                                                               | ✅                                   | ✅                                   | ✅                                  | ✅                         | ✅                         |
+| Measured log import                             | ✅ all four tiers + provider per message, project-scoped         | ✅ all four tiers + model            | ✅ four tiers, project-scoped by cwd | ✅ three tiers, no project scoping  | ⚠️ local database, fragile | ❌ estimate is the ceiling |
+| Live beats (heartbeat)                          | ✅✅ extensions run in-process (event handlers, commands, tools) | ✅ hooks (Stop, UserPromptSubmit, …) | ⚠️ `notify` per turn                 | ✅ hooks (Pre/PostInvocation, Stop) | ⚠️ limited                 | ❌                         |
+| Multi-provider sessions                         | ✅ provider recorded per message                                 | —                                    | —                                    | —                                   | —                          | —                          |
+
+**Recommendation: use [Pi](https://pi.dev) for the best experience.** It is the only harness where every capability is native: per-message usage with all four billing tiers _and_ the provider, sessions grouped by project, compaction recorded with token counts, and an in-process extension API rich enough that AI Workflow can eventually run inside the harness itself. Claude Code is the strongest alternative; Codex and Gemini cover measurement fully with partial beat granularity. Where a capability is missing, AI Workflow degrades honestly: manual recording with `estimated` labels, and explicit errors instead of silent gaps.
+
+Notes:
+
+- Codex beats fire per turn (`notify`), not per event — enough for gap detection, coarser than Claude Code or Pi.
+- Gemini transcripts do not record a working directory, so their imports cover all sessions on the machine.
+- Cursor and Copilot do not expose per-request usage to the user; for them the estimate stays the ceiling, and every number derived from their sessions carries the `estimated` label.
+
 ## Cost per verified requirement
 
 `aiw cost-report` joins the usage sidecar with the traceability graph to produce the outcome-denominated cost metric — tokens per verified requirement, where verified means the graph links the requirement to evidence:
