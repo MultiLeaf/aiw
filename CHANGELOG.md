@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-24
+
+### Fixed
+
+- Workflow capabilities are always recommended: the seven SDD capabilities (brainstorming, ticket-driven-development, requirements-specification, implementation-planning, technical-design, code-review, verification) are marked universal and are recommended for any project, including scans with no detected signals. Previously a project without languages, frameworks, package manager, tests, linter, or CI received zero recommendations; stack-dependent capabilities still require their evidence.
+
 ## [0.9.0] - 2026-10-21
 
 ## [0.8.0] - 2026-10-20

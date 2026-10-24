@@ -15,6 +15,8 @@ export type CapabilityRecommendation = {
 };
 type Capability = Omit<CapabilityRecommendation, "confidence" | "evidence" | "conflicts"> & {
   matches: (profile: ProjectProfile) => { evidence: string[]; confidence: number } | undefined;
+  /** Workflow capabilities apply to any project and are always recommended, even without detected signals. */
+  universal?: boolean;
 };
 
 const local = (resources: RecommendedResource[]): RecommendedResource[] => resources;
@@ -23,6 +25,7 @@ const CATALOG: Capability[] = [
   {
     id: "brainstorming",
     provider: "multileaf",
+    universal: true,
     rationale:
       "A project-specific brainstorming flow helps clarify goals and constraints before implementation.",
     permissions: [],
@@ -39,6 +42,7 @@ const CATALOG: Capability[] = [
   {
     id: "ticket-driven-development",
     provider: "multileaf",
+    universal: true,
     rationale:
       "Work often arrives as a ticket or an already-clear requirement; this entry point starts the SDD flow from the ticket without a brainstorming phase.",
     permissions: [],
@@ -54,6 +58,7 @@ const CATALOG: Capability[] = [
   {
     id: "requirements-specification",
     provider: "multileaf",
+    universal: true,
     rationale:
       "The project can use explicit requirements and acceptance criteria before changes are planned.",
     permissions: [],
@@ -70,6 +75,7 @@ const CATALOG: Capability[] = [
   {
     id: "implementation-planning",
     provider: "multileaf",
+    universal: true,
     rationale:
       "A traceable implementation plan can connect project requirements, tests, risks, and validation.",
     permissions: [],
@@ -87,6 +93,7 @@ const CATALOG: Capability[] = [
   {
     id: "technical-design",
     provider: "multileaf",
+    universal: true,
     rationale:
       "Architecture changes benefit from explicit alternatives, trade-offs, and decision records.",
     permissions: [],
@@ -104,6 +111,7 @@ const CATALOG: Capability[] = [
   {
     id: "code-review",
     provider: "multileaf",
+    universal: true,
     rationale:
       "A consistent review checklist helps validate changes against this repository's conventions.",
     permissions: [],
@@ -207,6 +215,7 @@ const CATALOG: Capability[] = [
   {
     id: "verification",
     provider: "multileaf",
+    universal: true,
     rationale:
       "Verification guidance can use the project's detected test runner and quality commands.",
     permissions: [],
@@ -295,7 +304,16 @@ const CATALOG: Capability[] = [
 
 export function recommendCapabilities(profile: ProjectProfile): CapabilityRecommendation[] {
   return CATALOG.flatMap((capability) => {
-    const match = capability.matches(profile);
+    const match =
+      capability.matches(profile) ??
+      (capability.universal
+        ? {
+            evidence: [
+              "Workflow capability: applies to any project, with or without detected signals.",
+            ],
+            confidence: 0.9,
+          }
+        : undefined);
     return match
       ? [
           {
