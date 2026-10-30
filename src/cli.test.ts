@@ -3086,3 +3086,83 @@ describe("ticket-driven task", () => {
     expect(recommendations).toContain("skills/ticket");
   });
 });
+
+describe("blocking reason codes and exact continuations", () => {
+  it("emits a typed reason and runnable continuation when a gate is blocked", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "plan");
+    const result = await run(["gate", "plan"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("[reason: gate_evidence_missing]");
+    expect(result.error).toContain(".aiw/generated/plans/implementation-plan.md");
+    expect(result.error).toContain("aiw gate plan");
+  });
+
+  it("names the exact approve command for a pending prerequisite stage", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=continuation-check"], cwd);
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    await run(["gate", "brainstorming"], cwd);
+    const result = await run(["spec"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("[reason: stage_prerequisite_pending]");
+    expect(result.error).toContain("`aiw approve brainstorming`");
+  });
+
+  it("executes the printed continuation to clear the block", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=continuation-exec"], cwd);
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    await run(["gate", "brainstorming"], cwd);
+    const blocked = await run(["spec"], cwd);
+    const continuation = /`aiw (approve [a-z-]+)`/.exec(blocked.error ?? "")?.[1];
+    expect(continuation).toBe("approve brainstorming");
+    const cleared = await run(continuation!.split(" "), cwd);
+    expect(cleared.exitCode).toBe(0);
+    expect((await run(["spec"], cwd)).exitCode).toBe(0);
+  });
+
+  it("exposes machine-readable reason_code and next_command with --json", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "plan");
+    const result = await run(["gate", "plan", "--json"], cwd);
+    expect(result.exitCode).toBe(1);
+    const envelope = JSON.parse(result.output ?? "{}");
+    expect(envelope.reason_code).toBe("gate_evidence_missing");
+    expect(envelope.next_action).toContain("aiw gate plan");
+  });
+
+  it("exposes the approval_stale reason with the gate rerun command", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=stale-json"], cwd);
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    await run(["gate", "brainstorming"], cwd);
+    await run(["approve", "brainstorming"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the changed feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    const result = await run(["approve", "brainstorming", "--json"], cwd);
+    expect(result.exitCode).toBe(1);
+    const envelope = JSON.parse(result.output ?? "{}");
+    expect(envelope.reason_code).toBe("approval_stale");
+    expect(envelope.next_command).toBe("aiw gate brainstorming");
+  });
+});

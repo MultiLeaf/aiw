@@ -219,6 +219,7 @@ import { parseTraceabilityGraph } from "./traceability.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
+import { BlockingError, blockingResultToJson, describeBlockingReason } from "./blocking-reasons.js";
 import {
   type MigrationSnapshot,
   type ResourceMigration,
@@ -437,10 +438,11 @@ export async function runCommand(
       const stage = args[1];
       if (!stage || !APPROVAL_STAGES.includes(stage as HumanApprovalStage))
         return { exitCode: 1, error: `Usage: aiw ${command} <workflow-stage> [options]` };
+      const rest = args.slice(2).filter((argument) => argument !== "--json");
       const { ledger } = readActiveWorkflow(aiw, fs);
       const workflowStage = stage as HumanApprovalStage;
       if (command === "skip") {
-        const options = parseNamedOptions(args.slice(2), ["reason"]);
+        const options = parseNamedOptions(rest, ["reason"]);
         if (!options?.reason)
           return {
             exitCode: 1,
@@ -456,7 +458,13 @@ export async function runCommand(
       }
       const artifact = approvalArtifactPath(aiw, workflowStage);
       if (!artifact || !fs.exists(artifact))
-        return { exitCode: 1, error: `Approval evidence is missing for ${workflowStage}.` };
+        throw new BlockingError(
+          describeBlockingReason("approval_evidence_missing", {
+            stage: workflowStage,
+            artifactPath: artifact ?? undefined,
+            detail: `Approval evidence is missing for ${workflowStage}.`,
+          }),
+        );
       const artifactHash = stageFingerprint(fs.read(artifact));
       if (command === "approve") {
         if (ledger.stages[workflowStage]?.artifactHash !== artifactHash) {
@@ -467,12 +475,21 @@ export async function runCommand(
           );
           fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(invalidated));
           const existing = ledger.stages[workflowStage];
-          return {
-            exitCode: 1,
-            error: existing
-              ? `The ${workflowStage} artifact changed after review; its approval is stale. Rerun the quality gate and request approval again.`
-              : `No passing quality gate recorded for ${workflowStage}. Run aiw gate ${workflowStage} before approving.`,
-          };
+          if (existing)
+            throw new BlockingError(
+              describeBlockingReason("approval_stale", {
+                stage: workflowStage,
+                artifactPath: artifact,
+                detail: `The ${workflowStage} artifact changed after review; its approval is stale. Rerun the quality gate and request approval again.`,
+              }),
+            );
+          throw new BlockingError(
+            describeBlockingReason("approval_gate_missing", {
+              stage: workflowStage,
+              artifactPath: artifact,
+              detail: `No passing quality gate recorded for ${workflowStage}. Run aiw gate ${workflowStage} before approving.`,
+            }),
+          );
         }
         const updated = approveStage(ledger, workflowStage, {
           artifactHash,
@@ -481,7 +498,7 @@ export async function runCommand(
         fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
         return { exitCode: 0, output: `Human approval recorded for ${workflowStage}.` };
       }
-      const options = parseNamedOptions(args.slice(2), ["reason"]);
+      const options = parseNamedOptions(rest, ["reason"]);
       if (!options?.reason)
         return { exitCode: 1, error: "Usage: aiw reject <stage> --reason=human-feedback" };
       const updated = rejectStage(ledger, workflowStage, options.reason, new Date().toISOString());
@@ -2123,15 +2140,25 @@ export async function runCommand(
       assertStageReady(aiw, fs, workflowStage);
       const artifactPath = approvalArtifactPath(aiw, workflowStage);
       if (!artifactPath || !fs.exists(artifactPath))
-        return {
-          exitCode: 1,
-          error: `Quality gate blocked: required evidence is missing for ${stage}.`,
-        };
+        throw new BlockingError(
+          describeBlockingReason("gate_evidence_missing", {
+            stage,
+            artifactPath: artifactPath ?? undefined,
+            detail: `Quality gate blocked: required evidence is missing for ${stage}.`,
+          }),
+        );
       const hasQualityGate = stageDefinition(workflowStage).requiresQualityGate;
       if (hasQualityGate) {
         const issues = evaluateQualityGate(stage as QualityGateStage, fs.read(artifactPath));
         if (issues.length)
-          return { exitCode: 1, error: `Quality gate blocked: ${issues.join(" ")}` };
+          throw new BlockingError(
+            describeBlockingReason("gate_incomplete", {
+              stage,
+              artifactPath,
+              gateIssues: issues,
+              detail: `Quality gate blocked: ${issues.join(" ")}`,
+            }),
+          );
       }
       const { ledger } = readActiveWorkflow(aiw, fs);
       const updated = beginStageApproval(ledger, workflowStage, {
@@ -2958,6 +2985,9 @@ export async function runCommand(
         "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
+    if (error instanceof BlockingError && args.includes("--json")) {
+      return { exitCode: 1, output: JSON.stringify(blockingResultToJson(error.result)) };
+    }
     return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -3023,18 +3053,36 @@ function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage
       (prerequisite) => ledger.stages[prerequisite]?.status === "pending-human",
     );
     if (pending.length)
-      throw new Error(
-        `Cannot enter ${stage}; previous stage(s) are awaiting human approval: ${pending.join(", ")}.`,
+      throw new BlockingError(
+        describeBlockingReason("stage_prerequisite_pending", {
+          stage,
+          pendingStages: pending,
+          detail: `Cannot enter ${stage}; previous stage(s) are awaiting human approval: ${pending.join(", ")}.`,
+        }),
       );
-    throw new Error(
-      `Cannot enter ${stage}; previous stages require human approval or an accepted optional skip: ${unresolved.join(", ")}.`,
+    throw new BlockingError(
+      describeBlockingReason("stage_prerequisite_unresolved", {
+        stage,
+        unresolvedStages: unresolved,
+        detail: `Cannot enter ${stage}; previous stages require human approval or an accepted optional skip: ${unresolved.join(", ")}.`,
+      }),
     );
   }
   const current = ledger.stages[stage];
   if (current?.status === "pending-human")
-    throw new Error(`${stage} is awaiting human approval. Approve or reject it before continuing.`);
+    throw new BlockingError(
+      describeBlockingReason("stage_awaiting_approval", {
+        stage,
+        detail: `${stage} is awaiting human approval. Approve or reject it before continuing.`,
+      }),
+    );
   if (current?.status === "approved")
-    throw new Error(`${stage} is already approved. Evidence changes require rerunning its gate.`);
+    throw new BlockingError(
+      describeBlockingReason("stage_already_approved", {
+        stage,
+        detail: `${stage} is already approved. Evidence changes require rerunning its gate.`,
+      }),
+    );
 }
 
 function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
