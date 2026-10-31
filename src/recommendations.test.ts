@@ -145,7 +145,7 @@ describe("capability recommendations", () => {
     );
   });
 
-  it("does not recommend unrelated capabilities", () => {
+  it("recommends only the universal workflow capabilities when no signals exist", () => {
     const empty: ProjectProfile = {
       runtime: { languages: [] },
       frameworks: [],
@@ -155,7 +155,23 @@ describe("capability recommendations", () => {
       workspaces: [],
       facts: [],
     };
-    expect(recommendCapabilities(empty)).toEqual([]);
+    const recommended = recommendCapabilities(empty);
+    expect(recommended.map((capability) => capability.id).sort()).toEqual([
+      "brainstorming",
+      "code-review",
+      "implementation-planning",
+      "requirements-specification",
+      "technical-design",
+      "ticket-driven-development",
+      "verification",
+    ]);
+    expect(
+      recommended.every(({ evidence }) =>
+        evidence.includes(
+          "Workflow capability: applies to any project, with or without detected signals.",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("serializes recommendations with explicit selection state", () => {
