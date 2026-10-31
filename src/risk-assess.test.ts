@@ -99,6 +99,24 @@ describe("risk tiers by changed content", () => {
     const assessment = assessRisk([file("src/auth/service-token.test.ts")]);
     expect(assessment.tier).toBe("medium");
   });
+
+  it("preserves the full path of tracked-modified files (porcelain column)", () => {
+    // Regression: trimming porcelain lines before slicing the fixed-width
+    // column turned ` M src/auth/token.ts` into `rc/auth/token.ts`.
+    const assessment = assessRisk([file("src/auth/token.ts")]);
+    expect(assessment.changedPaths).toEqual(["src/auth/token.ts"]);
+  });
+
+  it("ignores workflow-managed .aiw state paths", () => {
+    const assessment = assessRisk([
+      file(".aiw/lock.yml"),
+      file(".aiw/checkpoints/task-light-x.yml"),
+      file("src/utils/format.ts"),
+    ]);
+    expect(assessment.tier).toBe("medium");
+    expect(assessment.reasons).toEqual([]);
+    expect(assessment.changedPaths).toHaveLength(3);
+  });
 });
 
 describe("untested regression category", () => {

@@ -118,6 +118,13 @@ const TEST_FILE_PATTERN =
 
 const SOURCE_FILE_PATTERN = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|sql|sh)$/i;
 
+/**
+ * Workflow-managed state (`.aiw/`) is never authored source: excluding it
+ * keeps `aiw`'s own lockfiles, checkpoints, and generated artifacts out of
+ * the risk picture (a real-flow defect: `.aiw/lock.yml` matched "lock").
+ */
+const WORKFLOW_STATE_PATTERN = /(^|\/)\.aiw\//;
+
 export type AssessOptions = {
   /**
    * Predicate telling whether a changed source file has a covering test.
@@ -141,6 +148,7 @@ export function assessRisk(
   let anyCode = false;
   const isTestCovered = options.hasCoveringTest;
   for (const change of changes) {
+    if (WORKFLOW_STATE_PATTERN.test(change.path)) continue;
     const isPassive = PASSIVE_PATTERN.test(change.path);
     const isTest = TEST_FILE_PATTERN.test(change.path);
     if (!isPassive) anyCode = true;
@@ -166,7 +174,8 @@ const RISK_ASSESS_SCHEMA = "aiw.risk-assessment/v1";
 const RISK_ASSESS_USAGE =
   "Usage: aiw risk assess [--base-ref=ref] [--ticket=ID] [--escalate-item=1-6 --escalate-reason=text] [--json]";
 
-function gitLines(root: string, args: string[]): string[] | undefined {
+/** Raw git output lines: no per-line trimming — porcelain columns are fixed-width. */
+function gitRawLines(root: string, args: string[]): string[] | undefined {
   try {
     const output = execFileSync("git", args, {
       cwd: root,
@@ -175,16 +184,20 @@ function gitLines(root: string, args: string[]): string[] | undefined {
     });
     return output
       .split("\n")
-      .map((line) => line.trim())
+      .map((line) => line.replace(/\r$/, ""))
       .filter((line) => line.length > 0);
   } catch {
     return undefined;
   }
 }
 
+function gitLines(root: string, args: string[]): string[] | undefined {
+  return gitRawLines(root, args)?.map((line) => line.trim());
+}
+
 /** Working-tree changes from `git status --porcelain` (staged, unstaged, untracked). */
 function workingTreeChanges(root: string): string[] | undefined {
-  const lines = gitLines(root, ["status", "--porcelain", "--untracked-files=all"]);
+  const lines = gitRawLines(root, ["status", "--porcelain", "--untracked-files=all"]);
   if (!lines) return undefined;
   return lines.map((line) => {
     const path = line.slice(3).trim();
