@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-30
+
+### Added
+
+- Typed blocking reasons with exact continuations (OPP-004): every workflow, gate, and approval blocking exit emits a stable reason code plus either an exact runnable `aiw` continuation or an explicit terminal statement. With `--json`, blocks return machine-readable `reason_code` and `next_command`/`next_action`/`terminal` fields. `docs/continuation-inventory.md` maps every code and is kept in parity with the registry by a CI test.
+- `aiw risk assess` (OPP-002): read-only, content-based risk classification for working-tree or `--base-ref` changes. Six high-risk categories (data/irreversible, security, consumed contracts, concurrency, delivery/environment, untested regression) classify by what changed, never by size: documentation-only diffs are `passive`; size never decides. Deterministic and offline by default; `--escalate-item 1-6 --escalate-reason` raises and never lowers a tier; `risk_due: yes` names an exact runnable next command (`aiw.risk-assessment/v1` JSON envelope).
+- Light lane (OPP-001): a human-chosen `aiw task start --lane=light --lane-reason=...` for small, understood work — the resume test decides (resumable from the request plus `git diff`). No durable spec/plan artifacts; validation evidence is recorded via `aiw task evidence` and completion requires at least one entry; the lane and rationale are written into the session and approval ledger for audit. Stage commands block with `lane_escalation_required`; `aiw task escalate --reason` moves the workflow to the full lane (one-way, evidence preserved). The full lane remains the default and unchanged.
+- Emission ≠ usability policy and command ratchet (OPP-006): messages naming an `aiw` command must have a test that executes it. A ratchet test executes every command named by the generated skills and READMEs and fails on unknown commands.
+- Friction benchmark (OPP-005): `scripts/friction-bench.mjs` drives packaged-CLI journeys and classifies every non-success exit as in-band / out-of-band / dead-end, executing printed continuations to verify they resolve. CI enforces a zero-dead-end budget; the release gate re-verifies budget and determinism. Baseline: in-band 5, out-of-band 5, dead-end 0.
+- Adversarial review skills (OPP-003): `review-judge-a`, `review-judge-b`, and `review-refuter` ship in the self-hosting package. Two blind judges review independently; severe findings require a reproducing command or self-proving `file:line` citations and otherwise degrade to advisory; only corroborated severe findings block. Refuter command execution is permission-gated (default: evidence reading with an explicit no-command-executed marker, isolated directory, no network). Human acceptance of the review outcome is unchanged.
+- Workflow proportionality documentation: [ADR-001](.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) records the ODD/RDD analysis — six implemented opportunities plus advisory-only model-integration opportunities (OPP-007/008) deliberately deferred until field exposure.
+
+### Fixed
+
+- `aiw risk assess` no longer truncates paths of tracked-modified files (the porcelain fixed-width column was destroyed by line trimming) and no longer flags `.aiw/` managed state (for example `lock.yml`) as concurrency risk.
+- `aiw risk` without a subcommand now prints its own typed usage instead of the general command dump.
+
 ## [0.9.1] - 2026-10-24
 
 ### Fixed
