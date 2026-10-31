@@ -31,6 +31,9 @@
 - The product must support brainstorming, specification, design, planning, implementation, and verification stages.
 - Requirements, decisions, tasks, code changes, tests, and evidence must be traceable.
 - A task must not be considered complete without configured validation evidence.
+- Ceremony must scale with the consequence of the change: `aiw risk assess` classifies changes by content (read-only, deterministic); small, understood work may run in a human-chosen light lane that records evidence and rationale instead of durable artifacts, and escalates explicitly on scope growth.
+- Every blocking CLI exit must name a stable reason code and an exact runnable continuation, or state explicitly that no automatic continuation exists.
+- When the adversarial review skills are installed, review findings must carry proof: severe findings without a reproducing command or self-proving citations degrade to advisory, and only corroborated severe findings may block.
 
 ### Portability
 

@@ -14,6 +14,7 @@ AI-assisted development often relies on implicit prompts, duplicated configurati
 - skills, rules, agents, hooks, and templates are versioned resources;
 - target-specific files are generated through adapters;
 - quality gates and checkpoints provide completion evidence;
+- ceremony scales with the consequence of the change — risk-based lanes instead of uniform ceremony;
 - context is filtered and loaded only when needed to reduce token usage;
 - package-declared sensitive capabilities are evaluated by policy boundaries.
 
@@ -114,7 +115,7 @@ flowchart TD
 
 ## The SDD workflow
 
-AI Workflow supports an end-to-end specification-driven development cycle:
+AI Workflow supports an end-to-end specification-driven development cycle. Ceremony is proportional: `aiw risk assess` classifies each change by content, and small, understood work may run in a human-chosen light lane (evidence entries instead of durable artifacts) while substantial work runs the staged sequence below. The current end-to-end flow, both lanes, and the CI enforcement layer are diagrammed in [Architecture — Current flow](docs/architecture.md#current-flow).
 
 ```mermaid
 flowchart TD

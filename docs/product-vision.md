@@ -17,6 +17,7 @@ AI coding tools often depend on implicit prompts, fragmented configuration, repe
 5. Project artifacts are English by default.
 6. Context is loaded just in time to control token cost.
 7. Unsafe capabilities require explicit permission.
+8. Ceremony scales with the consequence of the change — a documentation edit gets zero ceremony; two lines of authentication code get full review.
 
 ## Product outcomes
 
