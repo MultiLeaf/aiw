@@ -23,5 +23,7 @@ jobs:
         run: npm ci
       - name: Run quality gates
         run: npm run check
+      - name: Friction budget (zero dead ends)
+        run: node scripts/friction-bench.mjs
       - name: Enforce organization policy
         run: npm run policy:check

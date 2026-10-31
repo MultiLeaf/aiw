@@ -1,6 +1,6 @@
 # OPP-005: Friction benchmark — measure how users get stuck
 
-- Status: Proposed
+- Status: Implemented (2026-10-30, plan Wave 5). Baseline: in-band=5, out-of-band=5, dead-end=0; out-of-band blocks (install-first, no-workflow, git-required, unknown-stage usage, approve-not-pending) are the typing backlog this benchmark exists to shrink
 - Priority: P3
 - Added: 2026-10-30
 - Decision: [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md), Decision A

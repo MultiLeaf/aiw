@@ -168,7 +168,11 @@ const RISK_ASSESS_USAGE =
 
 function gitLines(root: string, args: string[]): string[] | undefined {
   try {
-    const output = execFileSync("git", args, { cwd: root, encoding: "utf8" });
+    const output = execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     return output
       .split("\n")
       .map((line) => line.trim())

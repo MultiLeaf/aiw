@@ -25,6 +25,10 @@ A test that verifies a message was emitted does not verify it is usable. Any use
 
 `src/command-evidence.ts` extracts command mentions from shipped artifacts; a ratchet test in `src/command-evidence.test.ts` executes every command named by the generated skills and the READMEs and fails when a named command is not real. Blocking continuations follow the stronger rule from [OPP-004](opportunities/OPP-004-exact-continuation-commands.md): a message may name a command only when running that command resolves the block it was printed for — verified by executing the printed continuation.
 
+## Friction budget
+
+`scripts/friction-bench.mjs` drives packaged-CLI journeys (happy paths and adversarial states) and classifies every non-success exit as in-band (the printed continuation, executed, resolves or advances the block), out-of-band (guidance without the typed reason contract), or dead end (the printed continuation fails and names no way out). The budget is **zero dead ends**; CI fails on any. Out-of-band is the honest baseline to shrink over time. Runs are deterministic; the release gate re-verifies the budget and determinism via `scripts/friction-bench.node-test.mjs`.
+
 ## Completion validation
 
 A feature is complete only when all affected layers are validated: domain, module integration, CLI or adapter integration, generated artifacts, end-to-end behavior, documentation, traceability, and security. Domain tests alone are insufficient for changes that affect external behavior or generated project state.
