@@ -1,6 +1,6 @@
 # OPP-003: Adversarial review package — blind judges and proof-carrying findings
 
-- Status: Proposed
+- Status: Implemented (2026-10-30, plan Wave 6): skills shipped in the self-hosting package with content-rule tests; runtime permission wiring rides the existing package permission model
 - Priority: P3
 - Added: 2026-10-30
 - Decision: [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md), Decision A
