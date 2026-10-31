@@ -40,3 +40,7 @@ Observed behavior on real plans: an evidence-free plan scored `gate: ready` with
 ## Hard boundary (unchanged)
 
 Decision-model output is `inferred` evidence with confidence, never `confirmed`. It can move an artifact to _pending review_, never to _approved_, and cannot replace the fingerprinted human approval ledger. This matches the existing approval contract and keeps the audit trail human-owned.
+
+## Planned integration (OPP-007)
+
+The next planned decision-model roles follow the same contracts: findings-evidence triage for severe review findings (does the cited proof support the claim — advisory flag, the refuter still decides) and a lane scope-watch that flags mismatch between a chosen light lane and deterministic risk signals. Both stay advisory-only with the deterministic floor unchanged; unconfigured behavior is byte-identical. See [OPP-007](opportunities/OPP-007-decision-findings-triage-scope-watch.md).

@@ -109,6 +109,19 @@ Priority levels: **P0** blocks the product or makes it unsafe; **P1** is require
 
 - [x] **ENG-001** Update GitHub Actions to Node 24-native versions. _Acceptance:_ `actions/checkout` and `actions/setup-node` upgraded past v4 so release workflows no longer emit Node.js 20 deprecation warnings; CI and Release workflows pass on `ubuntu-latest` before and after the October 19, 2026 Ubuntu 26 runner migration.
 
+## Workflow proportionality (ODD/RDD analysis) — P1–P3
+
+Derived from the Gentle-AI ODD/RDD analysis; scope and rejected alternatives recorded in [ADR-001](../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md). Each item links to a self-contained opportunity document under `docs/opportunities/` and can be implemented independently.
+
+- [x] **OPP-001** Add a light lane for small, understood work (proportional ceremony). _Acceptance:_ see [OPP-001](../opportunities/OPP-001-proportional-ceremony-light-lane.md); no durable spec/plan artifacts for light tasks, evidence and lane rationale still recorded, explicit escalation to the full lane on scope growth, full lane unchanged.
+- [x] **OPP-002** Add `aiw risk assess` — read-only, content-based risk classification with an exact runnable next command. _Acceptance:_ see [OPP-002](../opportunities/OPP-002-risk-assess-command.md); deterministic and offline by default, no `.aiw/` mutation, escalation raises and never lowers tier, `next_command` executes as printed.
+- [x] **OPP-003** Ship an optional `adversarial-review` package (blind judges + refuter with proof-carrying findings). _Acceptance:_ see [OPP-003](../opportunities/OPP-003-adversarial-review-package.md); severe findings without reproducible evidence degrade to advisory; refutation outcomes are corroborated/refuted/inconclusive with proof references; human acceptance still required.
+- [ ] **OPP-004** Emit typed reason codes and exact continuation commands on every blocking exit. _Acceptance:_ see [OPP-004](../opportunities/OPP-004-exact-continuation-commands.md); every block carries a reason code and either a tested runnable `next_command` or an explicit terminal statement; continuation inventory stays complete in CI.
+- [x] **OPP-005** Add a friction benchmark classifying blocks as in-band / out-of-band / dead-end over packaged-CLI journeys. _Acceptance:_ see [OPP-005](../opportunities/OPP-005-friction-benchmark.md); deterministic classification, continuations actually executed, CI fails on any dead end.
+- [x] **OPP-006** Adopt the emission ≠ usability test policy: messages naming a command must have a test executing it. _Acceptance:_ see [OPP-006](../opportunities/OPP-006-emission-usability-test-policy.md); extraction helper covers emitted and generated command mentions; generated `ai-init` skills' commands are executed in e2e tests.
+- [ ] **007-decision-findings-triage-scope-watch** Decision model — findings-evidence triage and lane scope-watch (advisory-only). _Acceptance:_ see [OPP-007](../opportunities/OPP-007-decision-findings-triage-scope-watch.md); unconfigured = byte-identical offline behavior; advisory flags never block, never lower tiers, never choose lanes.
+- [ ] **008-embedding-covering-tests-judge-context** Embedding retrieval — covering-test detection and judge context scoping. _Acceptance:_ see [OPP-008](../opportunities/OPP-008-embedding-covering-tests-judge-context.md); retrieval only prevents false `untested` flags (absence fails safe toward high); scoped judge prompts labeled as context aids within token ceilings.
+
 ## Backlog rules
 
 - [x] **FND-009** Add self-validation workflow. _Acceptance:_ changes affecting AIW behavior execute against this repository and record generated-output evidence.

@@ -14,6 +14,7 @@ AI-assisted development often relies on implicit prompts, duplicated configurati
 - skills, rules, agents, hooks, and templates are versioned resources;
 - target-specific files are generated through adapters;
 - quality gates and checkpoints provide completion evidence;
+- ceremony scales with the consequence of the change — risk-based lanes instead of uniform ceremony;
 - context is filtered and loaded only when needed to reduce token usage;
 - package-declared sensitive capabilities are evaluated by policy boundaries.
 
@@ -114,7 +115,7 @@ flowchart TD
 
 ## The SDD workflow
 
-AI Workflow supports an end-to-end specification-driven development cycle:
+AI Workflow supports an end-to-end specification-driven development cycle. Ceremony is proportional: `aiw risk assess` classifies each change by content, and small, understood work may run in a human-chosen light lane (evidence entries instead of durable artifacts) while substantial work runs the staged sequence below. The current end-to-end flow, both lanes, and the CI enforcement layer are diagrammed in [Architecture — Current flow](docs/architecture.md#current-flow).
 
 ```mermaid
 flowchart TD
@@ -204,6 +205,16 @@ npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 
 # Track a feature from its first artifact through final human approval.
 npx @multileaf/ai-workflow workflow start
+
+# Small, understood change? The light lane skips durable spec/plan artifacts
+# (human-chosen via the resume test) and records validation evidence instead.
+npx @multileaf/ai-workflow task start --ticket=TEAM-7 --lane=light --lane-reason="small fix, resumable from request"
+npx @multileaf/ai-workflow task evidence --validation="npm test: passed"
+npx @multileaf/ai-workflow workflow complete
+# If scope grows: aiw task escalate --reason=...
+
+# Classify the risk of current changes (read-only; content, not size).
+npx @multileaf/ai-workflow risk assess [--base-ref=<ref>] [--escalate-item=1-6 --escalate-reason=text] [--json]
 
 # Or start directly from a ticket / already-clear requirement (no brainstorm needed).
 npx @multileaf/ai-workflow task start --ticket=PROJ-142 --title="Add export endpoint"

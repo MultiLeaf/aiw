@@ -22,6 +22,8 @@ AI Workflow is a portable, spec-driven development system for AI coding agents. 
 - [Plugin authoring](plugin-authoring.md)
 - [Release process](release-process.md)
 - [Release backlog](release-backlog.md)
+- [Continuation inventory](continuation-inventory.md)
+- [Workflow proportionality opportunities](opportunities/README.md) (ODD/RDD analysis, ADR-001)
 - [Backlog](backlog.md)
 
 All generated AI Workflow artifacts are written in English unless the user explicitly requests another language.

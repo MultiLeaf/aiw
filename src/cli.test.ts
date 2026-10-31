@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { run } from "./cli.js";
@@ -3084,5 +3085,305 @@ describe("ticket-driven task", () => {
     const recommendations = await readFile(join(cwd, ".aiw", "recommendations.yml"), "utf8");
     expect(recommendations).toContain("ticket-driven-development");
     expect(recommendations).toContain("skills/ticket");
+  });
+});
+
+describe("aiw risk assess", () => {
+  async function gitProject(): Promise<string> {
+    const cwd = await mkdtemp(join(tmpdir(), "aiw-risk-"));
+    const run = (cmd: string, args: string[]): void =>
+      execFileSync(cmd, args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
+    run("git", ["init", "-q"]);
+    run("git", ["config", "user.email", "test@example.com"]);
+    run("git", ["config", "user.name", "Test"]);
+    await writeFile(join(cwd, "README.md"), "# project\n");
+    run("git", ["add", "."]);
+    run("git", ["commit", "-qm", "initial"]);
+    return cwd;
+  }
+
+  it("classifies a documentation-only change as passive and not risk-due", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "docs"));
+    await writeFile(join(cwd, "docs", "notes.md"), "notes\n");
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("risk: passive");
+    expect(result.output).toContain("risk due: no");
+    const json = JSON.parse((await run(["risk", "assess", "--json"], cwd)).output ?? "{}");
+    expect(json.schema).toBe("aiw.risk-assessment/v1");
+    expect(json.risk).toBe("passive");
+    expect(json.risk_due).toBe(false);
+  });
+
+  it("classifies an auth change as high and names a runnable next command", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("risk: high");
+    expect(result.output).toContain("security");
+    expect(result.output).toContain("src/auth/token.ts");
+    expect(result.output).toContain("risk due: yes");
+    const json = JSON.parse((await run(["risk", "assess", "--json"], cwd)).output ?? "{}");
+    expect(json.risk).toBe("high");
+    expect(json.risk_due).toBe(true);
+    expect(json.next_command).toBe("aiw workflow start");
+  });
+
+  it("starts a workflow when the printed next command is executed", async () => {
+    const cwd = await gitProject();
+    await run(["install"], cwd);
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const json = JSON.parse((await run(["risk", "assess", "--json"], cwd)).output ?? "{}");
+    const started = await run((json.next_command as string).split(" ").slice(1), cwd);
+    expect(started.exitCode).toBe(0);
+    expect(started.output).toContain("Workflow started");
+  });
+
+  it("assesses a committed range with --base-ref", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const exec = (cmd: string, args: string[]): void =>
+      execFileSync(cmd, args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
+    exec("git", ["add", "."]);
+    exec("git", ["commit", "-qm", "auth"]);
+    const result = await run(["risk", "assess", "--base-ref=HEAD~1"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("risk: high");
+    const clean = await run(["risk", "assess", "--base-ref=HEAD"], cwd);
+    expect(clean.output).toContain("risk: passive");
+  });
+
+  it("raises a medium change to high with agent escalation flags", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "billing"), { recursive: true });
+    await writeFile(join(cwd, "src", "billing", "invoice.ts"), "export const i = 1;\n");
+    // A covering sibling test keeps the deterministic tier at medium so the
+    // test exercises escalation, not the untested-regression category.
+    await writeFile(join(cwd, "src", "billing", "invoice.test.ts"), "test();\n");
+    const base = await run(["risk", "assess"], cwd);
+    expect(base.output).toContain("risk: medium");
+    const escalated = await run(
+      ["risk", "assess", "--escalate-item=2", "--escalate-reason=touches billing auth checks"],
+      cwd,
+    );
+    expect(escalated.output).toContain("risk: high");
+    expect(escalated.output).toContain("agent_escalation");
+  });
+
+  it("rejects an invalid escalation item with an actionable error", async () => {
+    const cwd = await gitProject();
+    const result = await run(["risk", "assess", "--escalate-item=9", "--escalate-reason=x"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("1 to 6");
+  });
+
+  it("never writes project state (read-only guarantee)", async () => {
+    const cwd = await gitProject();
+    await run(["install"], cwd);
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const before = await readdir(join(cwd, ".aiw"));
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(0);
+    const after = await readdir(join(cwd, ".aiw"));
+    expect(after.sort()).toEqual(before.sort());
+  });
+
+  it("fails clearly outside a git repository", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "aiw-nogit-"));
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("git");
+  });
+});
+describe("light lane (OPP-001)", () => {
+  it("starts a light task, prints the resume test, and records the rationale in the ledger", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(
+      [
+        "task",
+        "start",
+        "--ticket=TEAM-7",
+        "--lane=light",
+        "--lane-reason=one-line fix, resumable from request",
+      ],
+      cwd,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("light lane");
+    expect(result.output).toContain("resumed from your request plus `git diff`");
+    expect(result.output).toContain("Rationale recorded: one-line fix, resumable from request");
+    const ledger = await readFile(join(cwd, ".aiw", "approvals.yml"), "utf8");
+    expect(ledger).toContain("lane: light");
+    expect(ledger).toContain("one-line fix, resumable from request");
+  });
+
+  it("requires a lane reason for the light lane", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--ticket=TEAM-8", "--lane=light"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("--lane-reason");
+  });
+
+  it("blocks stage commands in the light lane with an escalation continuation", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["task", "start", "--ticket=TEAM-9", "--lane=light", "--lane-reason=small fix"], cwd);
+    const spec = await run(["spec"], cwd);
+    expect(spec.exitCode).toBe(1);
+    expect(spec.error).toContain("[reason: lane_escalation_required]");
+    expect(spec.error).toContain("aiw task escalate");
+    const gate = await run(["gate", "brainstorming"], cwd);
+    expect(gate.error).toContain("[reason: lane_escalation_required]");
+    const approve = await run(["approve", "brainstorming"], cwd);
+    expect(approve.error).toContain("[reason: lane_escalation_required]");
+    // No stage artifacts were authored.
+    expect(existsSync(join(cwd, ".aiw", "generated", "specs", "specification.md"))).toBe(false);
+  });
+
+  it("escalates to the full lane and preserves recorded evidence", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(
+      ["task", "start", "--ticket=TEAM-10", "--lane=light", "--lane-reason=small fix"],
+      cwd,
+    );
+    await run(["task", "evidence", "--validation=npm test: 3 passed"], cwd);
+    const escalated = await run(
+      ["task", "escalate", "--reason=scope grew: needs a specification"],
+      cwd,
+    );
+    expect(escalated.exitCode).toBe(0);
+    expect(escalated.output).toContain("escalated to the full lane");
+    const status = await run(["task", "status"], cwd);
+    expect(status.output).toContain("escalated to the full lane");
+    const brainstorm = await run(["brainstorm"], cwd);
+    expect(brainstorm.exitCode).toBe(0);
+    const second = await run(["task", "escalate", "--reason=again"], cwd);
+    expect(second.exitCode).toBe(1);
+  });
+
+  it("completes a light task with evidence and no durable spec artifacts", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["task", "start", "--ticket=TEAM-11", "--lane=light", "--lane-reason=typo fix"], cwd);
+    const blocked = await run(["workflow", "complete"], cwd);
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.error).toContain("[reason: light_evidence_missing]");
+    const evidence = await run(["task", "evidence", "--validation=vitest run: 552 passed"], cwd);
+    expect(evidence.exitCode).toBe(0);
+    const completed = await run(["workflow", "complete"], cwd);
+    expect(completed.exitCode).toBe(0);
+    expect(completed.output).toContain("light lane");
+    const checkpoints = await readdir(join(cwd, ".aiw", "checkpoints"));
+    const light = checkpoints.find((name) => name.startsWith("task-light-"));
+    expect(light).toBeDefined();
+    const content = await readFile(join(cwd, ".aiw", "checkpoints", light!), "utf8");
+    expect(content).toContain("vitest run: 552 passed");
+    expect(content).toContain("lane: light");
+    expect(existsSync(join(cwd, ".aiw", "generated", "specs", "specification.md"))).toBe(false);
+    expect(existsSync(join(cwd, ".aiw", "generated", "plans", "implementation-plan.md"))).toBe(
+      false,
+    );
+  });
+
+  it("keeps the full lane as the default and unchanged", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--ticket=TEAM-12", "--title=Full"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).not.toContain("light lane");
+    const status = await run(["task", "status"], cwd);
+    expect(status.output).not.toContain("Lane: light");
+    const spec = await run(["spec"], cwd);
+    expect(spec.exitCode).toBe(1);
+    expect(spec.error).toContain("brainstorming");
+  });
+});
+
+describe("blocking reason codes and exact continuations", () => {
+  it("emits a typed reason and runnable continuation when a gate is blocked", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "plan");
+    const result = await run(["gate", "plan"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("[reason: gate_evidence_missing]");
+    expect(result.error).toContain(".aiw/generated/plans/implementation-plan.md");
+    expect(result.error).toContain("aiw gate plan");
+  });
+
+  it("names the exact approve command for a pending prerequisite stage", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=continuation-check"], cwd);
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    await run(["gate", "brainstorming"], cwd);
+    const result = await run(["spec"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("[reason: stage_prerequisite_pending]");
+    expect(result.error).toContain("`aiw approve brainstorming`");
+  });
+
+  it("executes the printed continuation to clear the block", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=continuation-exec"], cwd);
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    await run(["gate", "brainstorming"], cwd);
+    const blocked = await run(["spec"], cwd);
+    const continuation = /`aiw (approve [a-z-]+)`/.exec(blocked.error ?? "")?.[1];
+    expect(continuation).toBe("approve brainstorming");
+    const cleared = await run(continuation!.split(" "), cwd);
+    expect(cleared.exitCode).toBe(0);
+    expect((await run(["spec"], cwd)).exitCode).toBe(0);
+  });
+
+  it("exposes machine-readable reason_code and next_command with --json", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "plan");
+    const result = await run(["gate", "plan", "--json"], cwd);
+    expect(result.exitCode).toBe(1);
+    const envelope = JSON.parse(result.output ?? "{}");
+    expect(envelope.reason_code).toBe("gate_evidence_missing");
+    expect(envelope.next_action).toContain("aiw gate plan");
+  });
+
+  it("exposes the approval_stale reason with the gate rerun command", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=stale-json"], cwd);
+    await run(["brainstorm"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    await run(["gate", "brainstorming"], cwd);
+    await run(["approve", "brainstorming"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+      "## Goal\nDeliver the changed feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
+    );
+    const result = await run(["approve", "brainstorming", "--json"], cwd);
+    expect(result.exitCode).toBe(1);
+    const envelope = JSON.parse(result.output ?? "{}");
+    expect(envelope.reason_code).toBe("approval_stale");
+    expect(envelope.next_command).toBe("aiw gate brainstorming");
   });
 });

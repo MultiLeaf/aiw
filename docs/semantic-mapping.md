@@ -66,3 +66,7 @@ When semantic mapping is enabled and a valid index built with the active model e
 3. Everything else is excluded, so measured token usage decreases while inferred-fact evidence still points at real scoped files.
 
 Without semantic mapping (or when the index is missing, built with another model, or the embedding model is unavailable), the interpreter keeps the previous deterministic alphabetical scoping and scans make no network request for scoping purposes.
+
+## Planned integration (OPP-008)
+
+The next planned retrieval consumers follow the same contracts: covering-test detection for `aiw risk assess` (a semantic hit prevents a false `untested_regression` flag; absence fails safe toward `high`) and judge context scoping for the adversarial review skills (bounded retrieved chunks labeled as context aids). Deterministic fallbacks are unchanged; unconfigured behavior is byte-identical. See [OPP-008](opportunities/OPP-008-embedding-covering-tests-judge-context.md).
