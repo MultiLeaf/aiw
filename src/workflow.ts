@@ -220,6 +220,7 @@ import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
 import { BlockingError, blockingResultToJson, describeBlockingReason } from "./blocking-reasons.js";
+import { runRiskAssess } from "./risk-assess.js";
 import {
   type MigrationSnapshot,
   type ResourceMigration,
@@ -2126,6 +2127,9 @@ export async function runCommand(
       const path = join(aiw, "generated/artifacts/traceability.yml");
       fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
+    }
+    if (command === "risk" && args[1] === "assess") {
+      return runRiskAssess(args.slice(2), root, fs);
     }
     if (command === "gate") {
       if (!fs.exists(join(aiw, "manifest.yml")))

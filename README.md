@@ -205,6 +205,9 @@ npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 # Track a feature from its first artifact through final human approval.
 npx @multileaf/ai-workflow workflow start
 
+# Classify the risk of current changes (read-only; content, not size).
+npx @multileaf/ai-workflow risk assess [--base-ref=<ref>] [--escalate-item=1-6 --escalate-reason=text] [--json]
+
 # Or start directly from a ticket / already-clear requirement (no brainstorm needed).
 npx @multileaf/ai-workflow task start --ticket=PROJ-142 --title="Add export endpoint"
 npx @multileaf/ai-workflow task status

@@ -1,6 +1,6 @@
 # OPP-002: `aiw risk assess` — content-based risk classification with an exact next command
 
-- Status: Proposed
+- Status: Implemented (2026-10-30, plan Wave 2); optional decision-model advisory refinement remains a follow-up
 - Priority: P2
 - Added: 2026-10-30
 - Decision: [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md), Decision A

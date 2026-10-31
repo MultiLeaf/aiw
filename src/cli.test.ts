@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { run } from "./cli.js";
@@ -3087,6 +3088,119 @@ describe("ticket-driven task", () => {
   });
 });
 
+describe("aiw risk assess", () => {
+  async function gitProject(): Promise<string> {
+    const cwd = await mkdtemp(join(tmpdir(), "aiw-risk-"));
+    const run = (cmd: string, args: string[]): void =>
+      execFileSync(cmd, args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
+    run("git", ["init", "-q"]);
+    run("git", ["config", "user.email", "test@example.com"]);
+    run("git", ["config", "user.name", "Test"]);
+    await writeFile(join(cwd, "README.md"), "# project\n");
+    run("git", ["add", "."]);
+    run("git", ["commit", "-qm", "initial"]);
+    return cwd;
+  }
+
+  it("classifies a documentation-only change as passive and not risk-due", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "docs"));
+    await writeFile(join(cwd, "docs", "notes.md"), "notes\n");
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("risk: passive");
+    expect(result.output).toContain("risk due: no");
+    const json = JSON.parse((await run(["risk", "assess", "--json"], cwd)).output ?? "{}");
+    expect(json.schema).toBe("aiw.risk-assessment/v1");
+    expect(json.risk).toBe("passive");
+    expect(json.risk_due).toBe(false);
+  });
+
+  it("classifies an auth change as high and names a runnable next command", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("risk: high");
+    expect(result.output).toContain("security");
+    expect(result.output).toContain("src/auth/token.ts");
+    expect(result.output).toContain("risk due: yes");
+    const json = JSON.parse((await run(["risk", "assess", "--json"], cwd)).output ?? "{}");
+    expect(json.risk).toBe("high");
+    expect(json.risk_due).toBe(true);
+    expect(json.next_command).toBe("aiw workflow start");
+  });
+
+  it("starts a workflow when the printed next command is executed", async () => {
+    const cwd = await gitProject();
+    await run(["install"], cwd);
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const json = JSON.parse((await run(["risk", "assess", "--json"], cwd)).output ?? "{}");
+    const started = await run((json.next_command as string).split(" ").slice(1), cwd);
+    expect(started.exitCode).toBe(0);
+    expect(started.output).toContain("Workflow started");
+  });
+
+  it("assesses a committed range with --base-ref", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const exec = (cmd: string, args: string[]): void =>
+      execFileSync(cmd, args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
+    exec("git", ["add", "."]);
+    exec("git", ["commit", "-qm", "auth"]);
+    const result = await run(["risk", "assess", "--base-ref=HEAD~1"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("risk: high");
+    const clean = await run(["risk", "assess", "--base-ref=HEAD"], cwd);
+    expect(clean.output).toContain("risk: passive");
+  });
+
+  it("raises a medium change to high with agent escalation flags", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "billing"), { recursive: true });
+    await writeFile(join(cwd, "src", "billing", "invoice.ts"), "export const i = 1;\n");
+    // A covering sibling test keeps the deterministic tier at medium so the
+    // test exercises escalation, not the untested-regression category.
+    await writeFile(join(cwd, "src", "billing", "invoice.test.ts"), "test();\n");
+    const base = await run(["risk", "assess"], cwd);
+    expect(base.output).toContain("risk: medium");
+    const escalated = await run(
+      ["risk", "assess", "--escalate-item=2", "--escalate-reason=touches billing auth checks"],
+      cwd,
+    );
+    expect(escalated.output).toContain("risk: high");
+    expect(escalated.output).toContain("agent_escalation");
+  });
+
+  it("rejects an invalid escalation item with an actionable error", async () => {
+    const cwd = await gitProject();
+    const result = await run(["risk", "assess", "--escalate-item=9", "--escalate-reason=x"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("1 to 6");
+  });
+
+  it("never writes project state (read-only guarantee)", async () => {
+    const cwd = await gitProject();
+    await run(["install"], cwd);
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    const before = await readdir(join(cwd, ".aiw"));
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(0);
+    const after = await readdir(join(cwd, ".aiw"));
+    expect(after.sort()).toEqual(before.sort());
+  });
+
+  it("fails clearly outside a git repository", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "aiw-nogit-"));
+    const result = await run(["risk", "assess"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("git");
+  });
+});
 describe("blocking reason codes and exact continuations", () => {
   it("emits a typed reason and runnable continuation when a gate is blocked", async () => {
     const cwd = await project();
