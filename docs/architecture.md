@@ -47,6 +47,54 @@ Project analysis is hybrid: deterministic detectors establish observable facts, 
 
 Workflows run in one of two lanes. The **full lane** (default, and the only non-interactive default) is the staged approval sequence below. The **light lane** (`aiw task start --lane=light --lane-reason=...`, human-chosen via the resume test — work is small when it could be resumed from the request plus `git diff`) skips durable spec/plan artifacts: validation evidence is recorded per entry (`aiw task evidence`), completion requires at least one entry, and the lane plus rationale are written into the session and approval ledger for audit. Stage commands in the light lane block with a `lane_escalation_required` reason until `aiw task escalate --reason=...` moves the workflow to the full lane; recorded evidence is preserved and linked. Escalation is one-way; the full lane then runs the complete approval sequence.
 
+## Current flow
+
+```mermaid
+flowchart TD
+    REQ["Change request / ticket"] --> RA["aiw risk assess<br/>read-only · content-based · deterministic"]
+    RA -->|"passive — docs-only"| LANE
+    RA -->|"medium — plain code"| LANE
+    RA -->|"high — security · contracts · concurrency ·<br/>data · delivery · untested (risk due: yes)"| FS
+
+    LANE{"Human lane decision<br/>resume test: resumable from<br/>request + git diff?"}
+    LANE -->|"light — human chooses"| LS
+    LANE -->|"full — default"| FS
+
+    subgraph LIGHT["Light lane — no durable artifacts"]
+        LS["aiw task start --lane=light --lane-reason<br/>rationale into session + ledger"] --> LE["aiw task evidence --validation<br/>compact checkpoint"]
+        LE --> LC["aiw workflow complete<br/>requires at least one entry"]
+    end
+
+    subgraph FULL["Full lane — staged SDD, gate + human approve per stage"]
+        FS["workflow start"] --> BR["brainstorming"] --> SP["specification"] --> TD["technical-design<br/>optional, skip needs reason"] --> PL["plan"] --> IM["implementation<br/>TDD"] --> VE["verification"] --> RV["code review"] --> TR["traceability"] --> FC["workflow complete"]
+    end
+
+    LS -.->|"stage or approve attempted"| B1["Blocked<br/>reason: lane_escalation_required"]
+    B1 --> ESC["aiw task escalate --reason<br/>one-way · evidence preserved"]
+    ESC --> FS
+
+    RV -.->|"adversarial-review skills installed"| ADV["judge A + judge B — blind, independent<br/>refuter: corroborated severe blocks<br/>refuted / inconclusive → advisory<br/>unevidenced severe → advisory"]
+
+    LC --> AUD["Audit trail<br/>approvals ledger · checkpoints · light evidence"]
+    FC --> AUD
+
+    subgraph CI["CI enforcement layer"]
+        E1["OPP-004: every block prints a reason code<br/>plus an exact next_command — continuations<br/>are executed by tests before they ship"]
+        E2["OPP-006 ratchet: every aiw command named<br/>by skills and READMEs executes in tests"]
+        E3["OPP-005 friction benchmark:<br/>in-band / out-of-band / dead-end<br/>budget: zero dead ends"]
+    end
+
+    B1 -.-> E1
+    E1 -.-> E2 -.-> E3
+```
+
+Reading notes:
+
+- `aiw risk assess` is **advisory**: it informs the lane decision and flags risk due; it never forces a lane or bypasses approval.
+- The light lane is never agent-chosen: `resources/skills/ticket.md` routes it through the host's blocking question widget with the resume test stated verbatim.
+- Every blocking exit on the diagram prints `[reason: <code>]` and either `Next: run \`aiw ...\`` or an explicit terminal statement — the full mapping lives in [Continuation inventory](continuation-inventory.md).
+- A `high` risk assessment with an active workflow points at continuing the workflow (gate and approve); without one it names `aiw workflow start`.
+
 The SDD approval contract models the ordered stages brainstorming, specification, technical design, plan, implementation, verification, review, and traceability. Brainstorming and technical design are optional; skipping either requires a human-accepted reason. Every other stage must be approved. Automated quality-gate results are stored separately from human decisions and can only move an artifact to pending review, never directly to approved.
 
 Each approval is scoped to one workflow ID and bound to a SHA-256 fingerprint of the exact artifact reviewed, so a later feature cannot reuse earlier approvals. A content change or rejection makes that stage and its descendants stale. The CLI persists the versioned ledger in `.aiw/approvals.yml`, blocks stage commands when prerequisites are unresolved, and keeps passing quality gates distinct from human approval. The generated bootstrap and stage skills require the host's native blocking question widget for human decisions when available, with a waiting chat prompt as fallback. Approval records provide an audit trail but cannot prove the identity of a respondent or independently verify that the host widget was used.
