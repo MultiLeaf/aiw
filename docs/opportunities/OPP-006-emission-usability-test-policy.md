@@ -1,6 +1,6 @@
 # OPP-006: Emission ≠ usability — test that named commands actually work
 
-- Status: Proposed
+- Status: Implemented (2026-10-30, plan Wave 3)
 - Priority: P2
 - Added: 2026-10-30
 - Decision: [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md), Decision A

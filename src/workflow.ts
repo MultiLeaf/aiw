@@ -2128,7 +2128,9 @@ export async function runCommand(
       fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
-    if (command === "risk" && args[1] === "assess") {
+    if (command === "risk") {
+      if (args[1] !== "assess")
+        return { exitCode: 1, error: "Usage: aiw risk assess [--base-ref=ref] [--json]" };
       return runRiskAssess(args.slice(2), root, fs);
     }
     if (command === "gate") {
