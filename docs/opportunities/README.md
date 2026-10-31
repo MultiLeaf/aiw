@@ -4,16 +4,20 @@ Improvement opportunities derived from the analysis of Gentle-AI's ODD/RDD metho
 
 The guiding principle: **ceremony should scale with the consequence of the change, not be constant.**
 
-| ID                                                     | Opportunity                                                                         | Priority | Depends on                          |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------- | -------- | ----------------------------------- |
-| [OPP-001](OPP-001-proportional-ceremony-light-lane.md) | Proportional ceremony — light lane for small, understood work                       | P2       | OPP-002 (advisory signal, optional) |
-| [OPP-002](OPP-002-risk-assess-command.md)              | `aiw risk assess` — content-based risk classification with exact next command       | P2       | —                                   |
-| [OPP-003](OPP-003-adversarial-review-package.md)       | Adversarial review package — blind judges and proof-carrying findings               | P3       | —                                   |
-| [OPP-004](OPP-004-exact-continuation-commands.md)      | Exact continuation commands — every block names a runnable way out                  | P1       | —                                   |
-| [OPP-005](OPP-005-friction-benchmark.md)               | Friction benchmark — measure how users get stuck (in-band / out-of-band / dead-end) | P3       | OPP-004                             |
-| [OPP-006](OPP-006-emission-usability-test-policy.md)   | Emission ≠ usability — test that named commands actually work                       | P2       | OPP-004 (shared contract)           |
+| ID                                                                                              | Opportunity                                                                         | Priority | Depends on                            |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------- | ------------------------------------- |
+| [OPP-001](OPP-001-proportional-ceremony-light-lane.md)                                          | Proportional ceremony — light lane for small, understood work                       | P2       | OPP-002 (advisory signal, optional)   |
+| [OPP-002](OPP-002-risk-assess-command.md)                                                       | `aiw risk assess` — content-based risk classification with exact next command       | P2       | —                                     |
+| [OPP-003](OPP-003-adversarial-review-package.md)                                                | Adversarial review package — blind judges and proof-carrying findings               | P3       | —                                     |
+| [OPP-004](OPP-004-exact-continuation-commands.md)                                               | Exact continuation commands — every block names a runnable way out                  | P1       | —                                     |
+| [OPP-005](OPP-005-friction-benchmark.md)                                                        | Friction benchmark — measure how users get stuck (in-band / out-of-band / dead-end) | P3       | OPP-004                               |
+| [OPP-006](OPP-006-emission-usability-test-policy.md)                                            | Emission ≠ usability — test that named commands actually work                       | P2       | OPP-004 (shared contract)             |
+| [007-decision-findings-triage-scope-watch](OPP-007-decision-findings-triage-scope-watch.md)     | Decision model — findings-evidence triage and lane scope-watch (advisory-only)      | P3       | OPP-001, OPP-003 (integration points) |
+| [008-embedding-covering-tests-judge-context](OPP-008-embedding-covering-tests-judge-context.md) | Embedding retrieval — covering-test detection and judge context scoping             | P3       | OPP-002, OPP-003 (integration points) |
 
 Suggested starting order: **OPP-004 → OPP-002 → OPP-006 → OPP-001 → OPP-005 → OPP-003** (smallest/least invasive first; OPP-004's reason codes feed OPP-005 and OPP-006).
+
+OPP-007 and OPP-008 are **model-integration addenda**: deliberately left for after field exposure — their priority should be set by real usage pain, not speculation. All model features respect the spec's NFR contracts: deterministic floor first, models advisory-only, unconfigured = byte-identical offline behavior.
 
 ## Planning
 
