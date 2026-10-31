@@ -18,6 +18,8 @@ export const BLOCKING_REASON_CODES = [
   "approval_evidence_missing",
   "approval_stale",
   "approval_gate_missing",
+  "lane_escalation_required",
+  "light_evidence_missing",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -151,6 +153,24 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
       context.stage
         ? command(`aiw gate ${context.stage}`)
         : terminal("A human must decide whether to gate the stage before approving."),
+  },
+  lane_escalation_required: {
+    code: "lane_escalation_required",
+    description:
+      "Light-lane workflows do not author stage artifacts; escalate to the full lane to continue.",
+    continuation: () =>
+      action(
+        "Run `aiw task escalate --reason=<why scope grew>` to move this workflow to the full lane; recorded light-lane evidence is preserved.",
+      ),
+  },
+  light_evidence_missing: {
+    code: "light_evidence_missing",
+    description:
+      "A light-lane workflow cannot complete without at least one recorded validation entry.",
+    continuation: () =>
+      action(
+        "Run `aiw task evidence --validation=<command and result>` at least once, then `aiw workflow complete`.",
+      ),
   },
 };
 

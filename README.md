@@ -205,6 +205,13 @@ npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 # Track a feature from its first artifact through final human approval.
 npx @multileaf/ai-workflow workflow start
 
+# Small, understood change? The light lane skips durable spec/plan artifacts
+# (human-chosen via the resume test) and records validation evidence instead.
+npx @multileaf/ai-workflow task start --ticket=TEAM-7 --lane=light --lane-reason="small fix, resumable from request"
+npx @multileaf/ai-workflow task evidence --validation="npm test: passed"
+npx @multileaf/ai-workflow workflow complete
+# If scope grows: aiw task escalate --reason=...
+
 # Classify the risk of current changes (read-only; content, not size).
 npx @multileaf/ai-workflow risk assess [--base-ref=<ref>] [--escalate-item=1-6 --escalate-reason=text] [--json]
 

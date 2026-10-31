@@ -3201,6 +3201,113 @@ describe("aiw risk assess", () => {
     expect(result.error).toContain("git");
   });
 });
+describe("light lane (OPP-001)", () => {
+  it("starts a light task, prints the resume test, and records the rationale in the ledger", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(
+      [
+        "task",
+        "start",
+        "--ticket=TEAM-7",
+        "--lane=light",
+        "--lane-reason=one-line fix, resumable from request",
+      ],
+      cwd,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("light lane");
+    expect(result.output).toContain("resumed from your request plus `git diff`");
+    expect(result.output).toContain("Rationale recorded: one-line fix, resumable from request");
+    const ledger = await readFile(join(cwd, ".aiw", "approvals.yml"), "utf8");
+    expect(ledger).toContain("lane: light");
+    expect(ledger).toContain("one-line fix, resumable from request");
+  });
+
+  it("requires a lane reason for the light lane", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--ticket=TEAM-8", "--lane=light"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("--lane-reason");
+  });
+
+  it("blocks stage commands in the light lane with an escalation continuation", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["task", "start", "--ticket=TEAM-9", "--lane=light", "--lane-reason=small fix"], cwd);
+    const spec = await run(["spec"], cwd);
+    expect(spec.exitCode).toBe(1);
+    expect(spec.error).toContain("[reason: lane_escalation_required]");
+    expect(spec.error).toContain("aiw task escalate");
+    const gate = await run(["gate", "brainstorming"], cwd);
+    expect(gate.error).toContain("[reason: lane_escalation_required]");
+    const approve = await run(["approve", "brainstorming"], cwd);
+    expect(approve.error).toContain("[reason: lane_escalation_required]");
+    // No stage artifacts were authored.
+    expect(existsSync(join(cwd, ".aiw", "generated", "specs", "specification.md"))).toBe(false);
+  });
+
+  it("escalates to the full lane and preserves recorded evidence", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(
+      ["task", "start", "--ticket=TEAM-10", "--lane=light", "--lane-reason=small fix"],
+      cwd,
+    );
+    await run(["task", "evidence", "--validation=npm test: 3 passed"], cwd);
+    const escalated = await run(
+      ["task", "escalate", "--reason=scope grew: needs a specification"],
+      cwd,
+    );
+    expect(escalated.exitCode).toBe(0);
+    expect(escalated.output).toContain("escalated to the full lane");
+    const status = await run(["task", "status"], cwd);
+    expect(status.output).toContain("escalated to the full lane");
+    const brainstorm = await run(["brainstorm"], cwd);
+    expect(brainstorm.exitCode).toBe(0);
+    const second = await run(["task", "escalate", "--reason=again"], cwd);
+    expect(second.exitCode).toBe(1);
+  });
+
+  it("completes a light task with evidence and no durable spec artifacts", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["task", "start", "--ticket=TEAM-11", "--lane=light", "--lane-reason=typo fix"], cwd);
+    const blocked = await run(["workflow", "complete"], cwd);
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.error).toContain("[reason: light_evidence_missing]");
+    const evidence = await run(["task", "evidence", "--validation=vitest run: 552 passed"], cwd);
+    expect(evidence.exitCode).toBe(0);
+    const completed = await run(["workflow", "complete"], cwd);
+    expect(completed.exitCode).toBe(0);
+    expect(completed.output).toContain("light lane");
+    const checkpoints = await readdir(join(cwd, ".aiw", "checkpoints"));
+    const light = checkpoints.find((name) => name.startsWith("task-light-"));
+    expect(light).toBeDefined();
+    const content = await readFile(join(cwd, ".aiw", "checkpoints", light!), "utf8");
+    expect(content).toContain("vitest run: 552 passed");
+    expect(content).toContain("lane: light");
+    expect(existsSync(join(cwd, ".aiw", "generated", "specs", "specification.md"))).toBe(false);
+    expect(existsSync(join(cwd, ".aiw", "generated", "plans", "implementation-plan.md"))).toBe(
+      false,
+    );
+  });
+
+  it("keeps the full lane as the default and unchanged", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--ticket=TEAM-12", "--title=Full"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).not.toContain("light lane");
+    const status = await run(["task", "status"], cwd);
+    expect(status.output).not.toContain("Lane: light");
+    const spec = await run(["spec"], cwd);
+    expect(spec.exitCode).toBe(1);
+    expect(spec.error).toContain("brainstorming");
+  });
+});
+
 describe("blocking reason codes and exact continuations", () => {
   it("emits a typed reason and runnable continuation when a gate is blocked", async () => {
     const cwd = await project();

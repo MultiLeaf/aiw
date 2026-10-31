@@ -17,3 +17,5 @@ Every blocking `aiw` exit carries a stable reason code plus either an exact runn
 | `approval_evidence_missing`     | Approval cannot be recorded because the stage evidence artifact is missing.                   | explicit action  |
 | `approval_stale`                | The artifact changed after review; its approval is stale and the gate must run again.         | runnable command |
 | `approval_gate_missing`         | No passing quality gate is recorded for this stage; gate it before approving.                 | runnable command |
+| `lane_escalation_required`      | Light-lane workflows do not author stage artifacts; escalate to the full lane to continue.    | explicit action  |
+| `light_evidence_missing`        | A light-lane workflow cannot complete without at least one recorded validation entry.         | explicit action  |

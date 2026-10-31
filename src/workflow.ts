@@ -149,7 +149,9 @@ import {
   stageFingerprint,
   type ApprovalLedger,
   type WorkflowSession,
+  effectiveLane,
 } from "./human-approval.js";
+import { parse as parseYaml, stringify } from "yaml";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
 import {
   collectContextBench,
@@ -270,7 +272,13 @@ export type WorkflowServices = WorkflowDependencies;
 function beginWorkflowSession(
   fs: FileSystem,
   aiw: string,
-  options: { id?: string; ticket?: string; title?: string },
+  options: {
+    id?: string;
+    ticket?: string;
+    title?: string;
+    lane?: "light";
+    laneReason?: string;
+  },
 ): CommandResult {
   const sessionPath = join(aiw, "workflow.yml");
   const ledgerPath = join(aiw, "approvals.yml");
@@ -310,8 +318,15 @@ function beginWorkflowSession(
     updatedAt: now,
     ...(options.ticket ? { ticket: options.ticket } : {}),
     ...(options.title ? { title: options.title } : {}),
+    ...(options.lane === "light" && options.laneReason
+      ? { lane: "light" as const, laneReason: options.laneReason }
+      : {}),
   };
-  const ledger = createApprovalLedger(workflowId);
+  const ledger = createApprovalLedger(workflowId, {
+    ...(options.lane === "light" && options.laneReason
+      ? { lane: "light" as const, laneReason: options.laneReason }
+      : {}),
+  });
   fs.write(ledgerPath, serializeApprovalLedger(ledger));
   fs.write(sessionPath, serializeWorkflowSession(session));
   return { exitCode: 0, output: `Workflow started: ${workflowId}.` };
@@ -331,13 +346,35 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml")))
         return { exitCode: 1, error: "Run `aiw install` first." };
       const usage =
-        "Usage: aiw task start --ticket=TEAM-123 [--title=text] [--id=workflow-id] | aiw task status";
+        "Usage: aiw task start --ticket=TEAM-123 [--title=text] [--id=workflow-id] [--lane=light --lane-reason=text] | aiw task status | aiw task escalate --reason=text | aiw task evidence --validation=text";
       const action = args[1];
       const sessionPath = join(aiw, "workflow.yml");
       if (action === "start") {
-        const options = parseNamedOptions(args.slice(2), ["ticket", "title", "id"]);
+        const options = parseNamedOptions(args.slice(2), [
+          "ticket",
+          "title",
+          "id",
+          "lane",
+          "lane-reason",
+        ]);
         if (!options?.ticket) return { exitCode: 1, error: usage };
         validateTaskTicket(options.ticket);
+        if (options.lane !== undefined && options.lane !== "light")
+          return { exitCode: 1, error: "Only --lane=light exists; omit it for the full lane." };
+        const laneReason = options["lane-reason"];
+        if (options.lane === "light") {
+          if (!laneReason)
+            return {
+              exitCode: 1,
+              error:
+                "--lane=light requires --lane-reason: the resume-test call, recorded for audit.",
+            };
+          if (laneReason.length > 500 || /[\r\n]/.test(laneReason))
+            return {
+              exitCode: 1,
+              error: "--lane-reason must be a single line of at most 500 bytes.",
+            };
+        }
         if (options.id !== undefined) {
           try {
             assertWorkflowId(options.id);
@@ -345,18 +382,108 @@ export async function runCommand(
             return { exitCode: 1, error: "Workflow ID must be a UUID." };
           }
         }
+        const lane = options.lane === "light" ? ("light" as const) : undefined;
         const result = beginWorkflowSession(fs, aiw, {
           ...(options.id ? { id: options.id } : {}),
           ticket: options.ticket,
           ...(options.title ? { title: options.title } : {}),
+          ...(lane ? { lane, laneReason: laneReason! } : {}),
         });
         if (result.exitCode !== 0) return result;
         const title = options.title ? ` titled "${options.title}"` : "";
+        if (lane)
+          return {
+            exitCode: 0,
+            output:
+              `Task started for ticket ${options.ticket}${title} (light lane): ${result.output}\n` +
+              "Resume test: this work is small when it is understood, risk is contained, and the work could be resumed from your request plus `git diff`.\n" +
+              `Rationale recorded: ${laneReason}\n` +
+              'No durable spec/plan artifacts are required. Record validation with `aiw task evidence --validation="<command and result>"`, then complete with `aiw workflow complete`. If scope grows, escalate with `aiw task escalate --reason=...`.',
+          };
         return {
           exitCode: 0,
           output:
             `Task started for ticket ${options.ticket}${title}: ${result.output}\n` +
             `Next steps: ask the user whether the requirement is clear enough to skip brainstorming (record an accepted skip with \`aiw skip brainstorming --reason="Requirement provided by ticket ${options.ticket}"\`), then create the specification with \`aiw spec --ticket=${options.ticket} --title=...\`.`,
+        };
+      }
+      if (action === "escalate") {
+        const options = parseNamedOptions(args.slice(2), ["reason"]);
+        if (!options?.reason)
+          return { exitCode: 1, error: "Usage: aiw task escalate --reason=why-scope-grew" };
+        if (!fs.exists(sessionPath))
+          return { exitCode: 1, error: "No SDD workflow is active. Start one first." };
+        const { session } = readWorkflowState(aiw, fs);
+        if (session.lane !== "light")
+          return {
+            exitCode: 1,
+            error: "Only light-lane workflows escalate; this one already runs the full lane.",
+          };
+        if (session.laneEscalatedAt)
+          return {
+            exitCode: 1,
+            error: `Workflow ${session.workflowId} already escalated to the full lane.`,
+          };
+        const now = new Date().toISOString();
+        fs.write(
+          sessionPath,
+          serializeWorkflowSession({
+            ...session,
+            laneEscalatedAt: now,
+            laneEscalationReason: options.reason,
+            updatedAt: now,
+          }),
+        );
+        const evidencePath = join(aiw, `checkpoints/task-light-${session.workflowId}.yml`);
+        return {
+          exitCode: 0,
+          output:
+            `Workflow ${session.workflowId} escalated to the full lane.\n` +
+            (fs.exists(evidencePath)
+              ? `Light-lane evidence preserved and linked: ${evidencePath}\n`
+              : "No light-lane evidence had been recorded yet.\n") +
+            "Stages now run the full approval sequence from brainstorming.",
+        };
+      }
+      if (action === "evidence") {
+        const options = parseNamedOptions(args.slice(2), ["validation"]);
+        if (!options?.validation)
+          return {
+            exitCode: 1,
+            error: 'Usage: aiw task evidence --validation="<command and its observed result>"',
+          };
+        if (!fs.exists(sessionPath))
+          return { exitCode: 1, error: "No SDD workflow is active. Start one first." };
+        const { session } = readWorkflowState(aiw, fs);
+        if (effectiveLane(session) !== "light")
+          return {
+            exitCode: 1,
+            error:
+              "Evidence entries are a light-lane command; full-lane workflows record stage artifacts and gates.",
+          };
+        const evidencePath = join(aiw, `checkpoints/task-light-${session.workflowId}.yml`);
+        const existing = fs.exists(evidencePath)
+          ? parseLightEvidence(fs.read(evidencePath))
+          : {
+              schema: 1 as const,
+              workflowId: session.workflowId,
+              ...(session.ticket ? { ticket: session.ticket } : {}),
+              lane: "light" as const,
+              ...(session.laneReason ? { laneReason: session.laneReason } : {}),
+              entries: [],
+            };
+        const updated = {
+          ...existing,
+          entries: [
+            ...existing.entries,
+            { note: options.validation, recordedAt: new Date().toISOString() },
+          ],
+        };
+        fs.mkdir(join(aiw, "checkpoints"));
+        fs.write(evidencePath, stringify({ ...updated }, { lineWidth: 0 }));
+        return {
+          exitCode: 0,
+          output: `Validation evidence recorded (${updated.entries.length} entr${updated.entries.length === 1 ? "y" : "ies"}): ${options.validation}`,
         };
       }
       if (action === "status") {
@@ -366,16 +493,29 @@ export async function runCommand(
             output: "No SDD workflow is active. Start one with `aiw task start --ticket=TEAM-123`.",
           };
         const { session, ledger } = readWorkflowState(aiw, fs, false);
+        const lane =
+          session.lane === "light"
+            ? [
+                `Lane: light — ${session.laneEscalatedAt ? `escalated to the full lane (${session.laneEscalationReason})` : session.laneReason}`,
+              ]
+            : [];
         const lines = [
           ...(session.ticket
             ? [`Ticket: ${session.ticket}${session.title ? ` — ${session.title}` : ""}`]
             : []),
+          ...lane,
           `Workflow: ${session.workflowId} (${session.status})`,
           "Stages:",
           ...APPROVAL_STAGES.map(
             (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
           ),
         ];
+        if (session.status === "active" && effectiveLane(session) === "light") {
+          lines.push(
+            'Next: record validation with `aiw task evidence --validation="<command and result>"`, then `aiw workflow complete`. If scope grows: `aiw task escalate --reason=...`.',
+          );
+          return { exitCode: 0, output: lines.join("\n") };
+        }
         const next = APPROVAL_STAGES.find(
           (stage) => (ledger.stages[stage]?.status ?? "not-started") === "not-started",
         );
@@ -410,6 +550,30 @@ export async function runCommand(
       }
       if (action === "complete") {
         const { session, ledger } = readActiveWorkflow(aiw, fs);
+        if (effectiveLane(session) === "light") {
+          const evidencePath = join(aiw, `checkpoints/task-light-${session.workflowId}.yml`);
+          const hasEntries = fs.exists(evidencePath)
+            ? parseLightEvidence(fs.read(evidencePath)).entries.length > 0
+            : false;
+          if (!hasEntries)
+            throw new BlockingError(
+              describeBlockingReason("light_evidence_missing", {
+                detail: `Light-lane workflow ${session.workflowId} cannot complete without recorded validation evidence.`,
+              }),
+            );
+          fs.write(
+            sessionPath,
+            serializeWorkflowSession({
+              ...session,
+              status: "complete",
+              updatedAt: new Date().toISOString(),
+            }),
+          );
+          return {
+            exitCode: 0,
+            output: `Workflow completed (light lane): ${session.workflowId}. Evidence: ${evidencePath}`,
+          };
+        }
         const unresolved = APPROVAL_STAGES.filter(
           (stage) =>
             ledger.stages[stage]?.status !== "approved" &&
@@ -440,7 +604,13 @@ export async function runCommand(
       if (!stage || !APPROVAL_STAGES.includes(stage as HumanApprovalStage))
         return { exitCode: 1, error: `Usage: aiw ${command} <workflow-stage> [options]` };
       const rest = args.slice(2).filter((argument) => argument !== "--json");
-      const { ledger } = readActiveWorkflow(aiw, fs);
+      const { session, ledger } = readActiveWorkflow(aiw, fs);
+      if (effectiveLane(session) === "light")
+        throw new BlockingError(
+          describeBlockingReason("lane_escalation_required", {
+            detail: `Light-lane workflow ${session.workflowId} does not approve stages; escalate to the full lane to continue.`,
+          }),
+        );
       const workflowStage = stage as HumanApprovalStage;
       if (command === "skip") {
         const options = parseNamedOptions(rest, ["reason"]);
@@ -3051,8 +3221,43 @@ function workflowNextAction(ledger: ApprovalLedger): string {
   return `Next action: prepare ${next} evidence.`;
 }
 
+type LightEvidence = {
+  schema: 1;
+  workflowId: string;
+  ticket?: string;
+  lane: "light";
+  laneReason?: string;
+  entries: { note: string; recordedAt: string }[];
+};
+
+function parseLightEvidence(content: string): LightEvidence {
+  const value: unknown = parseYaml(content);
+  if (!value || typeof value !== "object" || (value as Record<string, unknown>).schema !== 1)
+    throw new Error("Light-lane evidence checkpoint must be schema version 1.");
+  const record = value as Record<string, unknown>;
+  const entries = Array.isArray(record.entries) ? record.entries : [];
+  return {
+    schema: 1,
+    workflowId: String(record.workflowId ?? ""),
+    ...(record.ticket !== undefined ? { ticket: String(record.ticket) } : {}),
+    lane: "light",
+    ...(record.laneReason !== undefined ? { laneReason: String(record.laneReason) } : {}),
+    entries: entries.map((entry) => ({
+      note: String((entry as Record<string, unknown>).note ?? ""),
+      recordedAt: String((entry as Record<string, unknown>).recordedAt ?? ""),
+    })),
+  };
+}
+
 function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage): void {
-  const { ledger } = readActiveWorkflow(aiw, fs);
+  const { session, ledger } = readActiveWorkflow(aiw, fs);
+  if (effectiveLane(session) === "light")
+    throw new BlockingError(
+      describeBlockingReason("lane_escalation_required", {
+        stage,
+        detail: `Light-lane workflow ${session.workflowId} does not author stage artifacts; escalate to the full lane to continue.`,
+      }),
+    );
   const unresolved = getUnresolvedPrerequisites(ledger, stage);
   if (unresolved.length) {
     const pending = unresolved.filter(

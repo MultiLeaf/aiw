@@ -18,6 +18,9 @@ export type ApprovalLedger = {
   schema: 1;
   workflowId: string;
   stages: Partial<Record<HumanApprovalStage, StageApprovalRecord>>;
+  /** Light-lane provenance so audits see the rationale instead of missing approvals. */
+  lane?: "light";
+  laneReason?: string;
 };
 export type WorkflowSession = {
   schema: 1;
@@ -27,7 +30,19 @@ export type WorkflowSession = {
   updatedAt: string;
   ticket?: string;
   title?: string;
+  /** Light lane marker; absent means the full lane (REQ-OPP-001). */
+  lane?: "light";
+  /** Recorded rationale for using the light lane (the resume-test call). */
+  laneReason?: string;
+  /** Presence means the workflow escalated to the full lane (effective lane: full). */
+  laneEscalatedAt?: string;
+  laneEscalationReason?: string;
 };
+
+/** The lane that currently governs stage commands: escalation moves light → full. */
+export function effectiveLane(session: WorkflowSession): "full" | "light" {
+  return session.lane === "light" && !session.laneEscalatedAt ? "light" : "full";
+}
 
 export function validateTaskTicket(ticket: string): void {
   if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(ticket))
@@ -58,7 +73,7 @@ const APPROVAL_RECORD_KEYS = new Set([
   "reason",
   "updatedAt",
 ]);
-const LEDGER_KEYS = new Set(["schema", "workflowId", "stages"]);
+const LEDGER_KEYS = new Set(["schema", "workflowId", "stages", "lane", "laneReason"]);
 const SESSION_KEYS = new Set([
   "schema",
   "workflowId",
@@ -67,11 +82,27 @@ const SESSION_KEYS = new Set([
   "updatedAt",
   "ticket",
   "title",
+  "lane",
+  "laneReason",
+  "laneEscalatedAt",
+  "laneEscalationReason",
 ]);
 
-export function createApprovalLedger(workflowId: string): ApprovalLedger {
+export function createApprovalLedger(
+  workflowId: string,
+  options: { lane?: "light"; laneReason?: string } = {},
+): ApprovalLedger {
   assertWorkflowId(workflowId);
-  return { schema: 1, workflowId, stages: {} };
+  if (options.lane === "light" && !options.laneReason)
+    throw new Error("Light-lane ledgers require a recorded lane reason.");
+  return {
+    schema: 1,
+    workflowId,
+    stages: {},
+    ...(options.lane === "light" && options.laneReason
+      ? { lane: "light" as const, laneReason: options.laneReason }
+      : {}),
+  };
 }
 
 export function serializeWorkflowSession(session: WorkflowSession): string {
@@ -98,6 +129,20 @@ export function parseWorkflowSession(content: string): WorkflowSession {
   if (value.title !== undefined && typeof value.title !== "string")
     throw new Error("Workflow session title must be a string.");
   if (typeof value.ticket === "string") validateTaskTicket(value.ticket);
+  const lane = value.lane === undefined ? undefined : value.lane;
+  if (lane !== undefined && lane !== "light")
+    throw new Error("Workflow session lane must be light when present.");
+  const laneReason = value.laneReason;
+  if (laneReason !== undefined && typeof laneReason !== "string")
+    throw new Error("Workflow session lane reason must be a string.");
+  if (lane === "light" && !laneReason)
+    throw new Error("Light-lane sessions require a lane reason.");
+  const laneEscalatedAt = value.laneEscalatedAt;
+  if (laneEscalatedAt !== undefined && typeof laneEscalatedAt !== "string")
+    throw new Error("Workflow session lane escalation timestamp must be a string.");
+  const laneEscalationReason = value.laneEscalationReason;
+  if (laneEscalationReason !== undefined && typeof laneEscalationReason !== "string")
+    throw new Error("Workflow session lane escalation reason must be a string.");
   const session: WorkflowSession = {
     schema: 1,
     workflowId: value.workflowId,
@@ -106,6 +151,10 @@ export function parseWorkflowSession(content: string): WorkflowSession {
     updatedAt: value.updatedAt,
     ...(value.ticket === undefined ? {} : { ticket: value.ticket }),
     ...(value.title === undefined ? {} : { title: value.title }),
+    ...(lane === undefined ? {} : { lane }),
+    ...(laneReason === undefined ? {} : { laneReason }),
+    ...(laneEscalatedAt === undefined ? {} : { laneEscalatedAt }),
+    ...(laneEscalationReason === undefined ? {} : { laneEscalationReason }),
   };
   validateWorkflowSession(session);
   return session;
@@ -239,7 +288,17 @@ export function serializeApprovalLedger(ledger: ApprovalLedger): string {
       ledger.stages[stage] ? [[stage, ledger.stages[stage]]] : [],
     ),
   );
-  return stringify({ schema: 1, workflowId: ledger.workflowId, stages }, { lineWidth: 0 });
+  return stringify(
+    {
+      schema: 1,
+      workflowId: ledger.workflowId,
+      stages,
+      ...(ledger.lane === "light" && ledger.laneReason
+        ? { lane: ledger.lane, laneReason: ledger.laneReason }
+        : {}),
+    },
+    { lineWidth: 0 },
+  );
 }
 
 export function parseApprovalLedger(content: string): ApprovalLedger {
@@ -261,7 +320,14 @@ export function parseApprovalLedger(content: string): ApprovalLedger {
       throw new Error(`Approval ledger has unknown workflow stage: ${stageName}.`);
     stages[stageName] = parseStageRecord(stageName, record);
   }
-  const ledger: ApprovalLedger = { schema: 1, workflowId: value.workflowId, stages };
+  const ledger: ApprovalLedger = {
+    schema: 1,
+    workflowId: value.workflowId,
+    stages,
+    ...(value.lane === "light" && typeof value.laneReason === "string"
+      ? { lane: "light" as const, laneReason: value.laneReason }
+      : {}),
+  };
   validateLedger(ledger);
   return ledger;
 }
@@ -301,6 +367,16 @@ function validateWorkflowSession(session: WorkflowSession): void {
     throw new Error("Workflow session status must be active or complete.");
   assertTimestamp(session.startedAt);
   assertTimestamp(session.updatedAt);
+  if (session.lane !== undefined && session.lane !== "light")
+    throw new Error("Workflow session lane must be light when present.");
+  if (session.lane === "light" && !session.laneReason)
+    throw new Error("Light-lane sessions require a lane reason.");
+  if (session.laneEscalatedAt !== undefined) {
+    assertTimestamp(session.laneEscalatedAt);
+    if (session.lane !== "light")
+      throw new Error("Lane escalation is only meaningful on light-lane sessions.");
+    if (!session.laneEscalationReason) throw new Error("Lane escalation requires a reason.");
+  }
 }
 
 function withStage(
@@ -377,6 +453,10 @@ function validateLedger(ledger: ApprovalLedger): void {
   if (ledger.schema !== 1 || !isRecord(ledger.stages))
     throw new Error("Approval ledger schema must be version 1 with a stages mapping.");
   assertWorkflowId(ledger.workflowId);
+  if (ledger.lane !== undefined && ledger.lane !== "light")
+    throw new Error("Approval ledger lane must be light when present.");
+  if (ledger.lane === "light" && !ledger.laneReason)
+    throw new Error("Light-lane ledgers require a lane reason.");
   for (const [stage, record] of Object.entries(ledger.stages)) {
     if (!isApprovalStage(stage))
       throw new Error(`Approval ledger has unknown workflow stage: ${stage}.`);

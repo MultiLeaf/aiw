@@ -1,6 +1,6 @@
 # OPP-001: Proportional ceremony — light lane for small, understood work
 
-- Status: Proposed
+- Status: Implemented (2026-10-30, plan Wave 4)
 - Priority: P2
 - Added: 2026-10-30
 - Decision: [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md), Decision A
