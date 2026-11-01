@@ -1,11 +1,15 @@
 name: Auto-tag releases
 
 # When a pull request merges into main, the release version in package.json
-# decides what happens next: if no tag exists for that version, create it.
-# Creating the tag triggers release.yml, which validates and publishes.
+# decides what happens next: if no tag exists for that version, create it and
+# invoke the release workflow directly. Invoking release.yml via `uses` (a
+# reusable-workflow call) is deliberate: events created with the default
+# GITHUB_TOKEN — such as a tag pushed through the API — do not trigger other
+# workflows, so a tag created here would otherwise never publish. This bug
+# silently swallowed the v0.9.1 release and delayed v0.10.0.
 # The intended flow: contributors open a PR with the version bump and
 # changelog entry; a maintainer reviews and merges; the release follows
-# automatically. No manual tagging, no environment approvals.
+# automatically. No manual tagging, no PAT, no environment approvals.
 
 on:
   push:
@@ -13,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: auto-tag-main
@@ -22,11 +27,15 @@ jobs:
   tag:
     if: github.repository == 'MultiLeaf/aiw'
     runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.tag.outputs.created }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Tag the merged version if it is not tagged yet
+        id: tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -34,10 +43,23 @@ jobs:
           TAG="v${VERSION}"
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "${TAG} already exists; nothing to release."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Creating ${TAG} at $GITHUB_SHA"
           gh api --method POST repos/${GITHUB_REPOSITORY}/git/refs \
             -f "ref=refs/tags/${TAG}" -f "sha=${GITHUB_SHA}"
-      - name: Release check runs in the Release workflow
-        run: echo "Tag pushed; release.yml validates and publishes v$(node -p 'require("./package.json").version')."
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    if: needs.tag.outputs.created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    secrets: inherit
+    permissions:
+      contents: write
+      id-token: write

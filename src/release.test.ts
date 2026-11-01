@@ -55,11 +55,25 @@ describe("release package", () => {
     expect(workflow).toContain("git merge-base --is-ancestor HEAD origin/main");
     expect(workflow).toContain("npm ci");
     expect(workflow).toContain("npm run release:check");
-    expect(workflow).toContain('npm run release:publish-check -- --tag="$GITHUB_REF_NAME"');
+    expect(workflow).toContain('npm run release:publish-check -- --tag="$TAG"');
+    expect(workflow).toContain("workflow_call:");
+    expect(workflow).toContain("TAG: ${{ inputs.tag || github.ref_name }}");
+    expect(workflow).toContain("ref: ${{ inputs.tag || github.ref }}");
     expect(workflow).toContain("npm publish --access public --provenance");
     expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
     expect(workflow).toContain("github-release:");
     expect(workflow).toContain("needs: publish");
     expect(workflow).toContain("gh release create");
+  });
+
+  it("auto-tag invokes the release workflow directly (GITHUB_TOKEN events do not trigger workflows)", async () => {
+    const autoTag = await readFile(resolve(".github/workflows/auto-tag.yml"), "utf8");
+    expect(autoTag).toContain("uses: ./.github/workflows/release.yml");
+    expect(autoTag).toContain("tag: ${{ needs.tag.outputs.tag }}");
+    expect(autoTag).toContain("secrets: inherit");
+    expect(autoTag).toContain("id-token: write");
+    expect(autoTag).toContain('created=false" >> "$GITHUB_OUTPUT"');
+    expect(autoTag).toContain('created=true" >> "$GITHUB_OUTPUT"');
+    expect(autoTag).toContain("needs.tag.outputs.created == 'true'");
   });
 });

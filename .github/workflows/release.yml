@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release, for example v0.11.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -13,10 +19,13 @@ jobs:
   publish:
     environment: npm
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -26,7 +35,7 @@ jobs:
       - run: git fetch origin main && git merge-base --is-ancestor HEAD origin/main
       - run: npm ci
       - run: npm run release:check
-      - run: npm run release:publish-check -- --tag="$GITHUB_REF_NAME"
+      - run: npm run release:publish-check -- --tag="$TAG"
       - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -36,15 +45,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
       - name: Create GitHub release from the changelog
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           awk -v ver="$VERSION" '
             index($0, "## [" ver "]") == 1 { found = 1; next }
             found && /^## \[/ { exit }
@@ -54,4 +66,4 @@ jobs:
             echo "No changelog section found for $VERSION" >&2
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" --title "AI Workflow v${VERSION}" --notes-file /tmp/notes.md
+          gh release create "$TAG" --title "AI Workflow v${VERSION}" --notes-file /tmp/notes.md

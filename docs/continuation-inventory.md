@@ -19,3 +19,6 @@ Every blocking `aiw` exit carries a stable reason code plus either an exact runn
 | `approval_gate_missing`         | No passing quality gate is recorded for this stage; gate it before approving.                 | runnable command |
 | `lane_escalation_required`      | Light-lane workflows do not author stage artifacts; escalate to the full lane to continue.    | explicit action  |
 | `light_evidence_missing`        | A light-lane workflow cannot complete without at least one recorded validation entry.         | explicit action  |
+| `workflow_still_active`         | A workflow is already active; finish or archive it before starting another.                   | explicit action  |
+| `workflow_not_active`           | No SDD workflow is active for this command to operate on.                                     | runnable command |
+| `workflow_complete`             | This workflow is already complete; start a new workflow to continue working.                  | runnable command |

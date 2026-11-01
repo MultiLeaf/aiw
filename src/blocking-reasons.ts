@@ -20,6 +20,9 @@ export const BLOCKING_REASON_CODES = [
   "approval_gate_missing",
   "lane_escalation_required",
   "light_evidence_missing",
+  "workflow_still_active",
+  "workflow_not_active",
+  "workflow_complete",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -171,6 +174,24 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
       action(
         "Run `aiw task evidence --validation=<command and result>` at least once, then `aiw workflow complete`.",
       ),
+  },
+  workflow_still_active: {
+    code: "workflow_still_active",
+    description: "A workflow is already active; finish or archive it before starting another.",
+    continuation: () =>
+      action(
+        "Run `aiw workflow complete` once every stage resolves, or archive an obsolete one with `aiw workflow abandon --reason=<why>`.",
+      ),
+  },
+  workflow_not_active: {
+    code: "workflow_not_active",
+    description: "No SDD workflow is active for this command to operate on.",
+    continuation: () => command("aiw workflow start"),
+  },
+  workflow_complete: {
+    code: "workflow_complete",
+    description: "This workflow is already complete; start a new workflow to continue working.",
+    continuation: () => command("aiw workflow start"),
   },
 };
 

@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-31
+
+### Added
+
+- `aiw workflow abandon --reason=<why>` archives an obsolete active workflow: the session (with `status: abandoned` and the recorded reason) and the approval ledger move under `.aiw/checkpoints/`, the active slot is freed, and a new workflow can start immediately. Reason is required and audited.
+- Typed blocking reasons for workflow lifecycle: `workflow_still_active` (starting over an active workflow now names `aiw workflow complete` **or** `aiw workflow abandon --reason=...` as the way out — previously a prose-only dead end found during field testing), `workflow_not_active`, and `workflow_complete`.
+
+### Fixed
+
+- Release automation now actually releases: the Auto-tag workflow creates the version tag **and invokes the Release workflow directly** (reusable-workflow call). Previously the tag was created through the API with the default `GITHUB_TOKEN`, whose events do not trigger other workflows — so merging a version bump silently published nothing. This swallowed the v0.9.1 release (never published to npm) and delayed v0.10.0 until a manual tag re-push.
+
 ## [0.10.0] - 2026-10-30
 
 ### Added
