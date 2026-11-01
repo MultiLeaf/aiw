@@ -3201,6 +3201,85 @@ describe("aiw risk assess", () => {
     expect(result.error).toContain("git");
   });
 });
+describe("workflow abandon (field feedback fix)", () => {
+  it("refuses without an active workflow and names the way to start one", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["workflow", "abandon", "--reason=obsolete"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("[reason: workflow_not_active]");
+    expect(result.error).toContain("`aiw workflow start`");
+  });
+
+  it("requires a reason", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=abandon-no-reason"], cwd);
+    const result = await run(["workflow", "abandon"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Usage: aiw workflow abandon --reason=");
+  });
+
+  it("archives the active workflow with the abandonment reason and frees the slot", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=abandon-me-1"], cwd);
+    const result = await run(
+      ["workflow", "abandon", "--reason=obsolete: superseded by ticket TEAM-9"],
+      cwd,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("abandoned");
+    expect(result.output).toContain("checkpoints/workflow-abandon-me-1-approvals.yml");
+    expect(existsSync(join(cwd, ".aiw", "workflow.yml"))).toBe(false);
+    expect(existsSync(join(cwd, ".aiw", "approvals.yml"))).toBe(false);
+    const session = await readFile(
+      join(cwd, ".aiw", "checkpoints", "workflow-abandon-me-1-session.yml"),
+      "utf8",
+    );
+    expect(session).toContain("status: abandoned");
+    expect(session).toContain("obsolete: superseded by ticket TEAM-9");
+    const ledger = await readFile(
+      join(cwd, ".aiw", "checkpoints", "workflow-abandon-me-1-approvals.yml"),
+      "utf8",
+    );
+    expect(ledger).toContain("workflowId: abandon-me-1");
+  });
+
+  it("lets a new workflow start after abandoning", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=abandon-me-2"], cwd);
+    await run(["workflow", "abandon", "--reason=stale"], cwd);
+    const started = await run(["workflow", "start", "--id=fresh-after-abandon"], cwd);
+    expect(started.exitCode).toBe(0);
+    expect((await run(["workflow", "status"], cwd)).output).toContain("fresh-after-abandon");
+    // the archived id stays reusable-proof: starting the archived id again is rejected
+    const reused = await run(["workflow", "start", "--id=abandon-me-2"], cwd);
+    expect(reused.exitCode).toBe(1);
+  });
+
+  it("gives the still-active block a typed reason naming abandon as the way out", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=still-active-1"], cwd);
+    const result = await run(["workflow", "start", "--id=still-active-2"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("[reason: workflow_still_active]");
+    expect(result.error).toContain("`aiw workflow abandon --reason=");
+  });
+
+  it("exposes the still-active block as machine-readable json", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=still-active-3"], cwd);
+    const result = await run(["workflow", "start", "--id=still-active-4", "--json"], cwd);
+    const envelope = JSON.parse(result.output ?? "{}");
+    expect(envelope.reason_code).toBe("workflow_still_active");
+    expect(envelope.next_action).toContain("aiw workflow abandon");
+  });
+});
+
 describe("light lane (OPP-001)", () => {
   it("starts a light task, prints the resume test, and records the rationale in the ledger", async () => {
     const cwd = await project();

@@ -25,7 +25,7 @@ export type ApprovalLedger = {
 export type WorkflowSession = {
   schema: 1;
   workflowId: string;
-  status: "active" | "complete";
+  status: "active" | "complete" | "abandoned";
   startedAt: string;
   updatedAt: string;
   ticket?: string;
@@ -37,6 +37,8 @@ export type WorkflowSession = {
   /** Presence means the workflow escalated to the full lane (effective lane: full). */
   laneEscalatedAt?: string;
   laneEscalationReason?: string;
+  /** Set when the workflow is archived via `aiw workflow abandon`. */
+  abandonedReason?: string;
 };
 
 /** The lane that currently governs stage commands: escalation moves light → full. */
@@ -86,6 +88,7 @@ const SESSION_KEYS = new Set([
   "laneReason",
   "laneEscalatedAt",
   "laneEscalationReason",
+  "abandonedReason",
 ]);
 
 export function createApprovalLedger(
@@ -120,8 +123,8 @@ export function parseWorkflowSession(content: string): WorkflowSession {
     if (!SESSION_KEYS.has(key)) throw new Error(`Workflow session has unknown field: ${key}.`);
   if (typeof value.workflowId !== "string")
     throw new Error("Workflow session requires a workflowId.");
-  if (value.status !== "active" && value.status !== "complete")
-    throw new Error("Workflow session status must be active or complete.");
+  if (value.status !== "active" && value.status !== "complete" && value.status !== "abandoned")
+    throw new Error("Workflow session status must be active, complete, or abandoned.");
   if (typeof value.startedAt !== "string" || typeof value.updatedAt !== "string")
     throw new Error("Workflow session requires start and update timestamps.");
   if (value.ticket !== undefined && typeof value.ticket !== "string")
@@ -143,6 +146,9 @@ export function parseWorkflowSession(content: string): WorkflowSession {
   const laneEscalationReason = value.laneEscalationReason;
   if (laneEscalationReason !== undefined && typeof laneEscalationReason !== "string")
     throw new Error("Workflow session lane escalation reason must be a string.");
+  const abandonedReason = value.abandonedReason;
+  if (abandonedReason !== undefined && typeof abandonedReason !== "string")
+    throw new Error("Workflow session abandonment reason must be a string.");
   const session: WorkflowSession = {
     schema: 1,
     workflowId: value.workflowId,
@@ -155,6 +161,7 @@ export function parseWorkflowSession(content: string): WorkflowSession {
     ...(laneReason === undefined ? {} : { laneReason }),
     ...(laneEscalatedAt === undefined ? {} : { laneEscalatedAt }),
     ...(laneEscalationReason === undefined ? {} : { laneEscalationReason }),
+    ...(abandonedReason === undefined ? {} : { abandonedReason }),
   };
   validateWorkflowSession(session);
   return session;
@@ -363,8 +370,12 @@ export function assertWorkflowId(value: string): void {
 function validateWorkflowSession(session: WorkflowSession): void {
   if (session.schema !== 1) throw new Error("Workflow session schema must be version 1.");
   assertWorkflowId(session.workflowId);
-  if (session.status !== "active" && session.status !== "complete")
-    throw new Error("Workflow session status must be active or complete.");
+  if (
+    session.status !== "active" &&
+    session.status !== "complete" &&
+    session.status !== "abandoned"
+  )
+    throw new Error("Workflow session status must be active, complete, or abandoned.");
   assertTimestamp(session.startedAt);
   assertTimestamp(session.updatedAt);
   if (session.lane !== undefined && session.lane !== "light")
@@ -377,6 +388,8 @@ function validateWorkflowSession(session: WorkflowSession): void {
       throw new Error("Lane escalation is only meaningful on light-lane sessions.");
     if (!session.laneEscalationReason) throw new Error("Lane escalation requires a reason.");
   }
+  if (session.status === "abandoned" && !session.abandonedReason)
+    throw new Error("Abandoned sessions require an abandonment reason.");
 }
 
 function withStage(

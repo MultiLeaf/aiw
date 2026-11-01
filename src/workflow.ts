@@ -285,10 +285,11 @@ function beginWorkflowSession(
   if (fs.exists(sessionPath)) {
     const previous = parseWorkflowSession(fs.read(sessionPath));
     if (previous.status === "active")
-      return {
-        exitCode: 1,
-        error: `Workflow ${previous.workflowId} is still active. Complete it before starting another.`,
-      };
+      throw new BlockingError(
+        describeBlockingReason("workflow_still_active", {
+          detail: `Workflow ${previous.workflowId} is still active. Complete it before starting another.`,
+        }),
+      );
     if (!fs.exists(ledgerPath))
       return { exitCode: 1, error: "Completed workflow is missing its approval ledger." };
     const archive = join(aiw, `checkpoints/workflow-${previous.workflowId}-approvals.yml`);
@@ -533,7 +534,10 @@ export async function runCommand(
       const action = args[1];
       const sessionPath = join(aiw, "workflow.yml");
       if (action === "start") {
-        const options = parseNamedOptions(args.slice(2), ["id"]);
+        const options = parseNamedOptions(
+          args.slice(2).filter((argument) => argument !== "--json"),
+          ["id"],
+        );
         if (!options) return { exitCode: 1, error: "Usage: aiw workflow start [--id=workflow-id]" };
         return beginWorkflowSession(fs, aiw, { id: options.id });
       }
@@ -546,6 +550,54 @@ export async function runCommand(
         return {
           exitCode: 0,
           output: `Workflow ${session.workflowId} (${session.status})\n${stages.join("\n")}\n${workflowNextAction(ledger)}`,
+        };
+      }
+      if (action === "abandon") {
+        const options = parseNamedOptions(args.slice(2), ["reason"]);
+        if (!options?.reason)
+          return { exitCode: 1, error: "Usage: aiw workflow abandon --reason=why-obsolete" };
+        if (options.reason.length > 500 || /[\r\n]/.test(options.reason))
+          return {
+            exitCode: 1,
+            error: "--reason must be a single line of at most 500 bytes.",
+          };
+        if (!fs.exists(sessionPath))
+          return {
+            exitCode: 1,
+            error:
+              "No SDD workflow is active; start one with `aiw workflow start` or `aiw task start --ticket=TEAM-123`. [reason: workflow_not_active] Terminal: no automatic continuation beyond starting a workflow.",
+          };
+        const { session } = readActiveWorkflow(aiw, fs);
+        const ledgerPath = join(aiw, "approvals.yml");
+        const sessionArchive = join(
+          aiw,
+          "checkpoints",
+          `workflow-${session.workflowId}-session.yml`,
+        );
+        const ledgerArchive = join(
+          aiw,
+          "checkpoints",
+          `workflow-${session.workflowId}-approvals.yml`,
+        );
+        fs.mkdir(join(aiw, "checkpoints"));
+        const now = new Date().toISOString();
+        const archivedSession = {
+          ...session,
+          status: "abandoned" as const,
+          abandonedReason: options.reason,
+          updatedAt: now,
+        };
+        fs.write(sessionArchive, serializeWorkflowSession(archivedSession));
+        if (fs.exists(ledgerPath)) fs.write(ledgerArchive, fs.read(ledgerPath));
+        fs.remove?.(sessionPath);
+        if (fs.exists(ledgerPath)) fs.remove?.(ledgerPath);
+        return {
+          exitCode: 0,
+          output:
+            `Workflow ${session.workflowId} abandoned (${options.reason}).\n` +
+            `Session archived: ${sessionArchive}\n` +
+            (fs.exists(ledgerArchive) ? `Approval ledger archived: ${ledgerArchive}\n` : "") +
+            "Start a new one when ready.",
         };
       }
       if (action === "complete") {
@@ -3182,7 +3234,11 @@ function readWorkflowState(
   if (session.workflowId !== ledger.workflowId)
     throw new Error("Workflow session and approval ledger IDs do not match; run doctor.");
   if (requireActive && session.status !== "active")
-    throw new Error(`Workflow ${session.workflowId} is complete; start a new workflow first.`);
+    throw new BlockingError(
+      describeBlockingReason("workflow_complete", {
+        detail: `Workflow ${session.workflowId} is complete; start a new workflow first.`,
+      }),
+    );
   const changed = APPROVAL_STAGES.find((stage) => {
     const record = ledger.stages[stage];
     if (!record?.artifactHash || !["pending-human", "approved"].includes(record.status))
