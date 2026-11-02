@@ -19,6 +19,10 @@ Suggested starting order: **OPP-004 → OPP-002 → OPP-006 → OPP-001 → OPP-
 
 OPP-007 and OPP-008 are **model-integration addenda**: deliberately left for after field exposure — their priority should be set by real usage pain, not speculation. All model features respect the spec's NFR contracts: deterministic floor first, models advisory-only, unconfigured = byte-identical offline behavior.
 
+## Trend-sourced addendum (2026-11)
+
+OPP-009 through OPP-012 derive from a November 2026 landscape scan (spec-kit 145K★ shipping independent entry points; Spec Kitty / Conductor normalizing isolated-worktree parallel agents; promptfoo 26K★ establishing artifact evals; Agent OS 5.5K★ on standards discovery). The scan also **validated** the existing positioning: spec-driven development and human-in-the-loop governance are growing markets where AI Workflow's evidence ledger is the differentiator. Deliberately not chased: generic memory layers (audit-first philosophy), cloud-agent infrastructure (harness territory), commercial AI-review feature parity.
+
 ## Planning
 
 The implementation is planned as six waves in the project's own SDD format:
