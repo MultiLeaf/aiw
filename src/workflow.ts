@@ -233,6 +233,13 @@ import {
   hasCoveringTest,
   runRiskAssess,
 } from "./risk-assess.js";
+import {
+  digestPath,
+  digestFreshness,
+  extractDigest,
+  formatDigestLine,
+  serializeDigest,
+} from "./digest.js";
 
 function installationRequired(): CommandResult {
   return {
@@ -767,7 +774,15 @@ export async function runCommand(
           updatedAt: new Date().toISOString(),
         });
         fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
-        return { exitCode: 0, output: `Human approval recorded for ${workflowStage}.` };
+        fs.mkdir(join(aiw, "digests"));
+        fs.write(
+          digestPath(aiw, workflowStage),
+          serializeDigest(extractDigest(workflowStage, fs.read(artifact), artifactHash)),
+        );
+        return {
+          exitCode: 0,
+          output: `Human approval recorded for ${workflowStage}. Digest available: aiw digest --stage=${workflowStage}`,
+        };
       }
       const options = parseNamedOptions(rest, ["reason"]);
       if (!options?.reason)
@@ -2390,6 +2405,28 @@ export async function runCommand(
       fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
+    if (command === "digest") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
+      const stages = stageArg ? [stageArg as HumanApprovalStage] : [...APPROVAL_STAGES];
+      const lines: string[] = [];
+      let served = 0;
+      for (const stage of stages) {
+        const artifactPath = approvalArtifactPath(aiw, stage);
+        const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
+        if (freshness.state === "missing") continue;
+        lines.push(formatDigestLine(freshness));
+        served += 1;
+      }
+      if (lines.length === 0)
+        return {
+          exitCode: 0,
+          output:
+            "No digests yet: digests appear when stages pass their gate and receive human approval.",
+        };
+      lines.push(`served: ${served} digest${served === 1 ? "" : "s"} (full reads on demand)`);
+      return { exitCode: 0, output: lines.join("\n") };
+    }
     if (command === "risk") {
       if (args[1] !== "assess")
         return { exitCode: 1, error: "Usage: aiw risk assess [--base-ref=ref] [--json]" };
@@ -2761,6 +2798,14 @@ export async function runCommand(
         }
         const output = args.includes("--task") ? retrieveTaskContext(store) : composeContext(store);
         const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
+        const digestLines: string[] = [];
+        if (fs.exists(join(aiw, "workflow.yml"))) {
+          for (const stage of APPROVAL_STAGES) {
+            const artifactPath = approvalArtifactPath(aiw, stage);
+            const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
+            if (freshness.state !== "missing") digestLines.push(formatDigestLine(freshness));
+          }
+        }
         const budgetArg = args.find((argument) => argument.startsWith("--budget="))?.slice(9);
         if (stageArg) {
           const budget = Number(budgetArg ?? parseContextBudgets(aiw, fs)[stageArg]);
@@ -2774,9 +2819,10 @@ export async function runCommand(
                 }),
               );
           }
+          const digestBlock = digestLines.length > 0 ? `\n${digestLines.join("\n")}` : "";
           return {
             exitCode: 0,
-            output: `${output}\n\nstage: ${stageArg} · ~${Math.ceil(output.length / 4)} tokens${Number.isFinite(budget) && budget > 0 ? ` · ceiling ${budget}` : " · no ceiling declared"}`,
+            output: `${output}${digestBlock}\n\nstage: ${stageArg} · ~${Math.ceil(output.length / 4)} tokens${Number.isFinite(budget) && budget > 0 ? ` · ceiling ${budget}` : " · no ceiling declared"}`,
           };
         }
         return { exitCode: 0, output };

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseDocument, stringify } from "yaml";
 import { HUMAN_APPROVAL_STAGES, type HumanApprovalStage } from "./types.js";
+export type { HumanApprovalStage };
 
 export const APPROVAL_STAGES = HUMAN_APPROVAL_STAGES;
 
