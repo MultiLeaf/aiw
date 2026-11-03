@@ -10,7 +10,6 @@ import {
   executeOrchestrationPlan,
   listManagedWorktrees,
   removeWorktrees,
-  worktreeDirectory,
   type OrchestrationPlan,
 } from "./orchestration.js";
 
@@ -106,7 +105,7 @@ describe("OPP-010 worktree isolation", () => {
   });
 
   it("exposes --isolate through the CLI with an injected adapter (e2e)", async () => {
-    const { root, aiw } = gitRepo();
+    const { root } = gitRepo();
     writeFileSync(
       join(root, "plan.yml"),
       `schema: 1\nid: cli-iso\ntasks:\n  - id: TASK-001\n    agent: codex\n    prompt: "work in isolation"\n    depends_on: []\n`,
@@ -135,7 +134,7 @@ describe("OPP-010 worktree isolation", () => {
   });
 
   it("keeps failed-task worktrees for diagnosis", async () => {
-    const { root, aiw } = gitRepo();
+    const { root } = gitRepo();
     writeFileSync(
       join(root, "plan.yml"),
       `schema: 1\nid: cli-iso-fail\ntasks:\n  - id: TASK-001\n    agent: codex\n    prompt: "will fail"\n    depends_on: []\n`,
