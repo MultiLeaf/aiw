@@ -1,20 +1,112 @@
 schema: 1
 recommendations:
-  - id: tdd-development
-    provider: multileaf
-    confidence: 1
-    selected: false
-    evidence: ["testing:vitest"]
-    rationale: The project uses automated tests and should preserve test-first development.
   - id: typescript-quality
     provider: multileaf
     confidence: 1
+    decision_relevance: 0.9686195704870232
+    decision_confidence: 0.7987319070847939
     selected: true
+    requires: []
+    resources: [agents/typescript-engineer, rules/quality-gates]
+    selected_resources: []
     evidence: ["language:typescript"]
-    rationale: TypeScript is present and benefits from strict, maintainable code-quality rules.
-  - id: vitest-testing
+    rationale: TypeScript is detected; add its specialist and tailor quality guidance to the repository's tools.
+  - id: tdd-development
     provider: multileaf
     confidence: 1
+    decision_relevance: 0.9105453978311193
+    decision_confidence: 0.5653532744974261
+    selected: true
+    requires: [verification]
+    resources: [skills/tdd-development, rules/tdd-policy, agents/test-engineer, hooks/pre-implementation, hooks/post-implementation, templates/test-plan]
+    selected_resources: []
+    evidence: ["testing:vitest", "test-command:vitest run"]
+    rationale: The project uses automated tests and can apply test-first development with its existing runner.
+  - id: verification
+    provider: multileaf
+    confidence: 1
+    decision_relevance: 0.8795611834053839
+    decision_confidence: 0.4693790839471548
+    selected: true
+    requires: [implementation-planning]
+    resources: [skills/verification, agents/quality-reviewer, templates/test-plan, templates/verification-report]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: Verification guidance can use the project's detected test runner and quality commands.
+  - id: code-review
+    provider: multileaf
+    confidence: 0.86
+    decision_relevance: 0.6095241625665028
+    decision_confidence: 0.034894063330029756
+    selected: true
+    requires: [verification]
+    resources: [skills/code-review, agents/quality-reviewer]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: A consistent review checklist helps validate changes against this repository's conventions.
+  - id: security-review
+    provider: multileaf
+    confidence: 0.83
+    decision_relevance: 0.44842626854777434
+    decision_confidence: 0.007688371451628928
+    selected: true
+    requires: []
+    resources: [skills/security-review, rules/security-policy, rules/dependency-policy, agents/security-reviewer, templates/security-review]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: The detected stack and package tooling benefit from project-aware security and dependency review.
+  - id: technical-design
+    provider: multileaf
+    confidence: 0.82
+    decision_relevance: 0.3530935289036874
+    decision_confidence: 0.06319946393560216
     selected: false
-    evidence: ["testing:vitest"]
-    rationale: Vitest is configured and can be integrated into the verification workflow.
+    requires: []
+    resources: [skills/technical-design, agents/technical-architect, templates/technical-design, templates/decision-record]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: Architecture changes benefit from explicit alternatives, trade-offs, and decision records.
+  - id: implementation-planning
+    provider: multileaf
+    confidence: 0.88
+    decision_relevance: 0.34953273595379414
+    decision_confidence: 0.06634994347198109
+    selected: true
+    requires: [requirements-specification]
+    resources: [skills/implementation-planning, agents/technical-architect, templates/implementation-plan]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: A traceable implementation plan can connect project requirements, tests, risks, and validation.
+  - id: ticket-driven-development
+    provider: multileaf
+    confidence: 0.9
+    decision_relevance: 0.26284183737131667
+    decision_confidence: 0.1689954637840656
+    selected: true
+    requires: []
+    resources: [skills/ticket, templates/task]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: Work often arrives as a ticket or an already-clear requirement; this entry point starts the SDD flow from the ticket without a brainstorming phase.
+  - id: brainstorming
+    provider: multileaf
+    confidence: 0.92
+    decision_relevance: 0.2247353007352621
+    decision_confidence: 0.23127975621625962
+    selected: false
+    requires: []
+    resources: [skills/brainstorming, rules/language-policy, templates/brainstorm]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: A project-specific brainstorming flow helps clarify goals and constraints before implementation.
+  - id: requirements-specification
+    provider: multileaf
+    confidence: 0.9
+    decision_relevance: 0.1871326821624266
+    decision_confidence: 0.30456543157045124
+    selected: true
+    requires: []
+    resources: [skills/requirements-specification, agents/requirements-analyst, templates/specification]
+    selected_resources: []
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: The project can use explicit requirements and acceptance criteria before changes are planned.

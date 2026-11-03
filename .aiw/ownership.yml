@@ -1,0 +1,350 @@
+schema: 1
+files:
+  - path: .agents/agents/quality-reviewer/quality-reviewer.md
+    checksum: sha256-f003d881ead6148df61aad3fcb95ff1358a53915b5d80f037d3ce35a1683c12e
+    kind: target-resource
+    target: codex
+    resourceType: agents
+    resourceId: quality-reviewer
+  - path: .agents/agents/requirements-analyst/requirements-analyst.md
+    checksum: sha256-4041b4fad200c35ed59119fc500d79cd54cc4248eaf16e5d35ffc6eb471c2087
+    kind: target-resource
+    target: codex
+    resourceType: agents
+    resourceId: requirements-analyst
+  - path: .agents/agents/security-reviewer/security-reviewer.md
+    checksum: sha256-3d9d3470e3e41f92d235bc48fa718d2f37d06d61edcbd4b404ce82307dda7df5
+    kind: target-resource
+    target: codex
+    resourceType: agents
+    resourceId: security-reviewer
+  - path: .agents/agents/technical-architect/technical-architect.md
+    checksum: sha256-b6999a64e854417a61f13ad72861faf50aaaccae0e899e060e6ab5dcfb8114e4
+    kind: target-resource
+    target: codex
+    resourceType: agents
+    resourceId: technical-architect
+  - path: .agents/agents/test-engineer/test-engineer.md
+    checksum: sha256-2eb3c19395f99ea933c9f7a5364eb599c228f651c9a49292ebc2cbda724603d5
+    kind: target-resource
+    target: codex
+    resourceType: agents
+    resourceId: test-engineer
+  - path: .agents/agents/typescript-engineer/typescript-engineer.md
+    checksum: sha256-f8cdf17863ddc27324b5cab98b0bde6f61907b5a78442cbe03e08cdbdaac1c73
+    kind: target-resource
+    target: codex
+    resourceType: agents
+    resourceId: typescript-engineer
+  - path: .agents/hooks/post-implementation/post-implementation.md
+    checksum: sha256-bbbdc4fed5f2133dcc6868ac13b07c1d95f3f49c2609d6ca51b80d0e6756e5c5
+    kind: target-resource
+    target: codex
+    resourceType: hooks
+    resourceId: post-implementation
+  - path: .agents/hooks/pre-implementation/pre-implementation.md
+    checksum: sha256-4d380a634a404211f0e262f9ba07c6e99d9ff07b3a0fb4277e3f003f8045ae08
+    kind: target-resource
+    target: codex
+    resourceType: hooks
+    resourceId: pre-implementation
+  - path: .agents/rules/dependency-policy/dependency-policy.md
+    checksum: sha256-43a99a552ca4a37e62c5bf06c15e29b15fe784c2de2e7251364539ff3069d1ea
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: dependency-policy
+  - path: .agents/rules/project-quality/project-quality.md
+    checksum: sha256-7afff9546b5e0999e54b3c1f16b632386ea8ed27ed53ea35795ab3119b0e0559
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: project-quality
+  - path: .agents/rules/quality-gates/quality-gates.md
+    checksum: sha256-8119ede7ea7ece3cb57894c0bdad7dbccb30e424bd0af7077b07aadbd4ac617a
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: quality-gates
+  - path: .agents/rules/security-policy/security-policy.md
+    checksum: sha256-bfbe94c983abf85754777ff6a0f51417a8545efd134f8dab276578510d42f6bb
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: security-policy
+  - path: .agents/rules/tdd-policy/tdd-policy.md
+    checksum: sha256-8fcb7eecb1264a0fc3d978b5a46ff5c36bb35354caec0c3d5e9dab2db73de793
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: tdd-policy
+  - path: .agents/rules/tdd-project-policy/tdd-project-policy.md
+    checksum: sha256-d03b64c344da677f251ed880ea55a39324a7cb390088ed344e15cbc9c9f275f1
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: tdd-project-policy
+  - path: .agents/skills/ai-init/SKILL.md
+    checksum: sha256-3be0027ca7e0667edd458bf64eee0add8cfef4f7b98842c94839f0a6f2a9520c
+    kind: ai-init
+    target: codex
+    resourceType: skills
+    resourceId: ai-init
+  - path: .agents/skills/code-review/SKILL.md
+    checksum: sha256-bb4225f3885671e68f91568fbd217950fe056dff150f35749ce94665ed6ac7f8
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: code-review
+  - path: .agents/skills/implementation-planning/SKILL.md
+    checksum: sha256-cf4b8f02bf17bba6af5347902a7d56274eaac73adc1789d3b09bb83cd5661287
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: implementation-planning
+  - path: .agents/skills/requirements-specification/SKILL.md
+    checksum: sha256-0840f669dc0c176646bbd4d49ce9c4c5907601be5946dc776ef2ffa5a29329e8
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: requirements-specification
+  - path: .agents/skills/security-review/SKILL.md
+    checksum: sha256-2c8fb5f5c26f03c40786de9b581d01f19c38a87132255764fb1a407effe5bf38
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: security-review
+  - path: .agents/skills/tdd-development/SKILL.md
+    checksum: sha256-a4066ebad2d36f3baab005ba1cd9ce01e044869b2300cb61d607a8c23a378438
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: tdd-development
+  - path: .agents/skills/ticket/SKILL.md
+    checksum: sha256-16aa4196141c5b016184420fd1498f97ceb22668e4333e8fda6f4163eb6e87a9
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: ticket
+  - path: .agents/skills/verification/SKILL.md
+    checksum: sha256-c9fcb7394c6d468a8fee49df257dbf18addec0bffc5c8430b773f24a87025a66
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: verification
+  - path: .agents/templates/implementation-plan/implementation-plan.md
+    checksum: sha256-268a10328e1de1bb4abfb1e76ac619f619c6a79673c638089b1ad6c098387dea
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: implementation-plan
+  - path: .agents/templates/security-review/security-review.md
+    checksum: sha256-9ee3251e4483a16b4a39410002fa08fcf044ac5ab6fe8faccc901531b850d399
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: security-review
+  - path: .agents/templates/specification/specification.md
+    checksum: sha256-e6371a7d2e6c7d42b860354b7691b13c72b3cd3cf7cb4809f0252247ab99f170
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: specification
+  - path: .agents/templates/task/task.md
+    checksum: sha256-86e6b20f3136d10ed72a14585f37d84fc5ba889dacc2d3aa2821d92b21d0a25b
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: task
+  - path: .agents/templates/test-plan/test-plan.md
+    checksum: sha256-168c015b4021d471902ac29dee06fd2351f070543a8a30cdf0826ce6895a77dc
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: test-plan
+  - path: .agents/templates/verification-report/verification-report.md
+    checksum: sha256-0441ecd9b6ed03115dbc9e13f86b8714c3bf1f85535eed513412b5452e99d741
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: verification-report
+  - path: .aiw/resources/agents/quality-reviewer/quality-reviewer.md
+    checksum: sha256-f003d881ead6148df61aad3fcb95ff1358a53915b5d80f037d3ce35a1683c12e
+    kind: neutral-resource
+    target: universal
+    resourceType: agents
+    resourceId: quality-reviewer
+  - path: .aiw/resources/agents/requirements-analyst/requirements-analyst.md
+    checksum: sha256-4041b4fad200c35ed59119fc500d79cd54cc4248eaf16e5d35ffc6eb471c2087
+    kind: neutral-resource
+    target: universal
+    resourceType: agents
+    resourceId: requirements-analyst
+  - path: .aiw/resources/agents/security-reviewer/security-reviewer.md
+    checksum: sha256-3d9d3470e3e41f92d235bc48fa718d2f37d06d61edcbd4b404ce82307dda7df5
+    kind: neutral-resource
+    target: universal
+    resourceType: agents
+    resourceId: security-reviewer
+  - path: .aiw/resources/agents/technical-architect/technical-architect.md
+    checksum: sha256-b6999a64e854417a61f13ad72861faf50aaaccae0e899e060e6ab5dcfb8114e4
+    kind: neutral-resource
+    target: universal
+    resourceType: agents
+    resourceId: technical-architect
+  - path: .aiw/resources/agents/test-engineer/test-engineer.md
+    checksum: sha256-2eb3c19395f99ea933c9f7a5364eb599c228f651c9a49292ebc2cbda724603d5
+    kind: neutral-resource
+    target: universal
+    resourceType: agents
+    resourceId: test-engineer
+  - path: .aiw/resources/agents/typescript-engineer/typescript-engineer.md
+    checksum: sha256-f8cdf17863ddc27324b5cab98b0bde6f61907b5a78442cbe03e08cdbdaac1c73
+    kind: neutral-resource
+    target: universal
+    resourceType: agents
+    resourceId: typescript-engineer
+  - path: .aiw/resources/context/project/project.md
+    checksum: sha256-1ac7a124125b29000c37c347796d4a1237104693576aac2a6ff66fd6ff73315e
+    kind: neutral-resource
+    target: universal
+    resourceType: context
+    resourceId: project
+  - path: .aiw/resources/hooks/post-implementation/post-implementation.md
+    checksum: sha256-bbbdc4fed5f2133dcc6868ac13b07c1d95f3f49c2609d6ca51b80d0e6756e5c5
+    kind: neutral-resource
+    target: universal
+    resourceType: hooks
+    resourceId: post-implementation
+  - path: .aiw/resources/hooks/pre-implementation/pre-implementation.md
+    checksum: sha256-4d380a634a404211f0e262f9ba07c6e99d9ff07b3a0fb4277e3f003f8045ae08
+    kind: neutral-resource
+    target: universal
+    resourceType: hooks
+    resourceId: pre-implementation
+  - path: .aiw/resources/rules/dependency-policy/dependency-policy.md
+    checksum: sha256-43a99a552ca4a37e62c5bf06c15e29b15fe784c2de2e7251364539ff3069d1ea
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: dependency-policy
+  - path: .aiw/resources/rules/project-quality/project-quality.md
+    checksum: sha256-7afff9546b5e0999e54b3c1f16b632386ea8ed27ed53ea35795ab3119b0e0559
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: project-quality
+  - path: .aiw/resources/rules/quality-gates/quality-gates.md
+    checksum: sha256-8119ede7ea7ece3cb57894c0bdad7dbccb30e424bd0af7077b07aadbd4ac617a
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: quality-gates
+  - path: .aiw/resources/rules/security-policy/security-policy.md
+    checksum: sha256-bfbe94c983abf85754777ff6a0f51417a8545efd134f8dab276578510d42f6bb
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: security-policy
+  - path: .aiw/resources/rules/tdd-policy/tdd-policy.md
+    checksum: sha256-8fcb7eecb1264a0fc3d978b5a46ff5c36bb35354caec0c3d5e9dab2db73de793
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: tdd-policy
+  - path: .aiw/resources/rules/tdd-project-policy/tdd-project-policy.md
+    checksum: sha256-d03b64c344da677f251ed880ea55a39324a7cb390088ed344e15cbc9c9f275f1
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: tdd-project-policy
+  - path: .aiw/resources/skills/ai-init.md
+    checksum: sha256-3be0027ca7e0667edd458bf64eee0add8cfef4f7b98842c94839f0a6f2a9520c
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: ai-init
+  - path: .aiw/resources/skills/code-review/SKILL.md
+    checksum: sha256-bb4225f3885671e68f91568fbd217950fe056dff150f35749ce94665ed6ac7f8
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: code-review
+  - path: .aiw/resources/skills/implementation-planning/SKILL.md
+    checksum: sha256-cf4b8f02bf17bba6af5347902a7d56274eaac73adc1789d3b09bb83cd5661287
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: implementation-planning
+  - path: .aiw/resources/skills/requirements-specification/SKILL.md
+    checksum: sha256-0840f669dc0c176646bbd4d49ce9c4c5907601be5946dc776ef2ffa5a29329e8
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: requirements-specification
+  - path: .aiw/resources/skills/security-review/SKILL.md
+    checksum: sha256-2c8fb5f5c26f03c40786de9b581d01f19c38a87132255764fb1a407effe5bf38
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: security-review
+  - path: .aiw/resources/skills/tdd-development/SKILL.md
+    checksum: sha256-a4066ebad2d36f3baab005ba1cd9ce01e044869b2300cb61d607a8c23a378438
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: tdd-development
+  - path: .aiw/resources/skills/ticket/SKILL.md
+    checksum: sha256-16aa4196141c5b016184420fd1498f97ceb22668e4333e8fda6f4163eb6e87a9
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: ticket
+  - path: .aiw/resources/skills/verification/SKILL.md
+    checksum: sha256-c9fcb7394c6d468a8fee49df257dbf18addec0bffc5c8430b773f24a87025a66
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: verification
+  - path: .aiw/resources/templates/implementation-plan/implementation-plan.md
+    checksum: sha256-268a10328e1de1bb4abfb1e76ac619f619c6a79673c638089b1ad6c098387dea
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: implementation-plan
+  - path: .aiw/resources/templates/security-review/security-review.md
+    checksum: sha256-9ee3251e4483a16b4a39410002fa08fcf044ac5ab6fe8faccc901531b850d399
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: security-review
+  - path: .aiw/resources/templates/specification/specification.md
+    checksum: sha256-e6371a7d2e6c7d42b860354b7691b13c72b3cd3cf7cb4809f0252247ab99f170
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: specification
+  - path: .aiw/resources/templates/task/task.md
+    checksum: sha256-86e6b20f3136d10ed72a14585f37d84fc5ba889dacc2d3aa2821d92b21d0a25b
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: task
+  - path: .aiw/resources/templates/test-plan/test-plan.md
+    checksum: sha256-168c015b4021d471902ac29dee06fd2351f070543a8a30cdf0826ce6895a77dc
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: test-plan
+  - path: .aiw/resources/templates/verification-report/verification-report.md
+    checksum: sha256-0441ecd9b6ed03115dbc9e13f86b8714c3bf1f85535eed513412b5452e99d741
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: verification-report
+  - path: AGENTS.md
+    checksum: sha256-1ac7a124125b29000c37c347796d4a1237104693576aac2a6ff66fd6ff73315e
+    kind: target-resource
+    target: codex
+    resourceType: context
+    resourceId: project
