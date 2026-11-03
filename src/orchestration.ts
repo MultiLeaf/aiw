@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import { realpathSync } from "node:fs";
+
 export const ORCHESTRATION_AGENTS = ["codex", "claude", "gemini"] as const;
 export type OrchestrationAgent = (typeof ORCHESTRATION_AGENTS)[number];
 export type OrchestrationTask = {
@@ -5,13 +9,100 @@ export type OrchestrationTask = {
   agent: OrchestrationAgent;
   prompt: string;
   dependsOn: string[];
+  /** Set by `orchestrate --isolate`: the per-task git worktree the adapter must run in (OPP-010). */
+  worktree?: string;
 };
 export type OrchestrationPlan = { schema: 1; id: string; tasks: OrchestrationTask[] };
 export type OrchestrationTaskResult = {
   id: string;
   status: "passed" | "failed" | "blocked";
   detail: string;
+  /** OPP-010 isolation evidence, present when the plan ran with --isolate. */
+  worktree?: string;
+  baseCommit?: string;
+  finalCommit?: string;
 };
+
+export type IsolationOptions = {
+  /** Repository root the plan runs in. */
+  root: string;
+  /** AI Workflow state directory (usually `.aiw`). */
+  aiw: string;
+  planId: string;
+};
+
+function git(root: string, args: string[]): string {
+  return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+}
+
+export function worktreeDirectory(aiw: string, planId: string, taskId: string): string {
+  return join(aiw, "worktrees", planId, taskId);
+}
+
+/**
+ * OPP-010: create one branch-per-task worktree from the current HEAD so
+ * parallel tasks never share a working tree. Branches are named
+ * `aiw/<plan>/<task>` so later human merge is explicit.
+ */
+export function createTaskWorktrees(
+  root: string,
+  aiw: string,
+  plan: OrchestrationPlan,
+): Map<string, { worktree: string; baseCommit: string }> {
+  const created = new Map<string, { worktree: string; baseCommit: string }>();
+  const head = git(root, ["rev-parse", "HEAD"]);
+  for (const task of plan.tasks) {
+    const worktree = worktreeDirectory(aiw, plan.id, task.id);
+    const branch = `aiw/${plan.id}/${task.id}`;
+    git(root, ["worktree", "add", "-b", branch, worktree, head]);
+    created.set(task.id, { worktree, baseCommit: head });
+  }
+  return created;
+}
+
+/** Final commit recorded from an isolated worktree (evidence for the checkpoint). */
+export function worktreeFinalCommit(worktree: string): string | undefined {
+  try {
+    return execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Remove isolated worktrees; failed-task worktrees are kept unless forced. */
+export function removeWorktrees(
+  root: string,
+  paths: Iterable<string>,
+  options: { force?: boolean } = {},
+): void {
+  for (const path of paths) {
+    try {
+      git(root, ["worktree", "remove", path, options.force ? "--force" : "--force"]);
+    } catch {
+      // A worktree whose branch has unmerged changes refuses plain removal;
+      // callers decide whether to force. Removal failures are non-fatal:
+      // `aiw orchestrate --cleanup` can always retry.
+    }
+  }
+}
+
+/** List isolated worktrees managed under `<aiw>/worktrees` (for cleanup/doctor). */
+export function listManagedWorktrees(root: string, aiw: string): string[] {
+  try {
+    const output = git(root, ["worktree", "list", "--porcelain"]);
+    // git reports fully resolved paths (macOS /tmp is a symlink to /private/tmp)
+    const prefix = realpathSync(join(aiw, "worktrees")) + "/";
+    return output
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "))
+      .map((line) => line.slice("worktree ".length))
+      .filter((path) => path.startsWith(prefix));
+  } catch {
+    return [];
+  }
+}
 export interface AgentOrchestrator {
   run(task: OrchestrationTask): Promise<{ success: boolean; detail: string }>;
 }
@@ -76,6 +167,10 @@ export async function executeOrchestrationPlan(
   plan: OrchestrationPlan,
   orchestrator: AgentOrchestrator,
   maxParallel: number,
+  isolation?: {
+    options: IsolationOptions;
+    worktrees: Map<string, { worktree: string; baseCommit: string }>;
+  },
 ): Promise<OrchestrationTaskResult[]> {
   validateOrchestrationParallelism(maxParallel);
   const tasks = new Map(plan.tasks.map((task) => [task.id, task]));
@@ -92,11 +187,22 @@ export async function executeOrchestrationPlan(
             return;
           }
           try {
-            const outcome = await orchestrator.run(task);
+            const isolated = isolation?.worktrees.get(id);
+            const outcome = await orchestrator.run(
+              isolated ? { ...task, worktree: isolated.worktree } : task,
+            );
+            const base = isolation?.worktrees.get(id);
             results.set(id, {
               id,
               status: outcome.success ? "passed" : "failed",
               detail: safeDetail(outcome.detail),
+              ...(base
+                ? {
+                    worktree: base.worktree,
+                    baseCommit: base.baseCommit,
+                    finalCommit: worktreeFinalCommit(base.worktree),
+                  }
+                : {}),
             });
           } catch (error) {
             results.set(id, {
@@ -131,10 +237,12 @@ export function serializeOrchestrationResults(
   results: OrchestrationTaskResult[],
 ): string {
   return `schema: 1\nplan: ${plan.id}\nresults:\n${results
-    .map(
-      (result) =>
-        `  - id: ${result.id}\n    status: ${result.status}\n    detail: ${JSON.stringify(result.detail)}`,
-    )
+    .map((result) => {
+      const isolation = result.worktree
+        ? `\n    worktree: ${JSON.stringify(result.worktree)}\n    baseCommit: ${JSON.stringify(result.baseCommit ?? "")}\n    finalCommit: ${JSON.stringify(result.finalCommit ?? "")}`
+        : "";
+      return `  - id: ${result.id}\n    status: ${result.status}\n    detail: ${JSON.stringify(result.detail)}${isolation}`;
+    })
     .join("\n")}\n`;
 }
 

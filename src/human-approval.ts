@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { parseDocument, stringify } from "yaml";
-import { HUMAN_APPROVAL_STAGES, type HumanApprovalStage } from "./types.js";
+import {
+  HUMAN_APPROVAL_STAGES,
+  PROCESS_IDS,
+  PROCESSES,
+  type HumanApprovalStage,
+  type WorkflowProcess,
+} from "./types.js";
+export type { HumanApprovalStage };
+export { PROCESS_IDS };
+export type { WorkflowProcess };
 
 export const APPROVAL_STAGES = HUMAN_APPROVAL_STAGES;
 
@@ -21,6 +30,8 @@ export type ApprovalLedger = {
   /** Light-lane provenance so audits see the rationale instead of missing approvals. */
   lane?: "light";
   laneReason?: string;
+  /** OPP-009: which process governs this workflow's stage list; absent means feature. */
+  process?: WorkflowProcess;
 };
 export type WorkflowSession = {
   schema: 1;
@@ -64,6 +75,8 @@ const STAGE_DEFINITIONS: Record<HumanApprovalStage, ApprovalStageDefinition> = {
   verification: { optional: false, requiresQualityGate: true },
   review: { optional: false, requiresQualityGate: true },
   traceability: { optional: false, requiresQualityGate: true },
+  diagnosis: { optional: false, requiresQualityGate: true },
+  assessment: { optional: false, requiresQualityGate: true },
 };
 
 const APPROVAL_STATUSES = ["draft", "pending-human", "approved", "rejected", "skipped", "stale"];
@@ -75,7 +88,7 @@ const APPROVAL_RECORD_KEYS = new Set([
   "reason",
   "updatedAt",
 ]);
-const LEDGER_KEYS = new Set(["schema", "workflowId", "stages", "lane", "laneReason"]);
+const LEDGER_KEYS = new Set(["schema", "workflowId", "stages", "lane", "laneReason", "process"]);
 const SESSION_KEYS = new Set([
   "schema",
   "workflowId",
@@ -93,7 +106,11 @@ const SESSION_KEYS = new Set([
 
 export function createApprovalLedger(
   workflowId: string,
-  options: { lane?: "light"; laneReason?: string } = {},
+  options: {
+    lane?: "light";
+    laneReason?: string;
+    process?: WorkflowProcess;
+  } = {},
 ): ApprovalLedger {
   assertWorkflowId(workflowId);
   if (options.lane === "light" && !options.laneReason)
@@ -105,7 +122,19 @@ export function createApprovalLedger(
     ...(options.lane === "light" && options.laneReason
       ? { lane: "light" as const, laneReason: options.laneReason }
       : {}),
+    ...(options.process && options.process !== "feature" ? { process: options.process } : {}),
   };
+}
+
+/** The ordered stage list for the ledger's process (OPP-009); feature when absent. */
+export function processStages(ledger: { process?: WorkflowProcess }): HumanApprovalStage[] {
+  if (!ledger.process || ledger.process === "feature")
+    return [...APPROVAL_STAGES].filter((stage) => stage !== "diagnosis" && stage !== "assessment");
+  return [...PROCESSES[ledger.process].stages] as HumanApprovalStage[];
+}
+
+export function isWorkflowProcess(value: string): value is WorkflowProcess {
+  return (PROCESS_IDS as string[]).includes(value);
 }
 
 export function serializeWorkflowSession(session: WorkflowSession): string {
@@ -179,8 +208,9 @@ export function getUnresolvedPrerequisites(
   ledger: ApprovalLedger,
   stage: HumanApprovalStage,
 ): HumanApprovalStage[] {
-  const stageIndex = APPROVAL_STAGES.indexOf(stage);
-  return APPROVAL_STAGES.slice(0, stageIndex).filter((prerequisite) => {
+  const stages = processStages(ledger);
+  const stageIndex = stages.indexOf(stage);
+  return stages.slice(0, stageIndex).filter((prerequisite) => {
     const status = ledger.stages[prerequisite]?.status;
     return status !== "approved" && status !== "skipped";
   });
@@ -278,14 +308,23 @@ export function invalidateStageAndDescendants(
   updatedAt: string,
 ): ApprovalLedger {
   assertTimestamp(updatedAt);
-  const stageIndex = APPROVAL_STAGES.indexOf(stage);
   const stages = { ...ledger.stages };
-  for (const affected of APPROVAL_STAGES.slice(stageIndex)) {
+  const ordered = processStages(ledger);
+  const stageIndex = ordered.indexOf(stage);
+  for (const affected of ordered.slice(stageIndex)) {
     const record = stages[affected];
     if (record && record.status !== "draft")
       stages[affected] = { ...record, status: "stale", updatedAt };
   }
-  return { schema: 1, workflowId: ledger.workflowId, stages };
+  return {
+    schema: 1,
+    workflowId: ledger.workflowId,
+    stages,
+    ...(ledger.lane === "light" && ledger.laneReason
+      ? { lane: ledger.lane, laneReason: ledger.laneReason }
+      : {}),
+    ...(ledger.process && ledger.process !== "feature" ? { process: ledger.process } : {}),
+  };
 }
 
 export function serializeApprovalLedger(ledger: ApprovalLedger): string {
@@ -303,6 +342,7 @@ export function serializeApprovalLedger(ledger: ApprovalLedger): string {
       ...(ledger.lane === "light" && ledger.laneReason
         ? { lane: ledger.lane, laneReason: ledger.laneReason }
         : {}),
+      ...(ledger.process && ledger.process !== "feature" ? { process: ledger.process } : {}),
     },
     { lineWidth: 0 },
   );
@@ -327,10 +367,14 @@ export function parseApprovalLedger(content: string): ApprovalLedger {
       throw new Error(`Approval ledger has unknown workflow stage: ${stageName}.`);
     stages[stageName] = parseStageRecord(stageName, record);
   }
+  const process = value.process === undefined ? undefined : String(value.process);
+  if (process !== undefined && !isWorkflowProcess(process))
+    throw new Error("Approval ledger process must be a known workflow process.");
   const ledger: ApprovalLedger = {
     schema: 1,
     workflowId: value.workflowId,
     stages,
+    ...(process && process !== "feature" ? { process: process as WorkflowProcess } : {}),
     ...(value.lane === "light" && typeof value.laneReason === "string"
       ? { lane: "light" as const, laneReason: value.laneReason }
       : {}),
@@ -401,6 +445,13 @@ function withStage(
     schema: 1,
     workflowId: ledger.workflowId,
     stages: { ...ledger.stages, [stage]: record },
+    // Preserve lane/process provenance: dropping them here silently stripped
+    // the process from the ledger on every stage transition (found by the
+    // OPP-009 sweep — the bug made bugfix workflows gate like feature ones).
+    ...(ledger.lane === "light" && ledger.laneReason
+      ? { lane: ledger.lane, laneReason: ledger.laneReason }
+      : {}),
+    ...(ledger.process && ledger.process !== "feature" ? { process: ledger.process } : {}),
   };
 }
 
@@ -475,7 +526,7 @@ function validateLedger(ledger: ApprovalLedger): void {
       throw new Error(`Approval ledger has unknown workflow stage: ${stage}.`);
     parseStageRecord(stage, record);
   }
-  for (const stage of APPROVAL_STAGES) {
+  for (const stage of processStages(ledger)) {
     const status = ledger.stages[stage]?.status;
     if (
       status === "pending-human" ||

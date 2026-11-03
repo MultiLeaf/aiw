@@ -10,7 +10,7 @@
 
 ## Validation
 
-- Command and result for required project checks.
+One observed line per plan declaration: `Validation: <command> → <observed>` (for example `npm test → exit 0 (132 passed)`).
 
 ## Deviations
 

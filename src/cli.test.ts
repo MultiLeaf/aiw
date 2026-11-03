@@ -1681,13 +1681,13 @@ tasks:
     expect((await run(["approve", "plan"], cwd)).exitCode).toBe(0);
     await writeFile(
       join(cwd, ".aiw/generated/reports/implementation-report.md"),
-      "## Changed Files\nsrc/feature.ts\n## Tests\nsrc/feature.test.ts\n## Validation\nnpm test passed\n## Deviations\nNone\n",
+      "## Changed Files\nsrc/feature.ts\n## Tests\nsrc/feature.test.ts\n## Validation\nValidation: npm test → exit 0 (8 passed)\n## Deviations\nNone\n",
     );
     expect((await run(["gate", "implementation"], cwd)).exitCode).toBe(0);
     expect((await run(["approve", "implementation"], cwd)).exitCode).toBe(0);
     await writeFile(
       join(cwd, ".aiw/generated/reports/verification-report.md"),
-      "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
+      "## Requirements Checked\nREQ-001\n## Checks Passed\nValidation: npm test → exit 0 (8 passed)\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
     );
     expect((await run(["gate", "verification"], cwd)).exitCode).toBe(0);
     expect((await run(["approve", "verification"], cwd)).exitCode).toBe(0);

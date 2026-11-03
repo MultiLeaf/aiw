@@ -23,6 +23,10 @@ export const BLOCKING_REASON_CODES = [
   "workflow_still_active",
   "workflow_not_active",
   "workflow_complete",
+  "installation_required",
+  "state_mismatch",
+  "context_budget_exceeded",
+  "stage_not_in_process",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -192,6 +196,35 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
     code: "workflow_complete",
     description: "This workflow is already complete; start a new workflow to continue working.",
     continuation: () => command("aiw workflow start"),
+  },
+  installation_required: {
+    code: "installation_required",
+    description: "AI Workflow is not installed in this repository; install it to continue.",
+    continuation: () => command("aiw install"),
+  },
+  state_mismatch: {
+    code: "state_mismatch",
+    description:
+      "AI Workflow state files are inconsistent with each other; run diagnostics to inspect and repair.",
+    continuation: () => command("aiw doctor"),
+  },
+  context_budget_exceeded: {
+    code: "context_budget_exceeded",
+    description:
+      "The served context exceeds the declared ceiling for this stage; trim it or raise the ceiling explicitly.",
+    continuation: (context) =>
+      action(
+        `Trim the stage context (fewer layers or smaller entries)${context.stage ? ` for stage ${context.stage}` : ""}, or re-run with an explicit \`--budget=<tokens>\` override and record the reason.`,
+      ),
+  },
+  stage_not_in_process: {
+    code: "stage_not_in_process",
+    description:
+      "This stage does not exist in the active workflow's process; use the process's own stages.",
+    continuation: () =>
+      action(
+        "Run `aiw task status` to see the stages this process defines, or start the workflow with `--process=feature` when the staged specification sequence is what the work needs.",
+      ),
   },
 };
 

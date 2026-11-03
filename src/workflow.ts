@@ -132,6 +132,9 @@ import {
 } from "./token-usage.js";
 import {
   APPROVAL_STAGES,
+  PROCESS_IDS,
+  processStages,
+  isWorkflowProcess,
   assertWorkflowId,
   validateTaskTicket,
   approveStage,
@@ -148,6 +151,7 @@ import {
   stageDefinition,
   stageFingerprint,
   type ApprovalLedger,
+  type WorkflowProcess,
   type WorkflowSession,
   effectiveLane,
 } from "./human-approval.js";
@@ -221,8 +225,44 @@ import { parseTraceabilityGraph } from "./traceability.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
 import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
-import { BlockingError, blockingResultToJson, describeBlockingReason } from "./blocking-reasons.js";
-import { runRiskAssess } from "./risk-assess.js";
+import {
+  BlockingError,
+  blockingResultToJson,
+  describeBlockingReason,
+  formatBlockingOutput,
+} from "./blocking-reasons.js";
+import {
+  assessRisk,
+  collectWorkingTreeChanges,
+  hasCoveringTest,
+  runRiskAssess,
+} from "./risk-assess.js";
+import { extractStandards, parseStandardsIndex, type StandardStatus } from "./standards.js";
+import {
+  digestPath,
+  digestFreshness,
+  extractDigest,
+  formatDigestLine,
+  serializeDigest,
+} from "./digest.js";
+
+function installationRequired(): CommandResult {
+  return {
+    exitCode: 1,
+    error: formatBlockingOutput(
+      describeBlockingReason("installation_required", {
+        detail: "Run `aiw install` first.",
+      }),
+    ),
+  };
+}
+
+function stateMismatch(detail: string): CommandResult {
+  return {
+    exitCode: 1,
+    error: formatBlockingOutput(describeBlockingReason("state_mismatch", { detail })),
+  };
+}
 import {
   type MigrationSnapshot,
   type ResourceMigration,
@@ -260,7 +300,10 @@ import {
   writePluginScaffold,
 } from "./plugin-sdk.js";
 import {
+  createTaskWorktrees,
   executeOrchestrationPlan,
+  listManagedWorktrees,
+  removeWorktrees,
   parseOrchestrationPlan,
   serializeOrchestrationPreview,
   serializeOrchestrationResults,
@@ -268,6 +311,25 @@ import {
 } from "./orchestration.js";
 
 export type WorkflowServices = WorkflowDependencies;
+
+function laneAdvisory(root: string, fs: FileSystem, lightChosen: boolean): string | undefined {
+  const paths = collectWorkingTreeChanges(root);
+  if (!paths || paths.length === 0) return undefined;
+  const assessment = assessRisk(
+    paths.map((path) => ({ path })),
+    { hasCoveringTest: hasCoveringTest(root, fs) },
+  );
+  if (lightChosen && assessment.tier === "high")
+    return `advisory: risk assess reports high for the current changes (${assessment.reasons
+      .slice(0, 2)
+      .map((reason) => reason.code)
+      .join(
+        ", ",
+      )}); consider the full lane, or escalate later with \`aiw task escalate --reason=...\`.`;
+  if (!lightChosen && assessment.tier === "passive")
+    return "advisory: current changes look passive; the light lane (--lane=light --lane-reason=...) may be viable for small work.";
+  return undefined;
+}
 
 function beginWorkflowSession(
   fs: FileSystem,
@@ -278,6 +340,7 @@ function beginWorkflowSession(
     title?: string;
     lane?: "light";
     laneReason?: string;
+    process?: WorkflowProcess;
   },
 ): CommandResult {
   const sessionPath = join(aiw, "workflow.yml");
@@ -291,7 +354,7 @@ function beginWorkflowSession(
         }),
       );
     if (!fs.exists(ledgerPath))
-      return { exitCode: 1, error: "Completed workflow is missing its approval ledger." };
+      return stateMismatch("Completed workflow is missing its approval ledger.");
     const archive = join(aiw, `checkpoints/workflow-${previous.workflowId}-approvals.yml`);
     if (fs.exists(archive))
       return { exitCode: 1, error: `Workflow approval archive already exists: ${archive}` };
@@ -300,7 +363,7 @@ function beginWorkflowSession(
   } else if (fs.exists(ledgerPath)) {
     return {
       exitCode: 1,
-      error: "Approval ledger exists without a workflow session; run doctor.",
+      error: stateMismatch("Approval ledger exists without a workflow session; run doctor.").error,
     };
   }
   const workflowId = options.id ?? randomUUID();
@@ -327,6 +390,7 @@ function beginWorkflowSession(
     ...(options.lane === "light" && options.laneReason
       ? { lane: "light" as const, laneReason: options.laneReason }
       : {}),
+    ...(options.process && options.process !== "feature" ? { process: options.process } : {}),
   });
   fs.write(ledgerPath, serializeApprovalLedger(ledger));
   fs.write(sessionPath, serializeWorkflowSession(session));
@@ -344,8 +408,7 @@ export async function runCommand(
     fs = withSafeProjectWrites(fs, root);
     const command = args[0] ?? "help";
     if (command === "task") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const usage =
         "Usage: aiw task start --ticket=TEAM-123 [--title=text] [--id=workflow-id] [--lane=light --lane-reason=text] | aiw task status | aiw task escalate --reason=text | aiw task evidence --validation=text";
       const action = args[1];
@@ -357,9 +420,23 @@ export async function runCommand(
           "id",
           "lane",
           "lane-reason",
+          "process",
         ]);
         if (!options?.ticket) return { exitCode: 1, error: usage };
         validateTaskTicket(options.ticket);
+        const processName = options.process;
+        if (processName !== undefined) {
+          if (!isWorkflowProcess(processName))
+            return {
+              exitCode: 1,
+              error: `Unknown process: ${processName}. Known processes: ${PROCESS_IDS.join(", ")}.`,
+            };
+          if (processName === "feature")
+            return {
+              exitCode: 1,
+              error: "The feature process is the default; omit --process for it.",
+            };
+        }
         if (options.lane !== undefined && options.lane !== "light")
           return { exitCode: 1, error: "Only --lane=light exists; omit it for the full lane." };
         const laneReason = options["lane-reason"];
@@ -389,14 +466,17 @@ export async function runCommand(
           ticket: options.ticket,
           ...(options.title ? { title: options.title } : {}),
           ...(lane ? { lane, laneReason: laneReason! } : {}),
+          ...(processName ? { process: processName } : {}),
         });
         if (result.exitCode !== 0) return result;
+        const advisory = laneAdvisory(root, fs, lane === "light");
         const title = options.title ? ` titled "${options.title}"` : "";
         if (lane)
           return {
             exitCode: 0,
             output:
               `Task started for ticket ${options.ticket}${title} (light lane): ${result.output}\n` +
+              (advisory ? `${advisory}\n` : "") +
               "Resume test: this work is small when it is understood, risk is contained, and the work could be resumed from your request plus `git diff`.\n" +
               `Rationale recorded: ${laneReason}\n` +
               'No durable spec/plan artifacts are required. Record validation with `aiw task evidence --validation="<command and result>"`, then complete with `aiw workflow complete`. If scope grows, escalate with `aiw task escalate --reason=...`.',
@@ -405,6 +485,7 @@ export async function runCommand(
           exitCode: 0,
           output:
             `Task started for ticket ${options.ticket}${title}: ${result.output}\n` +
+            (advisory ? `${advisory}\n` : "") +
             `Next steps: ask the user whether the requirement is clear enough to skip brainstorming (record an accepted skip with \`aiw skip brainstorming --reason="Requirement provided by ticket ${options.ticket}"\`), then create the specification with \`aiw spec --ticket=${options.ticket} --title=...\`.`,
         };
       }
@@ -507,7 +588,7 @@ export async function runCommand(
           ...lane,
           `Workflow: ${session.workflowId} (${session.status})`,
           "Stages:",
-          ...APPROVAL_STAGES.map(
+          ...processStages(ledger).map(
             (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
           ),
         ];
@@ -529,22 +610,35 @@ export async function runCommand(
       return { exitCode: 1, error: usage };
     }
     if (command === "workflow") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const action = args[1];
       const sessionPath = join(aiw, "workflow.yml");
       if (action === "start") {
         const options = parseNamedOptions(
           args.slice(2).filter((argument) => argument !== "--json"),
-          ["id"],
+          ["id", "process"],
         );
-        if (!options) return { exitCode: 1, error: "Usage: aiw workflow start [--id=workflow-id]" };
-        return beginWorkflowSession(fs, aiw, { id: options.id });
+        if (!options)
+          return {
+            exitCode: 1,
+            error:
+              "Usage: aiw workflow start [--id=workflow-id] [--process=bugfix|idea-assessment]",
+          };
+        const processName = options.process;
+        if (processName !== undefined && !isWorkflowProcess(processName))
+          return {
+            exitCode: 1,
+            error: `Unknown process: ${processName}. Known processes: ${PROCESS_IDS.join(", ")}.`,
+          };
+        return beginWorkflowSession(fs, aiw, {
+          id: options.id,
+          ...(processName ? { process: processName } : {}),
+        });
       }
       if (action === "status") {
         if (!fs.exists(sessionPath)) return { exitCode: 0, output: "No SDD workflow is active." };
         const { session, ledger } = readWorkflowState(aiw, fs, false);
-        const stages = APPROVAL_STAGES.map(
+        const stages = processStages(ledger).map(
           (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
         );
         return {
@@ -626,7 +720,7 @@ export async function runCommand(
             output: `Workflow completed (light lane): ${session.workflowId}. Evidence: ${evidencePath}`,
           };
         }
-        const unresolved = APPROVAL_STAGES.filter(
+        const unresolved = processStages(ledger).filter(
           (stage) =>
             ledger.stages[stage]?.status !== "approved" &&
             ledger.stages[stage]?.status !== "skipped",
@@ -719,7 +813,15 @@ export async function runCommand(
           updatedAt: new Date().toISOString(),
         });
         fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
-        return { exitCode: 0, output: `Human approval recorded for ${workflowStage}.` };
+        fs.mkdir(join(aiw, "digests"));
+        fs.write(
+          digestPath(aiw, workflowStage),
+          serializeDigest(extractDigest(workflowStage, fs.read(artifact), artifactHash)),
+        );
+        return {
+          exitCode: 0,
+          output: `Human approval recorded for ${workflowStage}. Digest available: aiw digest --stage=${workflowStage}`,
+        };
       }
       const options = parseNamedOptions(rest, ["reason"]);
       if (!options?.reason)
@@ -732,8 +834,7 @@ export async function runCommand(
       };
     }
     if (command === "ui") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const parsed = parseNamedOptions(args.slice(1), ["port"]);
       if (!parsed || (parsed.port !== undefined && !/^\d+$/.test(parsed.port)))
         return { exitCode: 1, error: "Usage: aiw ui [--port=number]" };
@@ -745,21 +846,37 @@ export async function runCommand(
       return { exitCode: 0, output: `AI Workflow dashboard: ${dashboard.url}` };
     }
     if (command === "orchestrate") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const executeCount = args.filter((arg) => arg === "--execute").length;
       if (executeCount > 1)
         return {
           exitCode: 1,
-          error: "Usage: aiw orchestrate --plan=path [--execute] [--max-parallel=number]",
+          error:
+            "Usage: aiw orchestrate --plan=path [--execute] [--isolate] [--cleanup] [--max-parallel=number]",
         };
       const execute = executeCount === 1;
-      const named = args.slice(1).filter((arg) => arg !== "--execute");
+      const isolate = args.includes("--isolate");
+      const cleanup = args.includes("--cleanup");
+      if (cleanup) {
+        const leaked = listManagedWorktrees(root, aiw);
+        if (leaked.length === 0) return { exitCode: 0, output: "No managed worktrees to clean." };
+        if (!execute)
+          return {
+            exitCode: 0,
+            output: `Managed worktrees found:\n${leaked.map((path) => `- ${path}`).join("\n")}\nRe-run with --execute to remove them.`,
+          };
+        removeWorktrees(root, leaked, { force: true });
+        return { exitCode: 0, output: `Removed ${leaked.length} managed worktree(s).` };
+      }
+      const named = args
+        .slice(1)
+        .filter((arg) => arg !== "--execute" && arg !== "--isolate" && arg !== "--cleanup");
       const parsed = parseNamedOptions(named, ["plan", "max-parallel"]);
       if (!parsed?.plan)
         return {
           exitCode: 1,
-          error: "Usage: aiw orchestrate --plan=path [--execute] [--max-parallel=number]",
+          error:
+            "Usage: aiw orchestrate --plan=path [--execute] [--isolate] [--cleanup] [--max-parallel=number]",
         };
       const planPath = safeProjectFile(root, parsed.plan, fs);
       const plan = parseOrchestrationPlan(fs.read(planPath));
@@ -779,7 +896,24 @@ export async function runCommand(
           error: `Orchestration checkpoint already exists; use a new plan id: ${checkpoint}`,
         };
       try {
-        const results = await executeOrchestrationPlan(plan, services.orchestrator, maxParallel);
+        const isolation = isolate
+          ? {
+              options: { root, aiw, planId: plan.id },
+              worktrees: createTaskWorktrees(root, aiw, plan),
+            }
+          : undefined;
+        const results = await executeOrchestrationPlan(
+          plan,
+          services.orchestrator,
+          maxParallel,
+          isolation,
+        );
+        if (isolation) {
+          const passedPaths = results
+            .filter(({ status, worktree }) => status === "passed" && worktree)
+            .map(({ worktree }) => worktree as string);
+          removeWorktrees(root, passedPaths);
+        }
         fs.write(checkpoint, serializeOrchestrationResults(plan, results));
         const failed = results.filter(({ status }) => status !== "passed");
         return failed.length
@@ -916,8 +1050,7 @@ export async function runCommand(
       };
     }
     if (command === "telemetry") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const usage =
         "Usage: aiw telemetry <status|show|enable|disable> [--verbose] [--commands=include|exclude] [--outcomes=include|exclude]";
       const action = args[1];
@@ -1040,8 +1173,7 @@ export async function runCommand(
       return { exitCode: 1, error: usage };
     }
     if (command === "context-bench") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const saveCount = args.filter((arg) => arg === "--save").length;
       if (saveCount > 1)
         return { exitCode: 1, error: "Usage: aiw context-bench [--baseline=path] [--save]" };
@@ -1089,8 +1221,7 @@ export async function runCommand(
       return { exitCode: 0, output: lines.join("\n") };
     }
     if (command === "parity") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const parsed = parseNamedOptions(args.slice(1), ["tasks"]);
       if (!parsed) return { exitCode: 1, error: "Usage: aiw parity [--tasks=directory]" };
       const tasksPath = parsed.tasks;
@@ -1141,8 +1272,7 @@ export async function runCommand(
       };
     }
     if (command === "scan") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       let interpreter = services.interpreter;
       let interpreterModel: string | undefined;
@@ -1465,7 +1595,7 @@ export async function runCommand(
       if (!target) return { exitCode: 1, error: "Usage: aiw target <target>" };
       if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
       const manifestPath = join(aiw, "manifest.yml");
-      if (!fs.exists(manifestPath)) return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(manifestPath)) return installationRequired();
       const dryRun = args.includes("--dry-run");
       const targetPath = join(root, renderAiInitPath(target));
       const neutralAiInit = join(aiw, "resources/skills/ai-init.md");
@@ -1818,8 +1948,7 @@ export async function runCommand(
       };
     }
     if (command === "confirm") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const overrides: FactOverride[] = [];
       const accept = args.indexOf("--accept");
       if (accept >= 0 && args[accept + 1])
@@ -1841,8 +1970,7 @@ export async function runCommand(
       return { exitCode: 0, output: "Fact overrides saved." };
     }
     if (command === "recommend") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
       const recommendations =
         services.recommender?.recommend(profile) ?? recommendCapabilities(profile);
@@ -1929,8 +2057,7 @@ export async function runCommand(
       };
     }
     if (command === "skills") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const action = args[1];
       const executor = services.externalSkills ?? nodeCommandExecutor;
       const approvedPermissions = parseApprovedPermissions(args);
@@ -1995,8 +2122,7 @@ export async function runCommand(
       };
     }
     if (command === "generate" || command === "sync") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const profilePath = join(aiw, "profile.yml");
       const persistedProfile = fs.exists(profilePath) ? fs.read(profilePath) : "";
       const profile = /^status:\s*scanned$/m.test(persistedProfile)
@@ -2232,8 +2358,7 @@ export async function runCommand(
       };
     }
     if (command === "brainstorm") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "brainstorming");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Brainstorm";
@@ -2245,8 +2370,7 @@ export async function runCommand(
       return { exitCode: 0, output: `Brainstorm artifact created: ${path}` };
     }
     if (command === "spec") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "specification");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Specification";
@@ -2260,8 +2384,7 @@ export async function runCommand(
       return { exitCode: 0, output: `Specification artifact created: ${path}` };
     }
     if (command === "adr") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "technical-design");
       const id = args.find((arg) => arg.startsWith("--id="))?.slice(5) || "001";
       const title = args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Decision";
@@ -2277,30 +2400,29 @@ export async function runCommand(
       return { exitCode: 0, output: `Architecture decision record created: ${path}` };
     }
     if (command === "plan") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "plan");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Implementation Plan";
       const path = join(aiw, "generated/plans/implementation-plan.md");
       fs.write(
         path,
-        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
+        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test → exit 0\n  - Regression: <optional — touched existing behavior → the test proving it holds>\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
       );
       return { exitCode: 0, output: `Implementation plan created: ${path}` };
     }
     if (command === "verify") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "verification");
       const specPath = join(aiw, "generated/specs/specification.md");
       const planPath = join(aiw, "generated/plans/implementation-plan.md");
       const issues: string[] = [];
+      let regressionNotice: string | undefined;
       let specification = "";
       if (!fs.exists(specPath)) issues.push("Specification artifact is missing.");
       else {
         specification = fs.read(specPath);
-        if (!specification.includes("Acceptance criteria"))
+        if (!specification.toLowerCase().includes("acceptance criteria"))
           issues.push("Requirements have no acceptance criteria.");
       }
       if (!fs.exists(planPath)) issues.push("Implementation plan is missing.");
@@ -2311,18 +2433,24 @@ export async function runCommand(
         const requirements = [...new Set([...specification.matchAll(/REQ-\d+/g)].map(String))];
         const uncovered = requirements.filter((requirement) => !plan.includes(requirement));
         if (uncovered.length > 0) issues.push(`Untested requirements: ${uncovered.join(", ")}.`);
+        const validationCount = (plan.match(/Validation:/g) ?? []).length;
+        const regressionCount = (plan.match(/Regression:/g) ?? []).length;
+        regressionNotice =
+          validationCount > regressionCount
+            ? `${validationCount - regressionCount} of ${validationCount} plan tasks declare no regression coverage for touched existing behavior.`
+            : undefined;
       }
       return issues.length
         ? { exitCode: 1, error: `Verification failed: ${issues.join(" ")}` }
         : {
             exitCode: 0,
             output:
-              "Verification passed: requirements have acceptance criteria and validation coverage.",
+              "Verification passed: requirements have acceptance criteria and validation coverage." +
+              (regressionNotice ? ` Advisory: ${regressionNotice}` : ""),
           };
     }
     if (command === "trace") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "traceability");
       const specPath = join(aiw, "generated/specs/specification.md");
       const planPath = join(aiw, "generated/plans/implementation-plan.md");
@@ -2350,14 +2478,165 @@ export async function runCommand(
       fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
+    if (command === "standards") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      const action = args[1] ?? "list";
+      const index = fs.exists(join(aiw, "standards/index.yml"))
+        ? parseStandardsIndex(fs.read(join(aiw, "standards/index.yml")))
+        : { schema: 1 as const, standards: {} };
+      if (action === "extract") {
+        fs.mkdir(join(aiw, "standards"));
+        const documents = extractStandards(root, fs);
+        for (const document of documents) {
+          const body = [
+            `# Standard: ${document.topic}`,
+            "",
+            `Status: ${document.status}`,
+            "",
+            ...document.statements.flatMap((statement) => [
+              statement.convention,
+              ...(statement.occurrences > 0
+                ? statement.evidence.map(
+                    (evidence) => `- Evidence: ${evidence.path}:${evidence.line}`,
+                  )
+                : ["- Evidence: none (deterministic scan found no instances)"]),
+            ]),
+            "",
+          ].join("\n");
+          fs.write(join(aiw, `standards/${document.topic}.md`), body);
+          if (index.standards[document.topic] === undefined)
+            index.standards[document.topic] = {
+              status: "inferred",
+              updatedAt: new Date().toISOString(),
+            };
+        }
+        const serialized = [
+          "schema: 1",
+          "standards:",
+          ...Object.entries(index.standards).map(
+            ([topic, entry]) =>
+              `  ${topic}:\n    status: ${entry.status}\n    updatedAt: ${entry.updatedAt}`,
+          ),
+          "",
+        ].join("\n");
+        fs.write(join(aiw, "standards/index.yml"), serialized);
+        const names = documents.map((document) => document.topic).join(", ");
+        return {
+          exitCode: 0,
+          output: `Standards extracted (${names}). All are inferred — review them, then confirm with \`aiw standards confirm <topic>\`. Rejected or confirmed standards never change until you say so.`,
+        };
+      }
+      if (action === "list") {
+        const entries = Object.entries(index.standards);
+        if (entries.length === 0)
+          return {
+            exitCode: 0,
+            output: "No standards recorded. Run `aiw standards extract` first.",
+          };
+        return {
+          exitCode: 0,
+          output: [
+            "Standards:",
+            ...entries.map(([topic, entry]) => `- ${topic}: ${entry.status}`),
+            "Confirm or reject with `aiw standards confirm|reject <topic>`.",
+          ].join("\n"),
+        };
+      }
+      if (action === "confirm" || action === "reject") {
+        const topic = args[2];
+        if (!topic) return { exitCode: 1, error: `Usage: aiw standards ${action} <topic>` };
+        const path = join(aiw, `standards/${topic}.md`);
+        if (!fs.exists(path))
+          return {
+            exitCode: 1,
+            error: `No standard document for ${topic}; run \`aiw standards extract\` first.`,
+          };
+        const status: StandardStatus = action === "confirm" ? "confirmed" : "rejected";
+        index.standards[topic] = { status, updatedAt: new Date().toISOString() };
+        const existing = fs.read(path).replace(/^Status: .*$/m, `Status: ${status}`);
+        fs.write(path, existing);
+        const serialized = [
+          "schema: 1",
+          "standards:",
+          ...Object.entries(index.standards).map(
+            ([topicEntry, entry]) =>
+              `  ${topicEntry}:\n    status: ${entry.status}\n    updatedAt: ${entry.updatedAt}`,
+          ),
+          "",
+        ].join("\n");
+        fs.write(join(aiw, "standards/index.yml"), serialized);
+        return {
+          exitCode: 0,
+          output: `Standard ${topic} ${status}. ${
+            status === "confirmed"
+              ? "Confirmed standards are referenced by generated rules."
+              : "Rejected standards are never rendered."
+          }`,
+        };
+      }
+      return {
+        exitCode: 1,
+        error:
+          "Usage: aiw standards <extract|list|confirm|reject> [topic] — standards are inferred until a human confirms them.",
+      };
+    }
+    if (command === "digest") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
+      const stages = stageArg
+        ? [stageArg as HumanApprovalStage]
+        : fs.exists(join(aiw, "workflow.yml"))
+          ? processStages(readWorkflowState(aiw, fs, false).ledger)
+          : [...APPROVAL_STAGES];
+      const lines: string[] = [];
+      let served = 0;
+      for (const stage of stages) {
+        const artifactPath = approvalArtifactPath(aiw, stage);
+        const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
+        if (freshness.state === "missing") continue;
+        lines.push(formatDigestLine(freshness));
+        served += 1;
+      }
+      if (lines.length === 0)
+        return {
+          exitCode: 0,
+          output:
+            "No digests yet: digests appear when stages pass their gate and receive human approval.",
+        };
+      lines.push(`served: ${served} digest${served === 1 ? "" : "s"} (full reads on demand)`);
+      return { exitCode: 0, output: lines.join("\n") };
+    }
+    if (command === "diagnosis") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      assertStageReady(aiw, fs, "diagnosis");
+      const title =
+        args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Diagnosis";
+      const path = join(aiw, "generated/reports/diagnosis.md");
+      fs.write(
+        path,
+        `# ${title}\n\n## Reproduction\n\n- Command: \`<command that reproduces the bug>\`\n- Observed: <what actually happens>\n\n## Expected\n\n- <the correct behavior>\n\n## Root Cause\n\n- <evidence-backed cause, file:line when known>\n\n## Scope\n\n- In scope: <files and behavior this fix touches>\n- Out of scope: <explicitly excluded>\n`,
+      );
+      return { exitCode: 0, output: `Diagnosis artifact created: ${path}` };
+    }
+    if (command === "assess") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      assertStageReady(aiw, fs, "assessment");
+      const title =
+        args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Assessment";
+      const path = join(aiw, "generated/reports/assessment.md");
+      fs.write(
+        path,
+        `# ${title}\n\n## Evidence\n\n- <attributed evidence: source, finding>\n\n## Outcome\n\ngo | clarify | stop\n\n## Rationale\n\n- <why this outcome follows from the evidence>\n\n## Next Step\n\n- <go: recommended feature scope · clarify: the open questions · stop: conditions that would reopen>\n`,
+      );
+      return { exitCode: 0, output: `Assessment artifact created: ${path}` };
+    }
     if (command === "risk") {
       if (args[1] !== "assess")
         return { exitCode: 1, error: "Usage: aiw risk assess [--base-ref=ref] [--json]" };
       return runRiskAssess(args.slice(2), root, fs);
     }
     if (command === "gate") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const stage = args[1];
       if (!stage || !APPROVAL_STAGES.includes(stage as HumanApprovalStage))
         return {
@@ -2385,6 +2664,21 @@ export async function runCommand(
               artifactPath,
               gateIssues: issues,
               detail: `Quality gate blocked: ${issues.join(" ")}`,
+            }),
+          );
+      }
+      if (
+        hasQualityGate &&
+        (workflowStage === "implementation" || workflowStage === "verification")
+      ) {
+        const pairIssues = compareVerificationPairs(aiw, fs, workflowStage);
+        if (pairIssues.length)
+          throw new BlockingError(
+            describeBlockingReason("gate_incomplete", {
+              stage,
+              artifactPath,
+              gateIssues: pairIssues,
+              detail: `Quality gate blocked: ${pairIssues.join(" ")}`,
             }),
           );
       }
@@ -2419,8 +2713,7 @@ export async function runCommand(
       };
     }
     if (command === "resolve") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const packageArg = args.find((arg) => arg.startsWith("--package="));
       const sourceArg = args.find((arg) => arg.startsWith("--source="));
       if (!packageArg && !sourceArg)
@@ -2492,8 +2785,7 @@ export async function runCommand(
       return { exitCode: 0, output: serializePermissionReview(pkg) };
     }
     if (command === "organization-policy") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const fileArg = args.find((arg) => arg.startsWith("--file="));
       if (!fileArg)
         return { exitCode: 1, error: "Usage: aiw organization-policy --file=path [--replace]" };
@@ -2508,8 +2800,7 @@ export async function runCommand(
       return { exitCode: 0, output: `Organization policy configured: ${policy.name}` };
     }
     if (command === "policy-check") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const policyPath = join(aiw, "organization.yml");
       if (!fs.exists(policyPath))
         return { exitCode: 1, error: "Organization policy is required for the CI policy gate." };
@@ -2552,8 +2843,7 @@ export async function runCommand(
       };
     }
     if (command === "preset") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const fileArg = args.find((arg) => arg.startsWith("--file="));
       if (!fileArg) return { exitCode: 1, error: "Usage: aiw preset --file=path [--replace]" };
       const destination = join(aiw, "team-preset.yml");
@@ -2567,8 +2857,7 @@ export async function runCommand(
       return { exitCode: 0, output: `Team preset configured: ${preset.name}` };
     }
     if (command === "update") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const packageArg = args.find((arg) => arg.startsWith("--package="));
       if (!packageArg)
         return { exitCode: 1, error: "Usage: aiw update --package=path --target=target" };
@@ -2615,8 +2904,7 @@ export async function runCommand(
     }
     if (command === "registry") {
       if (args[1] === "configure") {
-        if (!fs.exists(join(aiw, "manifest.yml")))
-          return { exitCode: 1, error: "Run `aiw install` first." };
+        if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
         const fileArg = args.find((arg) => arg.startsWith("--file="));
         if (!fileArg)
           return {
@@ -2712,9 +3000,41 @@ export async function runCommand(
           };
         }
         const output = args.includes("--task") ? retrieveTaskContext(store) : composeContext(store);
+        const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
+        const digestLines: string[] = [];
+        if (fs.exists(join(aiw, "workflow.yml"))) {
+          for (const stage of processStages(readWorkflowState(aiw, fs, false).ledger)) {
+            const artifactPath = approvalArtifactPath(aiw, stage);
+            const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
+            if (freshness.state !== "missing") digestLines.push(formatDigestLine(freshness));
+          }
+        }
+        const budgetArg = args.find((argument) => argument.startsWith("--budget="))?.slice(9);
+        if (stageArg) {
+          const budget = Number(budgetArg ?? parseContextBudgets(aiw, fs)[stageArg]);
+          if (Number.isFinite(budget) && budget > 0) {
+            const estimated = Math.ceil(output.length / 4);
+            if (estimated > budget)
+              throw new BlockingError(
+                describeBlockingReason("context_budget_exceeded", {
+                  stage: stageArg,
+                  detail: `Stage ${stageArg} context is ~${estimated} tokens, over the ${budget}-token ceiling.`,
+                }),
+              );
+          }
+          const digestBlock = digestLines.length > 0 ? `\n${digestLines.join("\n")}` : "";
+          return {
+            exitCode: 0,
+            output: `${output}${digestBlock}\n\nstage: ${stageArg} · ~${Math.ceil(output.length / 4)} tokens${Number.isFinite(budget) && budget > 0 ? ` · ceiling ${budget}` : " · no ceiling declared"}`,
+          };
+        }
         return { exitCode: 0, output };
       }
-      return { exitCode: 1, error: "Usage: aiw context [--layer=project --content=text]" };
+      return {
+        exitCode: 1,
+        error:
+          "Usage: aiw context [--layer=project --content=text] | aiw context --stage=<name> [--budget=tokens]",
+      };
     }
     if (command === "context-summary") {
       const summaryArg = args.find((arg) => arg.startsWith("--summary="))?.slice(10);
@@ -2730,8 +3050,7 @@ export async function runCommand(
       return { exitCode: 0, output: summaryArg };
     }
     if (command === "routing") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const usage = "Usage: aiw routing init | show | resolve --category=name";
       const action = args[1];
       const routingPath = join(aiw, ROUTING_TABLE_PATH);
@@ -2788,8 +3107,7 @@ export async function runCommand(
       return { exitCode: 1, error: usage };
     }
     if (command === "task-usage") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const parsed = parseNamedOptions(args.slice(1), ["workflow"]);
       if (!parsed) return { exitCode: 1, error: "Usage: aiw task-usage [--workflow=id-or-ticket]" };
       const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
@@ -2818,8 +3136,7 @@ export async function runCommand(
       };
     }
     if (command === "cost-report") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
       if (!fs.exists(sidecarPath))
         return {
@@ -2846,8 +3163,7 @@ export async function runCommand(
       };
     }
     if (command === "heartbeat") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const parsed = parseNamedOptions(args.slice(1), ["session", "warn", "ttl"]);
       if (!parsed)
         return {
@@ -2909,8 +3225,7 @@ export async function runCommand(
       return { exitCode: 0, output: lines.join("\n") };
     }
     if (command === "hooks") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const action = args[1];
       if (action !== "install")
         return {
@@ -2957,8 +3272,7 @@ export async function runCommand(
       };
     }
     if (command === "usage-sidecar") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const usage =
         "Usage: aiw usage-sidecar record --command=name (--cache-read=N | --fresh-input=N | --cache-write=N | --output=N) [--model=name] [--harness=name] [--harness-version=text] [--estimated] | aiw usage-sidecar report";
       const action = args[1];
@@ -3168,8 +3482,7 @@ export async function runCommand(
       return { exitCode: 0, output };
     }
     if (command === "self-validate") {
-      if (!fs.exists(join(aiw, "manifest.yml")))
-        return { exitCode: 1, error: "Run `aiw install` first." };
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const ticket = args.find((arg) => arg.startsWith("--ticket="))?.slice(9);
       if (!ticket) return { exitCode: 1, error: "Usage: aiw self-validate --ticket=TYPE-000" };
       validateTicketId(ticket);
@@ -3210,7 +3523,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | standards <extract|list|confirm|reject> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     if (error instanceof BlockingError && args.includes("--json")) {
@@ -3232,14 +3545,18 @@ function readWorkflowState(
   const session = parseWorkflowSession(fs.read(sessionPath));
   let ledger = parseApprovalLedger(fs.read(ledgerPath));
   if (session.workflowId !== ledger.workflowId)
-    throw new Error("Workflow session and approval ledger IDs do not match; run doctor.");
+    throw new BlockingError(
+      describeBlockingReason("state_mismatch", {
+        detail: "Workflow session and approval ledger IDs do not match; run doctor.",
+      }),
+    );
   if (requireActive && session.status !== "active")
     throw new BlockingError(
       describeBlockingReason("workflow_complete", {
         detail: `Workflow ${session.workflowId} is complete; start a new workflow first.`,
       }),
     );
-  const changed = APPROVAL_STAGES.find((stage) => {
+  const changed = processStages(ledger).find((stage) => {
     const record = ledger.stages[stage];
     if (!record?.artifactHash || !["pending-human", "approved"].includes(record.status))
       return false;
@@ -3277,6 +3594,87 @@ function workflowNextAction(ledger: ApprovalLedger): string {
   return `Next action: prepare ${next} evidence.`;
 }
 
+function parseContextBudgets(aiw: string, fs: FileSystem): Record<string, number> {
+  const path = join(aiw, "budgets.yml");
+  if (!fs.exists(path)) return {};
+  const value: unknown = parseYaml(fs.read(path));
+  if (!value || typeof value !== "object") return {};
+  const stages = (value as Record<string, unknown>).stages;
+  if (!stages || typeof stages !== "object") return {};
+  const budgets: Record<string, number> = {};
+  for (const [stage, ceiling] of Object.entries(stages as Record<string, unknown>)) {
+    const n = Number(ceiling);
+    if (Number.isFinite(n) && n > 0) budgets[stage] = n;
+  }
+  return budgets;
+}
+
+const PLAN_PAIR_PATTERN = /Validation:\s*([^→\n]+)→\s*([^\n]+)/g;
+const EXIT_PATTERN = /exit\s+(\d+)/i;
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * OPP-014 paired verification: plan tasks declare `Validation: <command> →
+ * <expected>`; reports record `Validation: <command> → <observed>`. The gate
+ * compares the pairs — command match, observed presence, exit-code agreement.
+ * Legacy plans without pair arrows are accepted unchanged (ratchet).
+ */
+export function compareVerificationPairs(
+  aiw: string,
+  fs: FileSystem,
+  stage: "implementation" | "verification",
+): string[] {
+  const planPath = join(aiw, "generated/plans/implementation-plan.md");
+  if (!fs.exists(planPath)) return [];
+  const plan = fs.read(planPath);
+  if (!plan.includes("→")) return [];
+  const declared: { task: string; command: string; expectedExitText?: string; raw: string }[] = [];
+  for (const blockMatch of plan.matchAll(/TASK-\d+[\s\S]*?(?=TASK-\d+|$)/g)) {
+    const block = blockMatch[0];
+    const taskId = /^\s*(TASK-\d+)/.exec(block)?.[1] ?? "TASK-?";
+    for (const pair of block.matchAll(PLAN_PAIR_PATTERN)) {
+      const command = pair[1].trim();
+      if (!command) continue;
+      declared.push({
+        task: taskId,
+        command,
+        expectedExitText: EXIT_PATTERN.exec(pair[2])?.[1],
+        raw: pair[2].trim(),
+      });
+    }
+  }
+  if (declared.length === 0) return [];
+  const reportPath =
+    stage === "implementation"
+      ? join(aiw, "generated/reports/implementation-report.md")
+      : join(aiw, "generated/reports/verification-report.md");
+  const issues: string[] = [];
+  const observed = new Map<string, string>();
+  if (fs.exists(reportPath)) {
+    for (const line of fs.read(reportPath).split("\n")) {
+      const match = /Validation:\s*([^→\n]+)→\s*([^\n]+)/.exec(line);
+      if (match) observed.set(normalizeCommand(match[1]), match[2].trim());
+    }
+  }
+  for (const pair of declared) {
+    const key = normalizeCommand(pair.command);
+    if (!observed.has(key)) {
+      issues.push(`[verification_pair_missing] ${pair.task}: \`${pair.command}\``);
+      continue;
+    }
+    const observedExit = EXIT_PATTERN.exec(observed.get(key) ?? "")?.[1];
+    if (pair.expectedExitText && observedExit && pair.expectedExitText !== observedExit) {
+      issues.push(
+        `[verification_pair_mismatch] ${pair.task}: expected exit ${pair.expectedExitText}, observed exit ${observedExit}`,
+      );
+    }
+  }
+  return issues;
+}
+
 type LightEvidence = {
   schema: 1;
   workflowId: string;
@@ -3307,6 +3705,13 @@ function parseLightEvidence(content: string): LightEvidence {
 
 function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage): void {
   const { session, ledger } = readActiveWorkflow(aiw, fs);
+  if (!processStages(ledger).includes(stage))
+    throw new BlockingError(
+      describeBlockingReason("stage_not_in_process", {
+        stage,
+        detail: `Stage ${stage} is not part of the ${ledger.process ?? "feature"} process for workflow ${session.workflowId}.`,
+      }),
+    );
   if (effectiveLane(session) === "light")
     throw new BlockingError(
       describeBlockingReason("lane_escalation_required", {
@@ -3362,6 +3767,8 @@ function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
     verification: "generated/reports/verification-report.md",
     review: "generated/reports/code-review.md",
     traceability: "generated/artifacts/traceability.yml",
+    diagnosis: "generated/reports/diagnosis.md",
+    assessment: "generated/reports/assessment.md",
   };
   return resolve(aiw, paths[stage]);
 }
