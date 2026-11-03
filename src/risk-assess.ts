@@ -210,8 +210,13 @@ function committedRangeChanges(root: string, baseRef: string): string[] | undefi
   return gitLines(root, ["diff", "--name-only", `${baseRef}...HEAD`]);
 }
 
+/** Working-tree changes for advisory classification (exported for OPP-015 lane suggestion). */
+export function collectWorkingTreeChanges(root: string): string[] | undefined {
+  return workingTreeChanges(root);
+}
+
 /** Deterministic covering-test probe: sibling *.test.* / *.spec.* variants. */
-function hasCoveringTest(root: string, fs: FileSystem): (path: string) => boolean {
+export function hasCoveringTest(root: string, fs: FileSystem): (path: string) => boolean {
   return (path) => {
     const directory = path.slice(0, path.lastIndexOf("/"));
     const base = path.slice(path.lastIndexOf("/") + 1);
