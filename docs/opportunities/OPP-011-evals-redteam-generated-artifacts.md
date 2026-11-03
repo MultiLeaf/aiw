@@ -1,6 +1,6 @@
 # OPP-011: Evals and red-team layer for generated artifacts
 
-- Status: Proposed
+- Status: Implemented (2026-11-01): deterministic invariant + injection suites over shipped skills; mutation-tested harness
 - Priority: P3 (high differentiation, after field exposure of 0.10/0.11)
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

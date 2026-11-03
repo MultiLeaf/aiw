@@ -1,6 +1,6 @@
 # OPP-010: Worktree isolation for orchestrated execution
 
-- Status: Proposed
+- Status: Implemented (2026-11-01): orchestrate --isolate with branch-per-task worktrees, evidence-bound checkpoints, kept-on-failure worktrees, and --cleanup
 - Priority: P2
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

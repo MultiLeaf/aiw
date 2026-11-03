@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-01
+
+### Added
+
+- **Read-Optimized Artifacts (OPP-013)**: approving a stage computes a fingerprint-bound digest (requirement/task/decision ids, criteria count, decision line) under `.aiw/digests/`; the new `aiw digest` command serves digests fresh-or-stale (stale fails safe toward full reads) and `aiw context --stage` prepends them, so downstream stages stop re-ingesting full artifacts (~80% of artifact lifetime token cost, measured).
+- **Processes as entry points (OPP-009)**: `task start --process=bugfix|idea-assessment` — independent entry points composed from shared stage primitives. Bugfix: diagnosis → implementation → verification → review. Idea-assessment: a validated go/clarify/stop outcome. Feature stays the default and unchanged; stage commands outside the active process block with `stage_not_in_process`.
+- **Paired Verification Contract (OPP-014)**: plan tasks declare `Validation: <command> → <expected>`; implementation/verification reports record `<command> → <observed>`; gates compare the pairs deterministically (`verification_pair_missing` / `verification_pair_mismatch` markers naming the task). Legacy plans accepted unchanged; gates never execute commands.
+- **Worktree isolation (OPP-010)**: `orchestrate --isolate` creates branch-per-task worktrees, hands the path to adapters, records base/final commit evidence in the checkpoint, removes passed-task worktrees, keeps failed ones for diagnosis; `--cleanup` lists/removes managed worktrees.
+- **Token & recovery governance (OPP-015)**: enforced context ceilings (`.aiw/budgets.yml`, `context_budget_exceeded` typed block with explicit override), a context-recovery managed block in root context files (post-compaction: read task status and declared artifacts, never compacted chat), advisory lane suggestion on `task start`, and regression-pinning advisory in `verify`.
+- **Evals + red-team layer (OPP-011)**: deterministic invariant and injection suites over shipped skills — approval-waiting invariants per stage skill, permission-gating and honest no-execution markers for the refuter, and a payload corpus proving bypass endorsements are detected.
+- **Standards discovery, deterministic floor (OPP-012)**: `aiw standards extract|list|confirm|reject` — offline extraction of test-layout, error-class, and naming conventions into evidence-cited standards under `.aiw/standards/`; every standard is inferred until a human confirms or rejects it.
+
+### Fixed
+
+- Two latent ledger bugs the sweep exposed: `withStage` and `invalidateStageAndDescendants` rebuilt ledger objects without lane/process provenance, silently stripping them on every stage transition (found because bugfix workflows gated like feature ones).
+- `aiw verify`'s acceptance-criteria check was case-sensitive against the canonical template spelling, failing valid specifications.
+- All remaining blocking exits are typed (OPP-004 complete): installation guards (`installation_required`) and state mismatches (`state_mismatch`) across the CLI.
+
 ## [0.11.0] - 2026-10-31
 
 ### Added

@@ -1,6 +1,6 @@
 # OPP-012: Standards discovery — extract codebase conventions into versioned standards
 
-- Status: Proposed
+- Status: Implemented (2026-11-01, deterministic floor): aiw standards extract|list|confirm|reject with evidence-cited inferred standards; OPP-008 retrieval extension remains future
 - Priority: P3 (depends on OPP-008 retrieval plumbing)
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

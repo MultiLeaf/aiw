@@ -1,6 +1,6 @@
 # OPP-015: Token and Recovery Governance — enforced budgets, recovery block, advisory suggestions
 
-- Status: Proposed
+- Status: Implemented (2026-11-01): enforced context budgets, recovery managed block, advisory lane suggestion, regression-pinning advisory
 - Priority: P2 (small, independent mechanisms; bundle ships together)
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

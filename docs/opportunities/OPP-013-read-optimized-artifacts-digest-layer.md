@@ -1,6 +1,6 @@
 # OPP-013: Read-Optimized Artifacts — the Digest Layer
 
-- Status: Proposed
+- Status: Implemented (2026-11-01): fingerprint-bound digests computed at approval; aiw digest and context --stage serve them stale-safe
 - Priority: P1 (largest measurable token lever in the product)
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

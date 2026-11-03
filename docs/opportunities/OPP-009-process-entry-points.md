@@ -1,6 +1,6 @@
 # OPP-009: Processes as entry points — bug-fixing and idea assessment alongside SDD
 
-- Status: Proposed
+- Status: Implemented (2026-11-01): feature/bugfix/idea-assessment processes with per-process stage lists, gates, and typed stage_not_in_process blocks
 - Priority: P2
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A (lane architecture)

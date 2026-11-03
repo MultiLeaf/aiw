@@ -1,6 +1,6 @@
 # OPP-014: Paired Verification Contract — expected vs observed, mechanically compared
 
-- Status: Proposed
+- Status: Implemented (2026-11-01): plan declares command → expected, reports record command → observed, implementation/verification gates compare pairs
 - Priority: P2
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A
