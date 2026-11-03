@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { compareVerificationPairs } from "./workflow.js";
-import { inMemoryFileSystem } from "./files.js";
 import { join } from "node:path";
 
-function setup(plan: string, report?: string) {
+function setup(plan: string, report?: string): string[] {
   const store: Record<string, string> = {
     [join("generated/plans/implementation-plan.md")]: plan,
   };
   if (report !== undefined) store[join("generated/reports/implementation-report.md")] = report;
   const fs = {
-    exists: (path: string) => path in store,
-    read: (path: string) => store[path] ?? "",
+    exists: (path: string): boolean => path in store,
+    read: (path: string): string => store[path] ?? "",
   };
   return compareVerificationPairs(join("."), fs as never, "implementation");
 }

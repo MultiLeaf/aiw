@@ -3361,7 +3361,6 @@ function parseContextBudgets(aiw: string, fs: FileSystem): Record<string, number
 }
 
 const PLAN_PAIR_PATTERN = /Validation:\s*([^→\n]+)→\s*([^\n]+)/g;
-const OBSERVED_PAIR_PATTERN = /Validation:\s*([^→\n]+)→\s*([^\n]+)/g;
 const EXIT_PATTERN = /exit\s+(\d+)/i;
 
 function normalizeCommand(command: string): string {
