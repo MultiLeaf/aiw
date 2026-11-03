@@ -4,20 +4,35 @@ Improvement opportunities derived from the analysis of Gentle-AI's ODD/RDD metho
 
 The guiding principle: **ceremony should scale with the consequence of the change, not be constant.**
 
-| ID                                                                                              | Opportunity                                                                         | Priority | Depends on                            |
-| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------- | ------------------------------------- |
-| [OPP-001](OPP-001-proportional-ceremony-light-lane.md)                                          | Proportional ceremony — light lane for small, understood work                       | P2       | OPP-002 (advisory signal, optional)   |
-| [OPP-002](OPP-002-risk-assess-command.md)                                                       | `aiw risk assess` — content-based risk classification with exact next command       | P2       | —                                     |
-| [OPP-003](OPP-003-adversarial-review-package.md)                                                | Adversarial review package — blind judges and proof-carrying findings               | P3       | —                                     |
-| [OPP-004](OPP-004-exact-continuation-commands.md)                                               | Exact continuation commands — every block names a runnable way out                  | P1       | —                                     |
-| [OPP-005](OPP-005-friction-benchmark.md)                                                        | Friction benchmark — measure how users get stuck (in-band / out-of-band / dead-end) | P3       | OPP-004                               |
-| [OPP-006](OPP-006-emission-usability-test-policy.md)                                            | Emission ≠ usability — test that named commands actually work                       | P2       | OPP-004 (shared contract)             |
-| [007-decision-findings-triage-scope-watch](OPP-007-decision-findings-triage-scope-watch.md)     | Decision model — findings-evidence triage and lane scope-watch (advisory-only)      | P3       | OPP-001, OPP-003 (integration points) |
-| [008-embedding-covering-tests-judge-context](OPP-008-embedding-covering-tests-judge-context.md) | Embedding retrieval — covering-test detection and judge context scoping             | P3       | OPP-002, OPP-003 (integration points) |
+| ID                                                           | Opportunity                                                                          | Priority | Depends on                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ | -------- | --------------------------------------- |
+| [OPP-001](OPP-001-proportional-ceremony-light-lane.md)       | Proportional ceremony — light lane for small, understood work                        | P2       | OPP-002 (advisory signal, optional)     |
+| [OPP-002](OPP-002-risk-assess-command.md)                    | `aiw risk assess` — content-based risk classification with exact next command        | P2       | —                                       |
+| [OPP-003](OPP-003-adversarial-review-package.md)             | Adversarial review package — blind judges and proof-carrying findings                | P3       | —                                       |
+| [OPP-004](OPP-004-exact-continuation-commands.md)            | Exact continuation commands — every block names a runnable way out                   | P1       | —                                       |
+| [OPP-005](OPP-005-friction-benchmark.md)                     | Friction benchmark — measure how users get stuck (in-band / out-of-band / dead-end)  | P3       | OPP-004                                 |
+| [OPP-006](OPP-006-emission-usability-test-policy.md)         | Emission ≠ usability — test that named commands actually work                        | P2       | OPP-004 (shared contract)               |
+| [OPP-007](OPP-007-decision-findings-triage-scope-watch.md)   | Decision model — findings-evidence triage and lane scope-watch (advisory-only)       | P3       | OPP-001, OPP-003 (integration points)   |
+| [OPP-008](OPP-008-embedding-covering-tests-judge-context.md) | Embedding retrieval — covering-test detection and judge context scoping              | P3       | OPP-002, OPP-003 (integration points)   |
+| [OPP-009](OPP-009-process-entry-points.md)                   | Processes as entry points — bug-fixing and idea assessment alongside SDD             | P2       | OPP-001 (lanes), OPP-004 (reason codes) |
+| [OPP-010](OPP-010-orchestration-worktree-isolation.md)       | Worktree isolation for orchestrated execution                                        | P2       | orchestration (ENT-007)                 |
+| [OPP-011](OPP-011-evals-redteam-generated-artifacts.md)      | Evals + red-team layer for generated artifacts                                       | P3       | OPP-006 (ratchet)                       |
+| [OPP-012](OPP-012-standards-discovery.md)                    | Standards discovery — codebase conventions into versioned standards                  | P3       | OPP-008 (retrieval)                     |
+| [OPP-013](OPP-013-read-optimized-artifacts-digest-layer.md)  | Read-Optimized Artifacts — fingerprint-bound digest layer for downstream reads       | P1       | OPP-004 (typed blocks), CTX-002/004     |
+| [OPP-014](OPP-014-paired-verification-contract.md)           | Paired Verification Contract — expected vs observed, mechanically compared           | P2       | OPP-004 (reason codes)                  |
+| [OPP-015](OPP-015-token-recovery-governance.md)              | Token & Recovery Governance — enforced budgets, recovery block, advisory suggestions | P2       | CTX-004, OPP-002 (advisory signal)      |
 
 Suggested starting order: **OPP-004 → OPP-002 → OPP-006 → OPP-001 → OPP-005 → OPP-003** (smallest/least invasive first; OPP-004's reason codes feed OPP-005 and OPP-006).
 
 OPP-007 and OPP-008 are **model-integration addenda**: deliberately left for after field exposure — their priority should be set by real usage pain, not speculation. All model features respect the spec's NFR contracts: deterministic floor first, models advisory-only, unconfigured = byte-identical offline behavior.
+
+## Trend-sourced addendum (2026-11)
+
+OPP-009 through OPP-012 derive from a November 2026 landscape scan (spec-kit 145K★ shipping independent entry points; Spec Kitty / Conductor normalizing isolated-worktree parallel agents; promptfoo 26K★ establishing artifact evals; Agent OS 5.5K★ on standards discovery). The scan also **validated** the existing positioning: spec-driven development and human-in-the-loop governance are growing markets where AI Workflow's evidence ledger is the differentiator. Deliberately not chased: generic memory layers (audit-first philosophy), cloud-agent infrastructure (harness territory), commercial AI-review feature parity.
+
+### Token-analysis addendum (OPP-013..015)
+
+Measured on this repository's own full-lane artifacts (~2.2K-token specification, ~4.1K-token plan): downstream re-reads cost ~25-30K tokens per feature — roughly 80% of an artifact's lifetime token cost is re-reading, not writing. OPP-013 (digests), OPP-014 (paired verification) and OPP-015 (governance) attack that multiplier and make observed proof mechanically checkable, synthesizing the shared insight across spec-kit, ODD and HDAE: the full artifact is for humans; agents need a derived, verifiable view.
 
 ## Planning
 
