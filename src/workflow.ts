@@ -237,6 +237,7 @@ import {
   hasCoveringTest,
   runRiskAssess,
 } from "./risk-assess.js";
+import { extractStandards, parseStandardsIndex, type StandardStatus } from "./standards.js";
 import {
   digestPath,
   digestFreshness,
@@ -2477,6 +2478,108 @@ export async function runCommand(
       fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
+    if (command === "standards") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      const action = args[1] ?? "list";
+      const index = fs.exists(join(aiw, "standards/index.yml"))
+        ? parseStandardsIndex(fs.read(join(aiw, "standards/index.yml")))
+        : { schema: 1 as const, standards: {} };
+      if (action === "extract") {
+        fs.mkdir(join(aiw, "standards"));
+        const documents = extractStandards(root, fs);
+        for (const document of documents) {
+          const body = [
+            `# Standard: ${document.topic}`,
+            "",
+            `Status: ${document.status}`,
+            "",
+            ...document.statements.flatMap((statement) => [
+              statement.convention,
+              ...(statement.occurrences > 0
+                ? statement.evidence.map(
+                    (evidence) => `- Evidence: ${evidence.path}:${evidence.line}`,
+                  )
+                : ["- Evidence: none (deterministic scan found no instances)"]),
+            ]),
+            "",
+          ].join("\n");
+          fs.write(join(aiw, `standards/${document.topic}.md`), body);
+          if (index.standards[document.topic] === undefined)
+            index.standards[document.topic] = {
+              status: "inferred",
+              updatedAt: new Date().toISOString(),
+            };
+        }
+        const serialized = [
+          "schema: 1",
+          "standards:",
+          ...Object.entries(index.standards).map(
+            ([topic, entry]) =>
+              `  ${topic}:\n    status: ${entry.status}\n    updatedAt: ${entry.updatedAt}`,
+          ),
+          "",
+        ].join("\n");
+        fs.write(join(aiw, "standards/index.yml"), serialized);
+        const names = documents.map((document) => document.topic).join(", ");
+        return {
+          exitCode: 0,
+          output: `Standards extracted (${names}). All are inferred — review them, then confirm with \`aiw standards confirm <topic>\`. Rejected or confirmed standards never change until you say so.`,
+        };
+      }
+      if (action === "list") {
+        const entries = Object.entries(index.standards);
+        if (entries.length === 0)
+          return {
+            exitCode: 0,
+            output: "No standards recorded. Run `aiw standards extract` first.",
+          };
+        return {
+          exitCode: 0,
+          output: [
+            "Standards:",
+            ...entries.map(([topic, entry]) => `- ${topic}: ${entry.status}`),
+            "Confirm or reject with `aiw standards confirm|reject <topic>`.",
+          ].join("\n"),
+        };
+      }
+      if (action === "confirm" || action === "reject") {
+        const topic = args[2];
+        if (!topic) return { exitCode: 1, error: `Usage: aiw standards ${action} <topic>` };
+        const path = join(aiw, `standards/${topic}.md`);
+        if (!fs.exists(path))
+          return {
+            exitCode: 1,
+            error: `No standard document for ${topic}; run \`aiw standards extract\` first.`,
+          };
+        const status: StandardStatus = action === "confirm" ? "confirmed" : "rejected";
+        index.standards[topic] = { status, updatedAt: new Date().toISOString() };
+        const existing = fs.read(path).replace(/^Status: .*$/m, `Status: ${status}`);
+        fs.write(path, existing);
+        const serialized = [
+          "schema: 1",
+          "standards:",
+          ...Object.entries(index.standards).map(
+            ([topicEntry, entry]) =>
+              `  ${topicEntry}:\n    status: ${entry.status}\n    updatedAt: ${entry.updatedAt}`,
+          ),
+          "",
+        ].join("\n");
+        fs.write(join(aiw, "standards/index.yml"), serialized);
+        return {
+          exitCode: 0,
+          output: `Standard ${topic} ${status}. ${
+            status === "confirmed"
+              ? "Confirmed standards are referenced by generated rules."
+              : "Rejected standards are never rendered."
+          }`,
+        };
+      }
+      return {
+        exitCode: 1,
+        error:
+          "Usage: aiw standards <extract|list|confirm|reject> [topic] — standards are inferred until a human confirms them.",
+      };
+    }
     if (command === "digest") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
@@ -3420,7 +3523,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | standards <extract|list|confirm|reject> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     if (error instanceof BlockingError && args.includes("--json")) {
