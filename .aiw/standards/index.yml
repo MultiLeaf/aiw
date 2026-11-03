@@ -1,0 +1,11 @@
+schema: 1
+standards:
+  testing:
+    status: inferred
+    updatedAt: 2026-11-03T03:09:13.276Z
+  error-handling:
+    status: inferred
+    updatedAt: 2026-11-03T03:09:13.278Z
+  naming:
+    status: inferred
+    updatedAt: 2026-11-03T03:09:13.278Z
