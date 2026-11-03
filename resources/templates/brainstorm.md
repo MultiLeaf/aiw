@@ -13,4 +13,3 @@
 ## Non-goals
 
 ## Open Questions
-

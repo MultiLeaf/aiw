@@ -2319,7 +2319,7 @@ export async function runCommand(
       const path = join(aiw, "generated/plans/implementation-plan.md");
       fs.write(
         path,
-        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test\n  - Regression: <optional — touched existing behavior → the test proving it holds>\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
+        `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test → exit 0\n  - Regression: <optional — touched existing behavior → the test proving it holds>\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
       );
       return { exitCode: 0, output: `Implementation plan created: ${path}` };
     }
@@ -2424,6 +2424,21 @@ export async function runCommand(
               artifactPath,
               gateIssues: issues,
               detail: `Quality gate blocked: ${issues.join(" ")}`,
+            }),
+          );
+      }
+      if (
+        hasQualityGate &&
+        (workflowStage === "implementation" || workflowStage === "verification")
+      ) {
+        const pairIssues = compareVerificationPairs(aiw, fs, workflowStage);
+        if (pairIssues.length)
+          throw new BlockingError(
+            describeBlockingReason("gate_incomplete", {
+              stage,
+              artifactPath,
+              gateIssues: pairIssues,
+              detail: `Quality gate blocked: ${pairIssues.join(" ")}`,
             }),
           );
       }
@@ -3343,6 +3358,73 @@ function parseContextBudgets(aiw: string, fs: FileSystem): Record<string, number
     if (Number.isFinite(n) && n > 0) budgets[stage] = n;
   }
   return budgets;
+}
+
+const PLAN_PAIR_PATTERN = /Validation:\s*([^→\n]+)→\s*([^\n]+)/g;
+const OBSERVED_PAIR_PATTERN = /Validation:\s*([^→\n]+)→\s*([^\n]+)/g;
+const EXIT_PATTERN = /exit\s+(\d+)/i;
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * OPP-014 paired verification: plan tasks declare `Validation: <command> →
+ * <expected>`; reports record `Validation: <command> → <observed>`. The gate
+ * compares the pairs — command match, observed presence, exit-code agreement.
+ * Legacy plans without pair arrows are accepted unchanged (ratchet).
+ */
+export function compareVerificationPairs(
+  aiw: string,
+  fs: FileSystem,
+  stage: "implementation" | "verification",
+): string[] {
+  const planPath = join(aiw, "generated/plans/implementation-plan.md");
+  if (!fs.exists(planPath)) return [];
+  const plan = fs.read(planPath);
+  if (!plan.includes("→")) return [];
+  const declared: { task: string; command: string; expectedExitText?: string; raw: string }[] = [];
+  for (const blockMatch of plan.matchAll(/TASK-\d+[\s\S]*?(?=TASK-\d+|$)/g)) {
+    const block = blockMatch[0];
+    const taskId = /^\s*(TASK-\d+)/.exec(block)?.[1] ?? "TASK-?";
+    for (const pair of block.matchAll(PLAN_PAIR_PATTERN)) {
+      const command = pair[1].trim();
+      if (!command) continue;
+      declared.push({
+        task: taskId,
+        command,
+        expectedExitText: EXIT_PATTERN.exec(pair[2])?.[1],
+        raw: pair[2].trim(),
+      });
+    }
+  }
+  if (declared.length === 0) return [];
+  const reportPath =
+    stage === "implementation"
+      ? join(aiw, "generated/reports/implementation-report.md")
+      : join(aiw, "generated/reports/verification-report.md");
+  const issues: string[] = [];
+  const observed = new Map<string, string>();
+  if (fs.exists(reportPath)) {
+    for (const line of fs.read(reportPath).split("\n")) {
+      const match = /Validation:\s*([^→\n]+)→\s*([^\n]+)/.exec(line);
+      if (match) observed.set(normalizeCommand(match[1]), match[2].trim());
+    }
+  }
+  for (const pair of declared) {
+    const key = normalizeCommand(pair.command);
+    if (!observed.has(key)) {
+      issues.push(`[verification_pair_missing] ${pair.task}: \`${pair.command}\``);
+      continue;
+    }
+    const observedExit = EXIT_PATTERN.exec(observed.get(key) ?? "")?.[1];
+    if (pair.expectedExitText && observedExit && pair.expectedExitText !== observedExit) {
+      issues.push(
+        `[verification_pair_mismatch] ${pair.task}: expected exit ${pair.expectedExitText}, observed exit ${observedExit}`,
+      );
+    }
+  }
+  return issues;
 }
 
 type LightEvidence = {
