@@ -9,8 +9,34 @@ export const HUMAN_APPROVAL_STAGES = [
   "verification",
   "review",
   "traceability",
+  "diagnosis",
+  "assessment",
 ] as const;
 export type HumanApprovalStage = (typeof HUMAN_APPROVAL_STAGES)[number];
+
+/** OPP-009: processes are independent entry points assembled from shared stage primitives. */
+export const PROCESSES = {
+  feature: {
+    stages: [
+      "brainstorming",
+      "specification",
+      "technical-design",
+      "plan",
+      "implementation",
+      "verification",
+      "review",
+      "traceability",
+    ],
+  },
+  bugfix: {
+    stages: ["diagnosis", "implementation", "verification", "review"],
+  },
+  "idea-assessment": {
+    stages: ["assessment"],
+  },
+} as const;
+export type WorkflowProcess = keyof typeof PROCESSES;
+export const PROCESS_IDS = Object.keys(PROCESSES) as WorkflowProcess[];
 export type CommandResult = { exitCode: number; output?: string; error?: string };
 export type PathType = "missing" | "file" | "directory" | "symlink" | "other";
 export type FileSystem = {

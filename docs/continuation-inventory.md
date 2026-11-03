@@ -25,3 +25,4 @@ Every blocking `aiw` exit carries a stable reason code plus either an exact runn
 | `installation_required`         | AI Workflow is not installed in this repository; install it to continue.                                 | runnable command |
 | `state_mismatch`                | AI Workflow state files are inconsistent with each other; run diagnostics to inspect and repair.         | runnable command |
 | `context_budget_exceeded`       | The served context exceeds the declared ceiling for this stage; trim it or raise the ceiling explicitly. | explicit action  |
+| `stage_not_in_process`          | This stage does not exist in the active workflow's process; use the process's own stages.                | explicit action  |

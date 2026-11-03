@@ -26,6 +26,7 @@ export const BLOCKING_REASON_CODES = [
   "installation_required",
   "state_mismatch",
   "context_budget_exceeded",
+  "stage_not_in_process",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -214,6 +215,15 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
     continuation: (context) =>
       action(
         `Trim the stage context (fewer layers or smaller entries)${context.stage ? ` for stage ${context.stage}` : ""}, or re-run with an explicit \`--budget=<tokens>\` override and record the reason.`,
+      ),
+  },
+  stage_not_in_process: {
+    code: "stage_not_in_process",
+    description:
+      "This stage does not exist in the active workflow's process; use the process's own stages.",
+    continuation: () =>
+      action(
+        "Run `aiw task status` to see the stages this process defines, or start the workflow with `--process=feature` when the staged specification sequence is what the work needs.",
       ),
   },
 };

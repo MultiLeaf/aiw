@@ -8,7 +8,9 @@ export type QualityGateStage =
   | "implementation"
   | "verification"
   | "review"
-  | "traceability";
+  | "traceability"
+  | "diagnosis"
+  | "assessment";
 
 function section(content: string, heading: string): string | undefined {
   const match = content.match(
@@ -46,6 +48,29 @@ export function evaluateQualityGate(stage: QualityGateStage, content: string): s
       )
     )
       issues.push("Requirement acceptance criteria must use Given, When, and Then.");
+    return issues;
+  }
+
+  if (stage === "diagnosis") {
+    const issues: string[] = [];
+    if (!/## Reproduction/.test(content) || !/Command:/.test(content) || !/Observed:/.test(content))
+      issues.push("Diagnosis must include a Reproduction with Command and Observed.");
+    if (!/## Expected/.test(content) || section(content, "Expected") === undefined)
+      issues.push("Diagnosis must state the Expected behavior.");
+    if (!/## Root Cause/.test(content) || section(content, "Root Cause") === undefined)
+      issues.push("Diagnosis must state an evidence-backed Root Cause.");
+    if (!/## Scope/.test(content) || section(content, "Scope") === undefined)
+      issues.push("Diagnosis must state the fix Scope.");
+    return issues;
+  }
+  if (stage === "assessment") {
+    const issues: string[] = [];
+    if (!/## Evidence/.test(content) || section(content, "Evidence") === undefined)
+      issues.push("Assessment must include attributed Evidence.");
+    const outcome = /\b(go|clarify|stop)\b/i.exec(section(content, "Outcome") ?? "");
+    if (!outcome) issues.push("Assessment Outcome must be go, clarify, or stop.");
+    if (!/## Rationale/.test(content) || section(content, "Rationale") === undefined)
+      issues.push("Assessment must state the Rationale.");
     return issues;
   }
 

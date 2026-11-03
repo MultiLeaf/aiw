@@ -28,8 +28,12 @@ describe("human approval contract", () => {
       "verification",
       "review",
       "traceability",
+      "diagnosis",
+      "assessment",
     ]);
     expect(stageDefinition("brainstorming").optional).toBe(true);
+    expect(stageDefinition("diagnosis").optional).toBe(false);
+    expect(stageDefinition("assessment").optional).toBe(false);
     expect(stageDefinition("technical-design").optional).toBe(true);
     expect(stageDefinition("specification").optional).toBe(false);
   });

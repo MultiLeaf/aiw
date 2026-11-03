@@ -132,6 +132,9 @@ import {
 } from "./token-usage.js";
 import {
   APPROVAL_STAGES,
+  PROCESS_IDS,
+  processStages,
+  isWorkflowProcess,
   assertWorkflowId,
   validateTaskTicket,
   approveStage,
@@ -148,6 +151,7 @@ import {
   stageDefinition,
   stageFingerprint,
   type ApprovalLedger,
+  type WorkflowProcess,
   type WorkflowSession,
   effectiveLane,
 } from "./human-approval.js";
@@ -332,6 +336,7 @@ function beginWorkflowSession(
     title?: string;
     lane?: "light";
     laneReason?: string;
+    process?: WorkflowProcess;
   },
 ): CommandResult {
   const sessionPath = join(aiw, "workflow.yml");
@@ -381,6 +386,7 @@ function beginWorkflowSession(
     ...(options.lane === "light" && options.laneReason
       ? { lane: "light" as const, laneReason: options.laneReason }
       : {}),
+    ...(options.process && options.process !== "feature" ? { process: options.process } : {}),
   });
   fs.write(ledgerPath, serializeApprovalLedger(ledger));
   fs.write(sessionPath, serializeWorkflowSession(session));
@@ -410,9 +416,23 @@ export async function runCommand(
           "id",
           "lane",
           "lane-reason",
+          "process",
         ]);
         if (!options?.ticket) return { exitCode: 1, error: usage };
         validateTaskTicket(options.ticket);
+        const processName = options.process;
+        if (processName !== undefined) {
+          if (!isWorkflowProcess(processName))
+            return {
+              exitCode: 1,
+              error: `Unknown process: ${processName}. Known processes: ${PROCESS_IDS.join(", ")}.`,
+            };
+          if (processName === "feature")
+            return {
+              exitCode: 1,
+              error: "The feature process is the default; omit --process for it.",
+            };
+        }
         if (options.lane !== undefined && options.lane !== "light")
           return { exitCode: 1, error: "Only --lane=light exists; omit it for the full lane." };
         const laneReason = options["lane-reason"];
@@ -442,6 +462,7 @@ export async function runCommand(
           ticket: options.ticket,
           ...(options.title ? { title: options.title } : {}),
           ...(lane ? { lane, laneReason: laneReason! } : {}),
+          ...(processName ? { process: processName } : {}),
         });
         if (result.exitCode !== 0) return result;
         const advisory = laneAdvisory(root, fs, lane === "light");
@@ -563,7 +584,7 @@ export async function runCommand(
           ...lane,
           `Workflow: ${session.workflowId} (${session.status})`,
           "Stages:",
-          ...APPROVAL_STAGES.map(
+          ...processStages(ledger).map(
             (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
           ),
         ];
@@ -591,15 +612,29 @@ export async function runCommand(
       if (action === "start") {
         const options = parseNamedOptions(
           args.slice(2).filter((argument) => argument !== "--json"),
-          ["id"],
+          ["id", "process"],
         );
-        if (!options) return { exitCode: 1, error: "Usage: aiw workflow start [--id=workflow-id]" };
-        return beginWorkflowSession(fs, aiw, { id: options.id });
+        if (!options)
+          return {
+            exitCode: 1,
+            error:
+              "Usage: aiw workflow start [--id=workflow-id] [--process=bugfix|idea-assessment]",
+          };
+        const processName = options.process;
+        if (processName !== undefined && !isWorkflowProcess(processName))
+          return {
+            exitCode: 1,
+            error: `Unknown process: ${processName}. Known processes: ${PROCESS_IDS.join(", ")}.`,
+          };
+        return beginWorkflowSession(fs, aiw, {
+          id: options.id,
+          ...(processName ? { process: processName } : {}),
+        });
       }
       if (action === "status") {
         if (!fs.exists(sessionPath)) return { exitCode: 0, output: "No SDD workflow is active." };
         const { session, ledger } = readWorkflowState(aiw, fs, false);
-        const stages = APPROVAL_STAGES.map(
+        const stages = processStages(ledger).map(
           (stage) => `- ${stage}: ${ledger.stages[stage]?.status ?? "not-started"}`,
         );
         return {
@@ -681,7 +716,7 @@ export async function runCommand(
             output: `Workflow completed (light lane): ${session.workflowId}. Evidence: ${evidencePath}`,
           };
         }
-        const unresolved = APPROVAL_STAGES.filter(
+        const unresolved = processStages(ledger).filter(
           (stage) =>
             ledger.stages[stage]?.status !== "approved" &&
             ledger.stages[stage]?.status !== "skipped",
@@ -2408,7 +2443,11 @@ export async function runCommand(
     if (command === "digest") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
-      const stages = stageArg ? [stageArg as HumanApprovalStage] : [...APPROVAL_STAGES];
+      const stages = stageArg
+        ? [stageArg as HumanApprovalStage]
+        : fs.exists(join(aiw, "workflow.yml"))
+          ? processStages(readWorkflowState(aiw, fs, false).ledger)
+          : [...APPROVAL_STAGES];
       const lines: string[] = [];
       let served = 0;
       for (const stage of stages) {
@@ -2426,6 +2465,30 @@ export async function runCommand(
         };
       lines.push(`served: ${served} digest${served === 1 ? "" : "s"} (full reads on demand)`);
       return { exitCode: 0, output: lines.join("\n") };
+    }
+    if (command === "diagnosis") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      assertStageReady(aiw, fs, "diagnosis");
+      const title =
+        args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Diagnosis";
+      const path = join(aiw, "generated/reports/diagnosis.md");
+      fs.write(
+        path,
+        `# ${title}\n\n## Reproduction\n\n- Command: \`<command that reproduces the bug>\`\n- Observed: <what actually happens>\n\n## Expected\n\n- <the correct behavior>\n\n## Root Cause\n\n- <evidence-backed cause, file:line when known>\n\n## Scope\n\n- In scope: <files and behavior this fix touches>\n- Out of scope: <explicitly excluded>\n`,
+      );
+      return { exitCode: 0, output: `Diagnosis artifact created: ${path}` };
+    }
+    if (command === "assess") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      assertStageReady(aiw, fs, "assessment");
+      const title =
+        args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Assessment";
+      const path = join(aiw, "generated/reports/assessment.md");
+      fs.write(
+        path,
+        `# ${title}\n\n## Evidence\n\n- <attributed evidence: source, finding>\n\n## Outcome\n\ngo | clarify | stop\n\n## Rationale\n\n- <why this outcome follows from the evidence>\n\n## Next Step\n\n- <go: recommended feature scope · clarify: the open questions · stop: conditions that would reopen>\n`,
+      );
+      return { exitCode: 0, output: `Assessment artifact created: ${path}` };
     }
     if (command === "risk") {
       if (args[1] !== "assess")
@@ -2800,7 +2863,7 @@ export async function runCommand(
         const stageArg = args.find((argument) => argument.startsWith("--stage="))?.slice(8);
         const digestLines: string[] = [];
         if (fs.exists(join(aiw, "workflow.yml"))) {
-          for (const stage of APPROVAL_STAGES) {
+          for (const stage of processStages(readWorkflowState(aiw, fs, false).ledger)) {
             const artifactPath = approvalArtifactPath(aiw, stage);
             const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
             if (freshness.state !== "missing") digestLines.push(formatDigestLine(freshness));
@@ -3353,7 +3416,7 @@ function readWorkflowState(
         detail: `Workflow ${session.workflowId} is complete; start a new workflow first.`,
       }),
     );
-  const changed = APPROVAL_STAGES.find((stage) => {
+  const changed = processStages(ledger).find((stage) => {
     const record = ledger.stages[stage];
     if (!record?.artifactHash || !["pending-human", "approved"].includes(record.status))
       return false;
@@ -3502,6 +3565,13 @@ function parseLightEvidence(content: string): LightEvidence {
 
 function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage): void {
   const { session, ledger } = readActiveWorkflow(aiw, fs);
+  if (!processStages(ledger).includes(stage))
+    throw new BlockingError(
+      describeBlockingReason("stage_not_in_process", {
+        stage,
+        detail: `Stage ${stage} is not part of the ${ledger.process ?? "feature"} process for workflow ${session.workflowId}.`,
+      }),
+    );
   if (effectiveLane(session) === "light")
     throw new BlockingError(
       describeBlockingReason("lane_escalation_required", {
@@ -3557,6 +3627,8 @@ function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
     verification: "generated/reports/verification-report.md",
     review: "generated/reports/code-review.md",
     traceability: "generated/artifacts/traceability.yml",
+    diagnosis: "generated/reports/diagnosis.md",
+    assessment: "generated/reports/assessment.md",
   };
   return resolve(aiw, paths[stage]);
 }
