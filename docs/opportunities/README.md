@@ -21,6 +21,10 @@ OPP-007 and OPP-008 are **model-integration addenda**: deliberately left for aft
 
 ## Trend-sourced addendum (2026-11)
 
+### Token-analysis addendum (OPP-013..015)
+
+Measured on this repository's own full-lane artifacts (~2.2K-token specification, ~4.1K-token plan): downstream re-reads cost ~25-30K tokens per feature — roughly 80% of an artifact's lifetime token cost is re-reading, not writing. OPP-013 (digests), OPP-014 (paired verification) and OPP-015 (governance) attack that multiplier and make observed proof mechanically checkable, synthesizing the shared insight across spec-kit, ODD and HDAE: the full artifact is for humans; agents need a derived, verifiable view.
+
 OPP-009 through OPP-012 derive from a November 2026 landscape scan (spec-kit 145K★ shipping independent entry points; Spec Kitty / Conductor normalizing isolated-worktree parallel agents; promptfoo 26K★ establishing artifact evals; Agent OS 5.5K★ on standards discovery). The scan also **validated** the existing positioning: spec-driven development and human-in-the-loop governance are growing markets where AI Workflow's evidence ledger is the differentiator. Deliberately not chased: generic memory layers (audit-first philosophy), cloud-agent infrastructure (harness territory), commercial AI-review feature parity.
 
 ## Planning
