@@ -308,7 +308,9 @@ function laneAdvisory(root: string, fs: FileSystem, lightChosen: boolean): strin
     return `advisory: risk assess reports high for the current changes (${assessment.reasons
       .slice(0, 2)
       .map((reason) => reason.code)
-      .join(", ")}); consider the full lane, or escalate later with \`aiw task escalate --reason=...\`.`;
+      .join(
+        ", ",
+      )}); consider the full lane, or escalate later with \`aiw task escalate --reason=...\`.`;
   if (!lightChosen && assessment.tier === "passive")
     return "advisory: current changes look passive; the light lane (--lane=light --lane-reason=...) may be viable for small work.";
   return undefined;
@@ -2757,13 +2759,17 @@ export async function runCommand(
                 }),
               );
           }
-          return { exitCode: 0, output: `${output}\n\nstage: ${stageArg} · ~${Math.ceil(output.length / 4)} tokens${Number.isFinite(budget) && budget > 0 ? ` · ceiling ${budget}` : " · no ceiling declared"}` };
+          return {
+            exitCode: 0,
+            output: `${output}\n\nstage: ${stageArg} · ~${Math.ceil(output.length / 4)} tokens${Number.isFinite(budget) && budget > 0 ? ` · ceiling ${budget}` : " · no ceiling declared"}`,
+          };
         }
         return { exitCode: 0, output };
       }
       return {
         exitCode: 1,
-        error: "Usage: aiw context [--layer=project --content=text] | aiw context --stage=<name> [--budget=tokens]",
+        error:
+          "Usage: aiw context [--layer=project --content=text] | aiw context --stage=<name> [--budget=tokens]",
       };
     }
     if (command === "context-summary") {
