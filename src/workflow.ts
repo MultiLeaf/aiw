@@ -299,7 +299,10 @@ import {
   writePluginScaffold,
 } from "./plugin-sdk.js";
 import {
+  createTaskWorktrees,
   executeOrchestrationPlan,
+  listManagedWorktrees,
+  removeWorktrees,
   parseOrchestrationPlan,
   serializeOrchestrationPreview,
   serializeOrchestrationResults,
@@ -847,15 +850,32 @@ export async function runCommand(
       if (executeCount > 1)
         return {
           exitCode: 1,
-          error: "Usage: aiw orchestrate --plan=path [--execute] [--max-parallel=number]",
+          error:
+            "Usage: aiw orchestrate --plan=path [--execute] [--isolate] [--cleanup] [--max-parallel=number]",
         };
       const execute = executeCount === 1;
-      const named = args.slice(1).filter((arg) => arg !== "--execute");
+      const isolate = args.includes("--isolate");
+      const cleanup = args.includes("--cleanup");
+      if (cleanup) {
+        const leaked = listManagedWorktrees(root, aiw);
+        if (leaked.length === 0) return { exitCode: 0, output: "No managed worktrees to clean." };
+        if (!execute)
+          return {
+            exitCode: 0,
+            output: `Managed worktrees found:\n${leaked.map((path) => `- ${path}`).join("\n")}\nRe-run with --execute to remove them.`,
+          };
+        removeWorktrees(root, leaked, { force: true });
+        return { exitCode: 0, output: `Removed ${leaked.length} managed worktree(s).` };
+      }
+      const named = args
+        .slice(1)
+        .filter((arg) => arg !== "--execute" && arg !== "--isolate" && arg !== "--cleanup");
       const parsed = parseNamedOptions(named, ["plan", "max-parallel"]);
       if (!parsed?.plan)
         return {
           exitCode: 1,
-          error: "Usage: aiw orchestrate --plan=path [--execute] [--max-parallel=number]",
+          error:
+            "Usage: aiw orchestrate --plan=path [--execute] [--isolate] [--cleanup] [--max-parallel=number]",
         };
       const planPath = safeProjectFile(root, parsed.plan, fs);
       const plan = parseOrchestrationPlan(fs.read(planPath));
@@ -875,7 +895,24 @@ export async function runCommand(
           error: `Orchestration checkpoint already exists; use a new plan id: ${checkpoint}`,
         };
       try {
-        const results = await executeOrchestrationPlan(plan, services.orchestrator, maxParallel);
+        const isolation = isolate
+          ? {
+              options: { root, aiw, planId: plan.id },
+              worktrees: createTaskWorktrees(root, aiw, plan),
+            }
+          : undefined;
+        const results = await executeOrchestrationPlan(
+          plan,
+          services.orchestrator,
+          maxParallel,
+          isolation,
+        );
+        if (isolation) {
+          const passedPaths = results
+            .filter(({ status, worktree }) => status === "passed" && worktree)
+            .map(({ worktree }) => worktree as string);
+          removeWorktrees(root, passedPaths);
+        }
         fs.write(checkpoint, serializeOrchestrationResults(plan, results));
         const failed = results.filter(({ status }) => status !== "passed");
         return failed.length
