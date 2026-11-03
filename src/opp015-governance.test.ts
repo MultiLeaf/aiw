@@ -8,7 +8,7 @@ import { run } from "./cli.js";
 
 async function gitProject(): Promise<string> {
   const cwd = await mkdtemp(join(tmpdir(), "aiw-opp015-"));
-  const git = (args: string[]) =>
+  const git = (args: string[]): void =>
     execFileSync("git", args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
   git(["init", "-q"]);
   git(["config", "user.email", "t@e.c"]);
