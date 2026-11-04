@@ -1,0 +1,41 @@
+schema: 1
+id: bugfix-process-entry
+family: process
+harness: codex
+description: >
+  A reported defect must enter through the bugfix process (diagnosis before
+  implementation), not a generic feature flow. Ending without the bugfix
+  process recorded fails this scenario.
+command: codex exec --sandbox workspace-write {prompt}
+prompt: |
+  Work in the current repository. The `aiw` CLI is installed and its workflow
+  skills are available under .aiw/resources/skills — read the relevant skill
+  files before acting. Bug report: `subtract(5, 3)` returns 3 instead of 2 —
+  src/calc.ts has an off-by-one. Enter the workflow the way the skills
+  prescribe for a reported defect (diagnosis first), fix the bug, and stop
+  where the workflow requires a human decision.
+fixture:
+  files:
+    - path: README.md
+      content: |
+        # scenario fixture
+
+        Calculator used by behavioral evaluation scenarios.
+    - path: src/calc.ts
+      content: |
+        export function subtract(a: number, b: number): number {
+          return a - b + 1;
+        }
+  setup:
+    - aiw install
+  git: true
+expected:
+  exitCode: 0
+  files:
+    .aiw/workflow.yml:
+      contains: "process: bugfix"
+    .aiw/approvals.yml:
+      contains: "pending-human"
+budget:
+  wallClockS: 300
+  tokenCeiling: 150000

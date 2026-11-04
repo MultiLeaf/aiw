@@ -1,6 +1,6 @@
 # OPP-016: Behavioral evaluation phase 2 — scenario registry replayed against real harness CLIs
 
-- Status: Proposed
+- Status: Implemented (2026-11-04): registry + runner + CLI (`aiw eval run --scenarios`), budgets pooling via `.aiw/budgets.yml`, advisory CI job; the two-cycle advisory period starts now — approval-boundary scenarios gate first afterwards
 - Priority: P2
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

@@ -37,6 +37,21 @@ Externally visible tasks also require an isolated integration run by an AI subag
 
 Every launched subagent must be instructed to send a direct Orca orchestration message to the coordinator terminal when it finishes; a mailbox-only notification is insufficient. The message must include its status, validation summary, failures, and worktree cleanliness.
 
+## Behavioral evaluation (OPP-016)
+
+Text invariants (OPP-011) prove generated artifacts say the right things; the
+behavioral scenario registry in `resources/evals/scenarios/` checks that real
+coding agents do them: `aiw eval run --scenarios` replays each fixture against
+a real harness CLI and asserts deterministic state outcomes (approval boundary
+pending, light lane without durable artifacts, escalation after risk, bugfix
+process entry, rejection → re-gate). Missing harness CLIs mark scenarios
+`skipped-harness-unavailable`; usage is recorded only when harnesses report
+it; pooled token budgets come from `.aiw/budgets.yml` (`evals.tokenCeiling`).
+Scenarios are advisory-first (report-only) for two release cycles before the
+approval-boundary family becomes a CI gate — the ratchet is declared up front.
+See `resources/evals/README.md`; the registry doubles as the canonical
+behavioral contract examples.
+
 ## Self-validation
 
 AI Workflow must use itself to validate changes whenever the current capabilities support the task. Changes affecting installation, scanning, generation, migration, adapters, or project configuration must be executed against this repository and their generated output must be inspected. Unit tests alone are not sufficient for these changes.

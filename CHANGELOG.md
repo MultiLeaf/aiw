@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-04
+
+### Added
+
+- Behavioral evaluation phase 2 (OPP-016): the scenario registry in `resources/evals/scenarios/` — five fixture scenarios covering the core behavioral contract (approval boundary, light-lane artifact skip, risk escalation, bugfix process entry, rejection → re-gate) — replayed against real harness CLIs with `aiw eval run --scenarios`. Deterministic state-outcome assertions only (no prose, no LLM-as-judge); missing harness CLIs mark scenarios `skipped-harness-unavailable` (never silent passes); one retry on transport failure reports `flaky-suspect`; per-scenario wall-clock and token ceilings plus pooled nightly budgets from `.aiw/budgets.yml` (`evals.tokenCeiling`); usage sidecar records tokens only when harnesses report them. Results serialize as `aiw.scenario-results/v1` to `.aiw/generated/evals/`. Advisory-first: report-only for two release cycles before the approval-boundary family gates (ratchet declared up front). The registry doubles as the canonical behavioral contract examples (`resources/evals/README.md`).
+- New `behavioral-evals` CI workflow: nightly + PR (registry/runner paths), advisory mode.
+
 ## [0.14.0] - 2026-11-04
 
 ### Added
