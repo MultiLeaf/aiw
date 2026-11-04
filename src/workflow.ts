@@ -237,6 +237,13 @@ import {
   hasCoveringTest,
   runRiskAssess,
 } from "./risk-assess.js";
+import {
+  applyMigration,
+  detectLegacyState,
+  planLegacyMigration,
+  rollbackMigration,
+  type ManagedCandidate,
+} from "./legacy-migration.js";
 import { extractStandards, parseStandardsIndex, type StandardStatus } from "./standards.js";
 import {
   digestPath,
@@ -936,9 +943,12 @@ export async function runCommand(
       if (fs.pathType?.(manifestPath) === "file") {
         const manifest = fs.read(manifestPath);
         const active = manifest.match(/^\s*active:\s*(.+)$/m)?.[1]?.trim() ?? "unknown";
+        const legacyHint = detectLegacyState(aiw, fs)
+          ? "\nLegacy pre-ownership state detected. Run `aiw migrate --dry-run` to review, then `aiw migrate` to upgrade to the current state layout."
+          : "";
         return {
           exitCode: 0,
-          output: `AI Workflow is already installed for target: ${active}. Existing state preserved.`,
+          output: `AI Workflow is already installed for target: ${active}. Existing state preserved.${legacyHint}`,
         };
       }
       const aiInitPath = join(root, renderAiInitPath(target));
@@ -2248,8 +2258,19 @@ export async function runCommand(
     if (command === "doctor") {
       const required = ["manifest.yml", "profile.yml", "lock.yml", "ownership.yml"];
       const missing = required.filter((file) => !fs.exists(join(aiw, file)));
-      if (missing.length)
+      if (missing.length) {
+        if (detectLegacyState(aiw, fs))
+          return {
+            exitCode: 1,
+            error:
+              formatBlockingOutput(
+                describeBlockingReason("migration_required", {
+                  detail: "Legacy pre-ownership state detected; review the migration plan first.",
+                }),
+              ) + "\nNext: run `aiw migrate --dry-run`, then `aiw migrate`.",
+          };
         return { exitCode: 1, error: `Missing AI Workflow files: ${missing.join(", ")}` };
+      }
       try {
         parseManifest(fs.read(join(aiw, "manifest.yml")));
         parseOwnership(fs.read(join(aiw, "ownership.yml")));
@@ -2579,6 +2600,69 @@ export async function runCommand(
         error:
           "Usage: aiw standards <extract|list|confirm|reject> [topic] — standards are inferred until a human confirms them.",
       };
+    }
+    if (command === "migrate") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      const dry = args.includes("--dry-run");
+      const doRollback = args.includes("--rollback");
+      if (doRollback) {
+        const restored = rollbackMigration(root, aiw, fs);
+        return { exitCode: 0, output: `Legacy state restored from snapshot: ${restored}` };
+      }
+      if (!detectLegacyState(aiw, fs))
+        return {
+          exitCode: 0,
+          output: "Nothing to migrate: state already includes the ownership inventory.",
+        };
+      const manifestPath = join(aiw, "manifest.yml");
+      const manifestTarget =
+        /^\s*active:\s*(.+)$/m.exec(fs.read(manifestPath))?.[1]?.trim() ||
+        detectTarget(root, fs) ||
+        "codex";
+      if (!isTarget(manifestTarget)) throw new Error(`Unsupported target: ${manifestTarget}`);
+      const managedCandidates: ManagedCandidate[] = [];
+      for (const resource of loadBundledResources(manifestTarget)) {
+        managedCandidates.push({
+          path: join(root, renderResourcePath(manifestTarget, resource.type, resource.id)),
+          bundled: resource.content,
+          metadata: {
+            target: manifestTarget,
+            resourceType: resource.type,
+            resourceId: resource.id,
+            kind: "target-resource",
+          },
+        });
+      }
+      managedCandidates.push({
+        path: join(root, describeResource(manifestTarget, "context", "project").path),
+        metadata: {
+          target: manifestTarget,
+          resourceType: "context",
+          resourceId: "project",
+          kind: "target-resource",
+        },
+      });
+      const plan = planLegacyMigration(root, aiw, fs, managedCandidates);
+      const report = [
+        `Target: ${manifestTarget}`,
+        plan.archived.length
+          ? `Archived (superseded machine state): ${plan.archived.join(", ")}`
+          : "",
+        plan.preserved.length ? `Preserved byte-identical: ${plan.preserved.join(", ")}` : "",
+        `Rebuilt: ownership inventory (${plan.rebuilt.length} managed paths)`,
+        ...plan.userModified.map(
+          (entry) => `Legacy-user-modified (sync preserves for review): ${entry}`,
+        ),
+        ...plan.manualActions.map((entry) => `MANUAL ACTION REQUIRED: ${entry}`),
+        dry ? "Mode: dry-run — nothing written." : `Rollback snapshot: ${plan.rollbackSnapshot}`,
+      ].filter((line) => line.length > 0);
+      if (dry) return { exitCode: 0, output: ["Migration plan (dry-run):", ...report].join("\n") };
+      try {
+        applyMigration(root, aiw, fs, managedCandidates, plan);
+      } catch (error) {
+        return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+      }
+      return { exitCode: 0, output: ["Migration complete.", ...report].join("\n") };
     }
     if (command === "digest") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();

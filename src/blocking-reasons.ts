@@ -27,6 +27,7 @@ export const BLOCKING_REASON_CODES = [
   "state_mismatch",
   "context_budget_exceeded",
   "stage_not_in_process",
+  "migration_required",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -225,6 +226,12 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
       action(
         "Run `aiw task status` to see the stages this process defines, or start the workflow with `--process=feature` when the staged specification sequence is what the work needs.",
       ),
+  },
+  migration_required: {
+    code: "migration_required",
+    description:
+      "Legacy pre-ownership state detected; review the migration plan before continuing.",
+    continuation: () => command("aiw migrate --dry-run"),
   },
 };
 
