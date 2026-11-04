@@ -21,6 +21,9 @@ The guiding principle: **ceremony should scale with the consequence of the chang
 | [OPP-013](OPP-013-read-optimized-artifacts-digest-layer.md)  | Read-Optimized Artifacts — fingerprint-bound digest layer for downstream reads       | P1       | OPP-004 (typed blocks), CTX-002/004     |
 | [OPP-014](OPP-014-paired-verification-contract.md)           | Paired Verification Contract — expected vs observed, mechanically compared           | P2       | OPP-004 (reason codes)                  |
 | [OPP-015](OPP-015-token-recovery-governance.md)              | Token & Recovery Governance — enforced budgets, recovery block, advisory suggestions | P2       | CTX-004, OPP-002 (advisory signal)      |
+| [OPP-016](OPP-016-behavioral-eval-scenarios.md)              | Behavioral evaluation phase 2 — scenario registry replayed against real harness CLIs | P2       | OPP-011 (deterministic floor)           |
+| [OPP-017](OPP-017-orchestration-depth.md)                    | Orchestration depth — integration forecast, leak reporting, honor matrix             | P2       | OPP-010 (isolation)                     |
+| [OPP-018](OPP-018-legacy-migration.md)                       | Supported migration path for legacy installations                                    | P1       | — (field-verified pain)                 |
 
 Suggested starting order: **OPP-004 → OPP-002 → OPP-006 → OPP-001 → OPP-005 → OPP-003** (smallest/least invasive first; OPP-004's reason codes feed OPP-005 and OPP-006).
 
@@ -29,6 +32,10 @@ OPP-007 and OPP-008 are **model-integration addenda**: deliberately left for aft
 ## Trend-sourced addendum (2026-11)
 
 OPP-009 through OPP-012 derive from a November 2026 landscape scan (spec-kit 145K★ shipping independent entry points; Spec Kitty / Conductor normalizing isolated-worktree parallel agents; promptfoo 26K★ establishing artifact evals; Agent OS 5.5K★ on standards discovery). The scan also **validated** the existing positioning: spec-driven development and human-in-the-loop governance are growing markets where AI Workflow's evidence ledger is the differentiator. Deliberately not chased: generic memory layers (audit-first philosophy), cloud-agent infrastructure (harness territory), commercial AI-review feature parity.
+
+### Evaluation-sourced addendum (OPP-016..018)
+
+An external qualitative assessment (Nov 2026) scored the release: specification-driven engineering, token governance, and workflow governance at 5/5; multi-agent orchestration and behavioral evaluation at 3/5; provider portability 4/5. The scores match the internal read — the 5s are the differentiators, the 3s are the frontier. OPP-016 (behavioral scenarios against real harness CLIs), OPP-017 (orchestration integration forecast, leak reporting, honor matrix) and OPP-018 (supported legacy migration, field-verified pain during inception) are the levers on those scores. The assessment also missed two documented strengths: the honest threat-model boundary and the friction benchmark as a quality instrument.
 
 ### Token-analysis addendum (OPP-013..015)
 
