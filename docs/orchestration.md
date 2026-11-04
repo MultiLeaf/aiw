@@ -35,6 +35,22 @@ The first command prints deterministic execution waves and does not invoke an ag
 
 Each executed plan writes one `.aiw/checkpoints/orchestration-<plan-id>.yml` result. Existing checkpoints are never overwritten: use a new plan identifier for a new run. Agent result details are bounded and serialized safely.
 
+## Isolation and integration (OPP-010/OPP-017)
+
+`aiw orchestrate --plan=plan.yml --execute --isolate` creates one branch-per-task git worktree (`aiw/<plan>/<task>` from the plan HEAD) and hands the path to the adapter through the optional `worktree` field on the orchestration task. Passed-task worktrees are removed after evidence capture; failed-task worktrees are kept for diagnosis. Checkpoints record per-task worktree path, base commit, final commit, diff stat, and duration, plus the plan's wall-clock time.
+
+`aiw orchestrate integrate --plan=plan.yml` prints the wave-ordered integration forecast for the task branches: a deterministic `git merge-tree` dry run against the current branch, reporting conflicts per task before any human merge. Conflicts make the command exit nonzero; nothing is ever merged by the tool. `aiw orchestrate --cleanup --execute` removes managed worktrees left by crashed runs, and `aiw doctor` reports leaks with the cleanup continuation.
+
+### Worktree honor matrix
+
+The adapter contract owns process execution; aiw owns git isolation. What each documented integration does with `task.worktree`:
+
+| Integration                                                  | Honor                                                                                                   | Notes                                                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Host-integrated adapters (in-process)                        | Receives the path; runs the task with the worktree as its working directory or fails with a typed error | The minimal adapter contract: never run against the main tree when a worktree is provided    |
+| Claude Code / Codex / Gemini CLIs launched by a host adapter | Honored by passing the worktree as the session working directory                                        | Harness-native worktree features may substitute; the checkpoint evidence stays authoritative |
+| Adapters without worktree support                            | Must reject `--isolate` before any task runs                                                            | The plan fails before execution rather than silently running in the main tree                |
+
 ## Adapter contract
 
 ```ts

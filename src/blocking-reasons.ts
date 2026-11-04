@@ -28,6 +28,8 @@ export const BLOCKING_REASON_CODES = [
   "context_budget_exceeded",
   "stage_not_in_process",
   "migration_required",
+  "worktrees_leaked",
+  "orchestration_not_executed",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -232,6 +234,20 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
     description:
       "Legacy pre-ownership state detected; review the migration plan before continuing.",
     continuation: () => command("aiw migrate --dry-run"),
+  },
+  worktrees_leaked: {
+    code: "worktrees_leaked",
+    description:
+      "Managed orchestration worktrees remain on disk after their plan finished; clean them up.",
+    continuation: () => action("Run `aiw orchestrate --cleanup --execute` to remove them."),
+  },
+  orchestration_not_executed: {
+    code: "orchestration_not_executed",
+    description: "The plan has not been executed yet; there is no checkpoint to integrate.",
+    continuation: () =>
+      action(
+        "Run `aiw orchestrate --plan=<path> --execute` first; integration forecasts need the checkpoint evidence.",
+      ),
   },
 };
 
