@@ -1,0 +1,40 @@
+name: Behavioral evals
+
+# OPP-016: replay the scenario registry against real harness CLIs.
+# CI runners have no coding-agent CLIs installed, so every scenario marks
+# `skipped-harness-unavailable` and the job stays advisory (report-only).
+# The behavioral signal lives in local runs where harnesses exist; CI's job
+# is to keep the runner, registry, and report machinery healthy.
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "resources/evals/**"
+      - "src/eval/**"
+      - ".github/workflows/behavioral-evals.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run scenario registry (advisory)
+        run: node dist/cli.js eval run --scenarios --advisory
+      - name: Upload scenario results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenario-results
+          path: .aiw/generated/evals/scenario-results.yml
+          if-no-files-found: ignore

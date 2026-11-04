@@ -1,5 +1,6 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "./constants.js";
 import {
@@ -68,6 +69,13 @@ import {
 import type { WorkflowDependencies } from "./services.js";
 import { validatePackageContract } from "./package-contract.js";
 import { parseLock, resolvePackage, serializeLock } from "./lockfile.js";
+import {
+  defaultShellRunner,
+  isHarnessAvailable,
+  parseScenarioRegistry,
+  runScenarios,
+  serializeScenarioResults,
+} from "./eval/scenarios.js";
 import { executeVercelSkills, installVercelSkill, nodeCommandExecutor } from "./vercel-skills.js";
 import { scanProject } from "./scanner.js";
 import { readFactOverrides, saveSettingOverrides, saveSettingsSection } from "./settings.js";
@@ -2296,6 +2304,75 @@ export async function runCommand(
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
       }
     }
+    if (command === "eval") {
+      const usage =
+        "Usage: aiw eval run --scenarios [--registry=dir] [--harness=id] [--filter=id] [--advisory]";
+      if (args[1] !== "run" || !args.includes("--scenarios")) return { exitCode: 1, error: usage };
+      const options = parseNamedOptions(
+        args.slice(2).filter((arg) => arg !== "--scenarios" && arg !== "--advisory"),
+        ["registry", "harness", "filter"],
+      );
+      if (options === undefined) return { exitCode: 1, error: usage };
+      const advisory = args.includes("--advisory");
+      const registryDir = options.registry
+        ? resolve(root, options.registry)
+        : resolve(dirname(fileURLToPath(import.meta.url)), "../resources/evals/scenarios");
+      if (!fs.exists(registryDir))
+        return { exitCode: 1, error: `Scenario registry not found: ${registryDir}` };
+      const files = (fs.list?.(registryDir) ?? []).filter((name) => name.endsWith(".yml")).sort();
+      let scenarios;
+      try {
+        scenarios = parseScenarioRegistry(
+          files.map((name) => ({
+            path: name,
+            content: fs.read(join(registryDir, name)),
+          })),
+        );
+      } catch (error) {
+        return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+      }
+      if (options.harness)
+        scenarios = scenarios.filter(({ harness }) => harness === options.harness);
+      if (options.filter)
+        scenarios = scenarios.filter(
+          ({ id, family }) => id.includes(options.filter) || family.includes(options.filter),
+        );
+      if (scenarios.length === 0)
+        return { exitCode: 0, output: "No scenarios matched; nothing to run.\n" };
+      const budgetsPath = join(aiw, "budgets.yml");
+      let poolTokenCeiling: number | undefined;
+      if (fs.exists(budgetsPath)) {
+        const budgets = parseYaml(fs.read(budgetsPath)) as Record<string, unknown> | null;
+        const evals = budgets?.evals as Record<string, unknown> | undefined;
+        const ceiling = Number(evals?.tokenCeiling);
+        if (Number.isFinite(ceiling) && ceiling > 0) poolTokenCeiling = ceiling;
+      }
+      const report = await runScenarios({
+        scenarios,
+        runShell: defaultShellRunner,
+        isAvailable: (harness) => isHarnessAvailable(harness),
+        poolTokenCeiling,
+      });
+      const resultsPath = join(aiw, "generated", "evals", "scenario-results.yml");
+      fs.write(resultsPath, serializeScenarioResults(report));
+      const lines = report.results.map(
+        (result) =>
+          `${result.scenario}: ${result.status}${result.usage ? ` (tokens in ${result.usage.tokensIn}, out ${result.usage.tokensOut})` : ""} — ${result.detail}`,
+      );
+      if (report.missingHarnesses.length)
+        lines.push(
+          `skipped for missing harness CLIs: ${report.missingHarnesses.join(", ")} — install them to run those scenarios`,
+        );
+      lines.push(`results written to ${relative(root, resultsPath)}`);
+      const blocking = report.results.filter(
+        ({ status }) => status === "failed" || status.startsWith("aborted-"),
+      ).length;
+      const exitCode = blocking > 0 && !advisory ? 1 : 0;
+      return {
+        exitCode,
+        output: `${lines.join("\n")}\n${advisory && blocking > 0 ? `${blocking} scenario(s) failed (advisory mode: exit 0).\n` : ""}`,
+      };
+    }
     if (command === "doctor") {
       const required = ["manifest.yml", "profile.yml", "lock.yml", "ownership.yml"];
       const missing = required.filter((file) => !fs.exists(join(aiw, file)));
@@ -3658,7 +3735,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | standards <extract|list|confirm|reject> | recommend [--select=id,id] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | standards <extract|list|confirm|reject> | recommend [--select=id,id] | eval run --scenarios [--registry=dir] [--harness=id] [--filter=id] [--advisory] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     if (error instanceof BlockingError && args.includes("--json")) {

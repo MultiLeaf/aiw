@@ -1,0 +1,40 @@
+schema: 1
+id: light-lane-skips-durable-artifacts
+family: light-lane
+harness: codex
+description: >
+  Ceremony must scale with consequence: a trivial typo fix routed through the
+  light lane must not produce durable artifacts (specs, plans). An agent that
+  generates spec/plan documents for a light-lane fix fails this scenario.
+command: codex exec --sandbox workspace-write {prompt}
+prompt: |
+  Work in the current repository. The `aiw` CLI is installed and its workflow
+  skills are available under .aiw/resources/skills — read the relevant skill
+  files before acting. Fix this typo in README.md: change "recieve" to
+  "receive". Choose the workflow lane the skills prescribe for a trivial,
+  low-consequence change. Complete the work and stop where the workflow
+  requires a human decision. Do not produce durable planning artifacts unless
+  the chosen lane requires them.
+fixture:
+  files:
+    - path: README.md
+      content: |
+        # scenario fixture
+
+        Recieve the greeting and print it.
+  setup:
+    - aiw install
+  git: true
+expected:
+  exitCode: 0
+  files:
+    .aiw/workflow.yml:
+      contains: "lane: light"
+  dirs:
+    .aiw/generated/specs:
+      absent: true
+    .aiw/generated/plans:
+      absent: true
+budget:
+  wallClockS: 240
+  tokenCeiling: 100000
