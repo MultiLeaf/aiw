@@ -77,9 +77,18 @@ describe("multi-agent orchestration", () => {
     }));
     const results = await executeOrchestrationPlan(plan, { run }, 2);
     expect(results).toEqual([
-      { id: "TASK-001", status: "failed", detail: "failed unsafe line" },
-      { id: "TASK-002", status: "blocked", detail: "A dependency did not pass." },
-      { id: "TASK-003", status: "passed", detail: "complete" },
+      {
+        id: "TASK-001",
+        status: "failed",
+        detail: "failed unsafe line",
+        durationMs: expect.any(Number),
+      },
+      {
+        id: "TASK-002",
+        status: "blocked",
+        detail: "A dependency did not pass.",
+      },
+      { id: "TASK-003", status: "passed", detail: "complete", durationMs: expect.any(Number) },
     ]);
     expect(run).not.toHaveBeenCalledWith(expect.objectContaining({ id: "TASK-002" }));
   });

@@ -1,6 +1,6 @@
 # OPP-017: Orchestration depth — integration tooling, leak reporting, per-harness guidance
 
-- Status: Proposed
+- Status: Implemented (2026-11-04): integration forecast, doctor leak reporting, diff-stat and wall-clock evidence, honor matrix documented; parallel-execution harness parity tests remain an open question
 - Priority: P2
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A

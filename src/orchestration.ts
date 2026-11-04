@@ -21,6 +21,9 @@ export type OrchestrationTaskResult = {
   worktree?: string;
   baseCommit?: string;
   finalCommit?: string;
+  /** OPP-017 execution evidence. */
+  durationMs?: number;
+  diffStat?: string;
 };
 
 export type IsolationOptions = {
@@ -69,6 +72,133 @@ export function worktreeFinalCommit(worktree: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function gitDiffStat(root: string, worktree: string, base: string, final: string): string {
+  try {
+    return execFileSync("git", ["-C", worktree, "diff", "--stat", `${base}..${final}`], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function boundedDiffStat(stat: string): string | undefined {
+  if (!stat) return undefined;
+  const lines = stat.split("\n");
+  const bounded = lines.slice(0, 20).join("\n");
+  return lines.length > 20 ? `${bounded}\n(truncated)` : bounded;
+}
+
+/**
+ * OPP-017 integration forecast: wave-ordered merge preview for the isolated
+ * task branches against the current branch. Deterministic `git merge-tree`
+ * dry runs — nothing is merged. Conflicts surface per task before any human
+ * merge is attempted.
+ */
+export type IntegrationForecastLine = {
+  wave: number;
+  taskId: string;
+  branch: string;
+  state: "clean" | "conflict" | "missing" | "identical";
+  conflicts?: string[];
+};
+
+export function currentBranch(root: string): string {
+  return git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+}
+
+export function forecastIntegration(
+  root: string,
+  plan: OrchestrationPlan,
+  results: OrchestrationTaskResult[],
+): IntegrationForecastLine[] {
+  const waves = orchestrationWaves(plan);
+  const byId = new Map(results.map((result) => [result.id, result]));
+  const target = currentBranch(root);
+  const lines: IntegrationForecastLine[] = [];
+  waves.forEach((wave, index) => {
+    for (const taskId of wave) {
+      const branch = `aiw/${plan.id}/${taskId}`;
+      let branchTip: string;
+      try {
+        branchTip = git(root, ["rev-parse", "--verify", branch]);
+      } catch {
+        lines.push({ wave: index + 1, taskId, branch, state: "missing" });
+        continue;
+      }
+      const result = byId.get(taskId);
+      if (result?.finalCommit && result.finalCommit === branchTip) {
+        // nothing new on the branch beyond the recorded final commit
+      }
+      let output: string;
+      let conflict = false;
+      try {
+        output = execFileSync(
+          "git",
+          ["merge-tree", "--write-tree", "--name-only", target, branchTip],
+          { cwd: root, encoding: "utf8" },
+        );
+      } catch (error) {
+        conflict = true;
+        output =
+          error instanceof Error && "stdout" in error
+            ? String((error as { stdout?: string }).stdout ?? "")
+            : "";
+      }
+      if (conflict) {
+        const conflictFiles = output
+          .split("\n")
+          .filter((line) => line.length > 0 && !line.startsWith("^[0-9a-f]"))
+          .filter((line) => !/^[0-9a-f]{40}$/.test(line.trim()))
+          .slice(0, 5);
+        lines.push({
+          wave: index + 1,
+          taskId,
+          branch,
+          state: "conflict",
+          conflicts: conflictFiles.length > 0 ? conflictFiles : ["merge conflicts detected"],
+        });
+        continue;
+      }
+      const mergedTree = output.split("\n")[0]?.trim();
+      const identical = mergedTree === git(root, ["rev-parse", target + "^{tree}"]);
+      lines.push({
+        wave: index + 1,
+        taskId,
+        branch,
+        state: identical ? "identical" : "clean",
+      });
+    }
+  });
+  return lines;
+}
+
+/** Parse a serialized orchestration checkpoint back into task results. */
+export function parseOrchestrationResults(content: string): OrchestrationTaskResult[] {
+  const results: OrchestrationTaskResult[] = [];
+  const blocks = content.split(/\n(?= {2}- id: )/);
+  for (const block of blocks) {
+    const id = /^ {2}- id: (.+)$/m.exec(block)?.[1];
+    if (!id) continue;
+    const status = /^ {4}status: (.+)$/m.exec(block)?.[1] as
+      OrchestrationTaskResult["status"] | undefined;
+    const detail = /^ {4}detail: (.+)$/m.exec(block)?.[1];
+    const worktree = /^ {4}worktree: "?([^"\n]+)"?$/m.exec(block)?.[1];
+    const baseCommit = /^ {4}baseCommit: "?([^"\n]+)"?$/m.exec(block)?.[1];
+    const finalCommit = /^ {4}finalCommit: "?([^"\n]+)"?$/m.exec(block)?.[1];
+    results.push({
+      id,
+      status: status ?? "blocked",
+      detail: detail?.replace(/^"|"$/g, "") ?? "",
+      ...(worktree ? { worktree } : {}),
+      ...(baseCommit ? { baseCommit } : {}),
+      ...(finalCommit ? { finalCommit } : {}),
+    });
+  }
+  return results;
 }
 
 /** Remove isolated worktrees; failed-task worktrees are kept unless forced. */
@@ -186,21 +316,36 @@ export async function executeOrchestrationPlan(
             results.set(id, { id, status: "blocked", detail: "A dependency did not pass." });
             return;
           }
+          const startedAt = Date.now();
           try {
             const isolated = isolation?.worktrees.get(id);
             const outcome = await orchestrator.run(
               isolated ? { ...task, worktree: isolated.worktree } : task,
             );
             const base = isolation?.worktrees.get(id);
+            const finalCommit = base ? worktreeFinalCommit(base.worktree) : undefined;
+            const diffStat =
+              base && finalCommit
+                ? boundedDiffStat(
+                    gitDiffStat(
+                      isolation!.options.root,
+                      base.worktree,
+                      base.baseCommit,
+                      finalCommit,
+                    ),
+                  )
+                : undefined;
             results.set(id, {
               id,
               status: outcome.success ? "passed" : "failed",
               detail: safeDetail(outcome.detail),
+              durationMs: Date.now() - startedAt,
               ...(base
                 ? {
                     worktree: base.worktree,
                     baseCommit: base.baseCommit,
-                    finalCommit: worktreeFinalCommit(base.worktree),
+                    finalCommit,
+                    ...(diffStat ? { diffStat } : {}),
                   }
                 : {}),
             });
@@ -235,15 +380,18 @@ export function serializeOrchestrationPreview(plan: OrchestrationPlan): string {
 export function serializeOrchestrationResults(
   plan: OrchestrationPlan,
   results: OrchestrationTaskResult[],
+  wallClockMs?: number,
 ): string {
   return `schema: 1\nplan: ${plan.id}\nresults:\n${results
     .map((result) => {
       const isolation = result.worktree
-        ? `\n    worktree: ${JSON.stringify(result.worktree)}\n    baseCommit: ${JSON.stringify(result.baseCommit ?? "")}\n    finalCommit: ${JSON.stringify(result.finalCommit ?? "")}`
-        : "";
+        ? `\n    worktree: ${JSON.stringify(result.worktree)}\n    baseCommit: ${JSON.stringify(result.baseCommit ?? "")}\n    finalCommit: ${JSON.stringify(result.finalCommit ?? "")}${result.durationMs !== undefined ? `\n    durationMs: ${result.durationMs}` : ""}${result.diffStat ? `\n    diffStat: ${JSON.stringify(result.diffStat)}` : ""}`
+        : result.durationMs !== undefined
+          ? `\n    durationMs: ${result.durationMs}`
+          : "";
       return `  - id: ${result.id}\n    status: ${result.status}\n    detail: ${JSON.stringify(result.detail)}${isolation}`;
     })
-    .join("\n")}\n`;
+    .join("\n")}${wallClockMs !== undefined ? `\nwallClockMs: ${wallClockMs}` : ""}\n`;
 }
 
 function assertPlanGraph(tasks: OrchestrationTask[]): void {

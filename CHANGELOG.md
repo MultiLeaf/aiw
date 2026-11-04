@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-04
+
+### Added
+
+- Orchestration depth (OPP-017): `aiw orchestrate integrate --plan=<path>` prints the wave-ordered integration forecast — a deterministic `git merge-tree` dry run per isolated task branch against the current branch, reporting conflicts before any human merge. Isolated executions now record per-task duration, diff stat, and plan wall-clock time in the checkpoint, and `aiw doctor` reports leaked managed worktrees with the cleanup continuation (`worktrees_leaked` typed reason).
+- `docs/orchestration.md` gains the per-harness worktree honor matrix and the minimal adapter contract for `task.worktree`.
+
+### Fixed
+
+- `orchestrate integrate` works before option parsing (previously subcommand form collided with `--plan` validation).
+
 ## [0.13.0] - 2026-11-03
 
 ### Added

@@ -309,7 +309,10 @@ import {
 import {
   createTaskWorktrees,
   executeOrchestrationPlan,
+  forecastIntegration,
   listManagedWorktrees,
+  currentBranch,
+  parseOrchestrationResults,
   removeWorktrees,
   parseOrchestrationPlan,
   serializeOrchestrationPreview,
@@ -862,6 +865,40 @@ export async function runCommand(
             "Usage: aiw orchestrate --plan=path [--execute] [--isolate] [--cleanup] [--max-parallel=number]",
         };
       const execute = executeCount === 1;
+      const integrateRequested = args[1] === "integrate";
+      if (integrateRequested) {
+        const integrateParsed = parseNamedOptions(args.slice(2), ["plan"]);
+        if (!integrateParsed?.plan)
+          return { exitCode: 1, error: "Usage: aiw orchestrate integrate --plan=path" };
+        const planPath = safeProjectFile(root, integrateParsed.plan, fs);
+        const plan = parseOrchestrationPlan(fs.read(planPath));
+        const checkpoint = join(aiw, `checkpoints/orchestration-${plan.id}.yml`);
+        if (!fs.exists(checkpoint))
+          throw new BlockingError(
+            describeBlockingReason("orchestration_not_executed", {
+              detail: `No checkpoint for plan ${plan.id} — the plan has not been executed yet.`,
+            }),
+          );
+        const results = parseOrchestrationResults(fs.read(checkpoint));
+        const forecast = forecastIntegration(root, plan, results);
+        const lines = [`Integration forecast for plan ${plan.id} → ${currentBranch(root)}`];
+        let conflicts = 0;
+        for (const line of forecast) {
+          if (line.state === "conflict") conflicts += 1;
+          lines.push(
+            line.state === "conflict"
+              ? `wave ${line.wave} · ${line.taskId} (${line.branch}): CONFLICTS — ${(line.conflicts ?? []).join(", ")}`
+              : line.state === "missing"
+                ? `wave ${line.wave} · ${line.taskId}: branch missing (${line.branch})`
+                : line.state === "identical"
+                  ? `wave ${line.wave} · ${line.taskId}: already integrated`
+                  : `wave ${line.wave} · ${line.taskId} (${line.branch}): clean merge`,
+          );
+        }
+        lines.push(`conflicts: ${conflicts}`);
+        const output = lines.join("\n");
+        return conflicts > 0 ? { exitCode: 1, output, error: undefined } : { exitCode: 0, output };
+      }
       const isolate = args.includes("--isolate");
       const cleanup = args.includes("--cleanup");
       if (cleanup) {
@@ -902,6 +939,7 @@ export async function runCommand(
           exitCode: 1,
           error: `Orchestration checkpoint already exists; use a new plan id: ${checkpoint}`,
         };
+      const wallClockStart = Date.now();
       try {
         const isolation = isolate
           ? {
@@ -921,7 +959,10 @@ export async function runCommand(
             .map(({ worktree }) => worktree as string);
           removeWorktrees(root, passedPaths);
         }
-        fs.write(checkpoint, serializeOrchestrationResults(plan, results));
+        fs.write(
+          checkpoint,
+          serializeOrchestrationResults(plan, results, Date.now() - wallClockStart),
+        );
         const failed = results.filter(({ status }) => status !== "passed");
         return failed.length
           ? {
@@ -2271,6 +2312,16 @@ export async function runCommand(
           };
         return { exitCode: 1, error: `Missing AI Workflow files: ${missing.join(", ")}` };
       }
+      const leakedWorktrees = listManagedWorktrees(root, aiw);
+      if (leakedWorktrees.length > 0)
+        return {
+          exitCode: 1,
+          error: formatBlockingOutput(
+            describeBlockingReason("worktrees_leaked", {
+              detail: `${leakedWorktrees.length} managed orchestration worktree(s) leaked: ${leakedWorktrees.join(", ")}`,
+            }),
+          ),
+        };
       try {
         parseManifest(fs.read(join(aiw, "manifest.yml")));
         parseOwnership(fs.read(join(aiw, "ownership.yml")));
