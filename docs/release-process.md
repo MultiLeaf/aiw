@@ -8,7 +8,7 @@ AI Workflow releases are reproducible, evidence-backed, and published only from 
 2. A maintainer reviews and merges the pull request into `main`.
 3. The `Auto-tag releases` workflow notices that the merged version has no `v<version>` tag yet, creates the tag on the merge commit, and the `Release` workflow takes over: it validates the tagged source and publishes with npm trusted publishing and provenance.
 
-No manual tagging and no environment approvals: merging an reviewed pull request with a version bump is the entire release action. Merges that do not bump the version are ignored by the auto-tag workflow.
+No manual tagging and no environment approvals: merging an reviewed pull request with a version bump is the entire release action. Since 0.11.0 the Auto-tag workflow invokes the Release workflow directly (reusable-workflow call) — tags created through the API with the default `GITHUB_TOKEN` do not trigger other workflows — and the `npm` environment's deployment policy trusts both `v*.*.*` tags and `main` for that call chain. Merges that do not bump the version are ignored by the auto-tag workflow.
 
 ## Preconditions
 

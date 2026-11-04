@@ -1,6 +1,6 @@
 # OPP-018: Supported migration path for legacy installations
 
-- Status: Proposed
+- Status: Implemented (2026-11-03): aiw migrate with dry-run/rollback, doctor and install detection, deterministic-floor classification
 - Priority: P1 (field-verified pain; cheapest large-value gap in the backlog)
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A
