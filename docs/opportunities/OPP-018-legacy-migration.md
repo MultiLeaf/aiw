@@ -1,6 +1,6 @@
 # OPP-018: Supported migration path for legacy installations
 
-- Status: Proposed
+- Status: Implemented (2026-11-03): aiw migrate with dry-run/rollback, doctor and install detection, deterministic-floor classification
 - Priority: P1 (field-verified pain; cheapest large-value gap in the backlog)
 - Added: 2026-11-01
 - Decision: extends [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) Decision A
@@ -21,7 +21,7 @@ Result: the only paths are hand-crafted file surgery (undiscoverable, undocument
 ## Proposal
 
 1. **`aiw migrate`** (with `--dry-run` first): detects legacy state (`manifest.yml`/`lock.yml` present, `ownership.yml` absent) and performs a transactional, rollback-protected migration:
-   - archive legacy machine state that is superseded (`lock.yml`, `recommendations.yml`) into `.aiw/checkpoints/migration-<timestamp>/` — historical evidence preserved, never deleted;
+   - snapshot legacy machine state (`lock.yml`, `recommendations.yml`) into `.aiw/checkpoints/migration-<timestamp>/` for history, but leave the live files in place — their owning commands (`aiw recommend`, `aiw skills install`, `aiw sync`) rewrite them in the modern format;
    - rebuild the ownership inventory by scanning current AI-Workflow-managed paths and classifying each file: `managed-unchanged` (matches known content), `legacy-user-modified` (preserved as user-owned, listed for manual review), `unknown` (listed as manual action);
    - preserve byte-identical user configuration (`decision.yml`, `semantic.yml`, `organization.yml`, `heartbeats.yml`, `settings.yml`) and all checkpoints/generated artifacts;
    - produce a migration report: what was archived, rebuilt, preserved, and what needs manual review.

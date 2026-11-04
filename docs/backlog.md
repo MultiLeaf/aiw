@@ -130,7 +130,7 @@ Derived from the Gentle-AI ODD/RDD analysis; scope and rejected alternatives rec
 - [x] **OPP-015** Token & Recovery Governance — enforced stage budgets, context-recovery managed block, advisory lane suggestion, regression-pinning declaration. _Acceptance:_ see [OPP-015](../opportunities/OPP-015-token-recovery-governance.md); budgets derive from saved baselines and default-inert; recovery block in every adapter rendering; advisory line never blocks.
 - [ ] **OPP-016** Behavioral evaluation phase 2 — scenario registry replayed against real harness CLIs. _Acceptance:_ see [OPP-016](../opportunities/OPP-016-behavioral-eval-scenarios.md); deterministic state-outcome assertions, skipped-harness markers, advisory-first before gates, usage recorded per run.
 - [ ] **OPP-017** Orchestration depth — integration forecast, doctor leak reporting, diff-stat evidence, per-harness honor matrix. _Acceptance:_ see [OPP-017](../opportunities/OPP-017-orchestration-depth.md); wave-ordered merge forecast with merge-tree dry run, typed cleanup continuation from doctor, no auto-merge.
-- [ ] **OPP-018** Supported migration path for legacy (pre-ownership) installations. _Acceptance:_ see [OPP-018](../opportunities/OPP-018-legacy-migration.md); dry-run lists archived/rebuilt/preserved/manual, transactional apply with rollback, fail-closed on ambiguity, doctor/install point at `aiw migrate`.
+- [x] **OPP-018** Supported migration path for legacy (pre-ownership) installations. _Acceptance:_ see [OPP-018](../opportunities/OPP-018-legacy-migration.md); dry-run lists archived/rebuilt/preserved/manual, transactional apply with rollback, fail-closed on ambiguity, doctor/install point at `aiw migrate`.
 
 ## Backlog rules
 

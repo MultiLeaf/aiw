@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-03
+
+### Added
+
+- `aiw migrate [--dry-run|--rollback]` (OPP-018): supported migration path for legacy pre-ownership installations — snapshots everything touched under `.aiw/checkpoints/migration-<ts>/original/` for atomic rollback, rebuilds the ownership inventory with drift-safe checksum semantics (diverging legacy files are preserved by sync as conflicts for manual review, never silently overwritten), normalizes legacy manifests to the modern artifact-language policy, and writes a migration report. Doctor and install detect the legacy signature (`migration_required` typed reason) and point at the command; ambiguous entries fail closed as manual actions.
+- `docs/release-process.md` now documents the working release chain (Auto-tag → reusable-workflow Release call; npm environment trusting `v*.*.*` tags and `main`).
+
 ## [0.12.0] - 2026-11-01
 
 ### Added
