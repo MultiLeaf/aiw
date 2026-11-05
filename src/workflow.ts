@@ -182,6 +182,7 @@ import {
   type WorkflowSession,
   effectiveLane,
 } from "./human-approval.js";
+import { buildCompletionReport } from "./completion-report.js";
 import { parse as parseYaml, stringify } from "yaml";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
 import {
@@ -236,6 +237,8 @@ import {
 } from "./hook-installer.js";
 import {
   computeCostAttribution,
+  type CostAttribution,
+  type TaskUsageSummary,
   serializeCostAttribution,
   serializeTaskUsage,
   summarizeTaskUsage,
@@ -384,6 +387,40 @@ function nextLocalTicket(fs: FileSystem, aiw: string): string {
       if (name.startsWith("workflow-") && name.endsWith("-session.yml"))
         consider(fs.read(join(checkpoints, name)));
   return `LOCAL-${String(max + 1).padStart(3, "0")}`;
+}
+
+/** FRIC-003: gather recorded usage/cost data and write the completion report. Never blocks completion. */
+async function writeCompletionReport(
+  fs: FileSystem,
+  aiw: string,
+  session: WorkflowSession,
+  ledger: ApprovalLedger,
+): Promise<string> {
+  const scope = session.ticket ?? session.workflowId;
+  let usage: TaskUsageSummary | undefined;
+  let attribution: CostAttribution | undefined;
+  try {
+    const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
+    if (fs.exists(sidecarPath))
+      usage = summarizeTaskUsage(parseUsageSidecar(fs.read(sidecarPath)), scope);
+    const tracePath = join(aiw, "generated/artifacts/traceability.yml");
+    if (usage && fs.exists(tracePath))
+      attribution = computeCostAttribution(
+        parseUsageSidecar(fs.read(sidecarPath)),
+        parseTraceabilityGraph(fs.read(tracePath)),
+      );
+  } catch {
+    // REQ-003: unreadable usage data degrades to an advisory, never blocks completion.
+  }
+  const report = buildCompletionReport({ session, ledger, usage, attribution });
+  try {
+    const reportDir = join(aiw, "generated/reports");
+    if (!fs.exists(reportDir)) fs.mkdir(reportDir);
+    fs.write(join(reportDir, `usage-${session.workflowId}.md`), report.markdown);
+  } catch {
+    // REQ-003: a failed artifact write never blocks completion.
+  }
+  return report.consoleSummary;
 }
 
 function beginWorkflowSession(
@@ -769,9 +806,13 @@ export async function runCommand(
               updatedAt: new Date().toISOString(),
             }),
           );
+          const lightSummary = await writeCompletionReport(fs, aiw, session, ledger);
           return {
             exitCode: 0,
-            output: `Workflow completed (light lane): ${session.workflowId}. Evidence: ${evidencePath}`,
+            output:
+              `Workflow completed (light lane): ${session.workflowId}. Evidence: ${evidencePath}\n` +
+              `${lightSummary}\n` +
+              `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}`,
           };
         }
         const unresolved = processStages(ledger).filter(
@@ -792,7 +833,14 @@ export async function runCommand(
             updatedAt: new Date().toISOString(),
           }),
         );
-        return { exitCode: 0, output: `Workflow completed: ${session.workflowId}.` };
+        const fullSummary = await writeCompletionReport(fs, aiw, session, ledger);
+        return {
+          exitCode: 0,
+          output:
+            `Workflow completed: ${session.workflowId}.\n` +
+            `${fullSummary}\n` +
+            `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}`,
+        };
       }
       return {
         exitCode: 1,

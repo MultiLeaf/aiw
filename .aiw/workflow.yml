@@ -1,9 +1,7 @@
 schema: 1
-workflowId: 561f6a52-8567-4b19-84c0-d647ff3dd923
+workflowId: fc2a481d-9d80-4632-a355-5bc6e1da5ae2
 status: complete
-startedAt: 2026-11-05T04:43:48.583Z
-updatedAt: 2026-11-05T04:46:01.108Z
-ticket: FRIC-004
-title: Telemetry opt-in during install and doctor
-lane: light
-laneReason: Small contained onboarding/doctor prompt addition; resumable from request plus git diff; understood risk
+startedAt: 2026-11-05T04:46:48.760Z
+updatedAt: 2026-11-05T04:59:51.100Z
+ticket: FRIC-003
+title: Usage and cost report on workflow completion

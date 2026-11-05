@@ -1703,9 +1703,51 @@ tasks:
     expect((await run(["workflow", "complete"], cwd)).error).toContain("traceability");
     expect((await run(["approve", "traceability"], cwd)).exitCode).toBe(0);
     expect((await run(["workflow", "complete"], cwd)).exitCode).toBe(0);
+    // FRIC-003: completion prints a usage summary and writes the report artifact.
+    const reportPath = join(cwd, ".aiw/generated/reports/usage-full-stage-run.md");
+    expect((await stat(reportPath)).isFile()).toBe(true);
+    const report = await readFile(reportPath, "utf8");
+    expect(report).toContain("No usage recorded");
+    expect(report).toContain("usage-sidecar record");
+    expect(report).toContain("Cost attribution skipped");
+    expect(report).toContain("Stage timeline");
     expect((await run(["workflow", "status"], cwd)).output).toContain(
       "Workflow full-stage-run (complete)",
     );
+  });
+
+  it("prints usage totals and writes the completion report for light-lane tasks (FRIC-003)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(
+      [
+        "usage-sidecar",
+        "record",
+        "--command=scan",
+        "--fresh-input=1000",
+        "--output=200",
+        "--workflow=FRIC-900",
+      ],
+      cwd,
+    );
+    await run(
+      ["task", "start", "--ticket=FRIC-900", "--lane=light", "--lane-reason=small work"],
+      cwd,
+    );
+    await run(["task", "evidence", "--validation=npm test passed"], cwd);
+    const completed = await run(["workflow", "complete"], cwd);
+    expect(completed.exitCode).toBe(0);
+    expect(completed.output).toContain("1,200");
+    expect(completed.output).toContain("generated/reports/usage-");
+    const sessionText = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
+    const workflowId = /workflowId: ([0-9a-f-]+)/.exec(sessionText)?.[1];
+    expect(workflowId).toBeTruthy();
+    const reportPath = join(cwd, `.aiw/generated/reports/usage-${workflowId}.md`);
+    expect((await stat(reportPath)).isFile()).toBe(true);
+    const report = await readFile(reportPath, "utf8");
+    expect(report).toContain("total_tokens");
+    expect(report).toContain("FRIC-900");
+    expect(report).toContain("Cost attribution skipped");
   });
 
   it("records a human rejection before revising and re-gating the current stage", async () => {

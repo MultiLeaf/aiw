@@ -213,6 +213,11 @@ npx @multileaf/ai-workflow task evidence --validation="npm test: passed"
 npx @multileaf/ai-workflow workflow complete
 # If scope grows: aiw task escalate --reason=...
 
+# Completion prints a usage/cost summary (tokens, models, cost attribution when
+# a traceability graph exists, stage timeline) and writes a durable report to
+# .aiw/generated/reports/usage-<workflowId>.md. With no recorded usage it says
+# so and suggests `aiw usage-sidecar record --workflow=<id-or-ticket>`.
+
 # Classify the risk of current changes (read-only; content, not size).
 npx @multileaf/ai-workflow risk assess [--base-ref=<ref>] [--escalate-item=1-6 --escalate-reason=text] [--json]
 

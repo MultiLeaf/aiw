@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-26d0819a4c161a127f1e3dbf5c72fa542952546605cd1f2462def6b1fe6783a3
-generatedAt: 2026-11-05T01:40:32.996Z
-title: "Specification: Adaptive Resource Evaluator"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-007, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-007]
+fingerprint: sha256-19b2d1dd3507fca80b94389a257148577732dd4b4ea6fa790999a654a0131ee5
+generatedAt: 2026-11-05T04:49:48.610Z
+title: "Specification: Usage and Cost Report on Workflow Completion"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004]
 taskIds: []
 decisionIds: []
-criteriaCount: 14
+criteriaCount: 8
