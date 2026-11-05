@@ -65,6 +65,7 @@ import { collectGitSummary } from "./eval/git.js";
 import {
   approveProposal,
   createEmptyStore,
+  compactProposalStore,
   draftSignatureHash,
   parseProposalStore,
   recordOccurrence,
@@ -74,6 +75,7 @@ import {
 } from "./eval/proposals.js";
 import { PROPOSAL_KINDS } from "./eval/types.js";
 import { parseDrafts, validateDrafts } from "./eval/validate.js";
+import { validateGeneratedResources } from "./eval/generated.js";
 import { detectDrift } from "./drift.js";
 import { parseManifest, serializeManifest } from "./manifest.js";
 import {
@@ -2411,7 +2413,7 @@ export async function runCommand(
     }
     if (command === "proposals") {
       const usage =
-        "Usage: aiw proposals <import|list|show|approve|reject|suppress> [--id=id] [--reason=text]";
+        "Usage: aiw proposals <import|list|show|approve|reject|suppress|validate> [--id=id] [--reason=text]";
       const action = args[1];
       const storePath = join(aiw, "proposals.yml");
       const loadStore = (): import("./eval/types.js").ProposalStore => {
@@ -2503,6 +2505,36 @@ export async function runCommand(
         );
         return { exitCode: 0, output: `${lines.join("\n")}\n` };
       }
+      if (action === "validate") {
+        const generatedRoot = join(aiw, "generated");
+        const files: { path: string; content: string }[] = [];
+        for (const kind of PROPOSAL_KINDS) {
+          const dir = join(generatedRoot, `${kind}s`);
+          if (!fs.exists(dir)) continue;
+          for (const name of (fs.listFiles?.(dir) ?? fs.list?.(dir) ?? []).sort())
+            if (name.endsWith(".md"))
+              files.push({ path: `${kind}s/${name}`, content: fs.read(join(dir, name)) });
+        }
+        if (files.length === 0)
+          return { exitCode: 0, output: "No generated resources to validate.\n" };
+        if (!fs.exists(storePath))
+          return {
+            exitCode: 1,
+            error: `Generated resources exist but no proposals store was found at ${relative(root, storePath)}.`,
+          };
+        const issues = validateGeneratedResources(files, loadStore());
+        if (issues.length)
+          return {
+            exitCode: 1,
+            error: `${issues.length} generated resource(s) failed validation:\n${issues
+              .map(({ path, reason }) => `- ${path}: ${reason}`)
+              .join("\n")}`,
+          };
+        return {
+          exitCode: 0,
+          output: `valid: ${files.length} generated resource(s) pass the evaluator contract.\n`,
+        };
+      }
       const options = parseNamedOptions(args.slice(2), ["id", "reason"]);
       if (options === undefined) return { exitCode: 1, error: usage };
       const id = options.id;
@@ -2539,6 +2571,7 @@ export async function runCommand(
             );
           }
         } else suppressProposal(store, id);
+        compactProposalStore(store);
         fs.write(storePath, serializeProposalStore(store));
         return { exitCode: 0, output: `${action} recorded for ${id}\n` };
       }

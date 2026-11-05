@@ -270,3 +270,84 @@ describe("aiw proposals follow-ups", () => {
     expect(result.output).toContain("evidence: fact-001, fact-002");
   });
 });
+
+// ---- AIW-669: store compaction ----
+
+import { compactProposalStore, recordMany } from "./proposals.js";
+
+describe("store compaction", () => {
+  it("caps the evidence list at twenty refs, keeping the most recent (occurrences stay exact)", () => {
+    const store = createEmptyStore();
+    recordMany(store, { kind: "rule", signature: "sig-cap" }, 25);
+    const proposal = store.proposals[0];
+    expect(proposal?.occurrences).toBe(25);
+    expect(proposal?.evidence).toHaveLength(20);
+    expect(proposal?.evidence[19]).toBe("occurrences/25");
+    expect(proposal?.evidence).not.toContain("occurrences/1");
+  });
+
+  it("compacts terminal proposals to the last five evidence refs and leaves pending ones intact", () => {
+    const store = createEmptyStore();
+    recordMany(store, { kind: "rule", signature: "sig-a" }, 8);
+    recordMany(store, { kind: "rule", signature: "sig-b" }, 8);
+    rejectProposal(store, store.proposals[0]?.id as string, "no");
+    compactProposalStore(store);
+    expect(store.proposals[0]?.evidence).toHaveLength(5);
+    expect(store.proposals[0]?.evidence[4]).toBe("occurrences/8");
+    expect(store.proposals[1]?.evidence).toHaveLength(8);
+  });
+
+  it("is idempotent and deterministic", () => {
+    const store = createEmptyStore();
+    recordMany(store, { kind: "skill", signature: "sig-c" }, 9);
+    approveProposal(store, store.proposals[0]?.id as string);
+    compactProposalStore(store);
+    const once = serializeProposalStore(store);
+    compactProposalStore(store);
+    expect(serializeProposalStore(store)).toBe(once);
+  });
+});
+
+// ---- AIW-669: proposals validate + CLI compaction ----
+
+describe("aiw proposals validate", () => {
+  it("validates materialized resources and exits 1 with findings when tampered", async () => {
+    const cwd = await evaluatedProject();
+    await run(["proposals", "import"], cwd);
+    await run(["proposals", "approve", "--id=prop-001"], cwd);
+    const ok = await run(["proposals", "validate"], cwd);
+    expect(ok.exitCode).toBe(0);
+    expect(ok.output).toContain("valid");
+    const generatedPath = join(cwd, ".aiw/generated/rules/gradle-test-before-done.md");
+    await writeFile(generatedPath, "# tampered: provenance removed\n");
+    const broken = await run(["proposals", "validate"], cwd);
+    expect(broken.exitCode).toBe(1);
+    expect(broken.error).toContain("frontmatter");
+    expect(broken.error).toContain("rules/gradle-test-before-done.md");
+  });
+
+  it("compacts evidence when the CLI records a rejection", async () => {
+    const cwd = await evaluatedProject();
+    const draftPath = join(cwd, ".aiw/eval/proposals-draft.yml");
+    for (let version = 2; version <= 6; version += 1) {
+      await writeFile(
+        draftPath,
+        [
+          "- kind: rule",
+          "  signature: gradle-test-before-done",
+          '  title: "Run Gradle tests before completing"',
+          `  outline: "Require ./gradlew test before completion (v${version})."`,
+          "  evidence: [fact-001, fact-002]",
+          "",
+        ].join("\n"),
+      );
+      await run(["proposals", "import"], cwd);
+    }
+    const before = parseProposalStore(await readFile(join(cwd, ".aiw/proposals.yml"), "utf8"));
+    expect(before.proposals[0]?.occurrences).toBe(5);
+    await run(["proposals", "reject", "--id=prop-001", "--reason=not now"], cwd);
+    const store = parseProposalStore(await readFile(join(cwd, ".aiw/proposals.yml"), "utf8"));
+    expect(store.proposals[0]?.evidence.length).toBeLessThanOrEqual(5);
+    expect(store.proposals[0]?.occurrences).toBe(5);
+  });
+});

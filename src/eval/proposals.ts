@@ -11,6 +11,11 @@ import {
 
 export const PROPOSALS_STORE_SCHEMA = 1;
 
+/** Evidence refs kept per proposal: bounded growth, most recent first-class. */
+export const MAX_EVIDENCE_REFS = 20;
+/** Evidence refs kept after a proposal reaches a terminal state. */
+export const COMPACT_EVIDENCE_REFS = 5;
+
 export function createEmptyStore(): ProposalStore {
   return {
     schema: PROPOSALS_STORE_SCHEMA,
@@ -57,6 +62,8 @@ export function recordOccurrence(store: ProposalStore, occurrence: Occurrence): 
     existing.occurrences += 1;
     existing.lastSeq = store.seq;
     existing.evidence.push(occurrence.evidence ?? `occurrences/${store.seq}`);
+    if (existing.evidence.length > MAX_EVIDENCE_REFS)
+      existing.evidence.splice(0, existing.evidence.length - MAX_EVIDENCE_REFS);
     return;
   }
   const number = store.proposals.length + 1;
@@ -76,6 +83,22 @@ export function recordOccurrence(store: ProposalStore, occurrence: Occurrence): 
     provenance: "",
     draftHash: null,
   });
+}
+
+/** Record `count` occurrences of one pattern in a single call (test/batch helper). */
+export function recordMany(store: ProposalStore, occurrence: Occurrence, count: number): void {
+  for (let index = 0; index < count; index += 1) recordOccurrence(store, occurrence);
+}
+
+/**
+ * Compact terminal proposals (approved/rejected/suppressed): their evidence
+ * already served the human review, so only the most recent refs are kept.
+ * Deterministic normalization — does not advance the sequence.
+ */
+export function compactProposalStore(store: ProposalStore): void {
+  for (const proposal of store.proposals)
+    if (proposal.status !== "proposed" && proposal.evidence.length > COMPACT_EVIDENCE_REFS)
+      proposal.evidence.splice(0, proposal.evidence.length - COMPACT_EVIDENCE_REFS);
 }
 
 /**
