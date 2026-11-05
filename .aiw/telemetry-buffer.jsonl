@@ -1,0 +1,8 @@
+{"schema":1,"command":"telemetry","outcome":"success"}
+{"schema":1,"command":"telemetry","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"failure"}
+{"schema":1,"command":"unknown","outcome":"failure"}
+{"schema":1,"command":"unknown","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"success"}

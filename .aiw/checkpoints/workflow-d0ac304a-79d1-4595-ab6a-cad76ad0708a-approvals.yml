@@ -1,0 +1,5 @@
+schema: 1
+workflowId: d0ac304a-79d1-4595-ab6a-cad76ad0708a
+stages: {}
+lane: light
+laneReason: "Contained change: one pure parser module plus git invocation in one command; resumable from request plus git diff."

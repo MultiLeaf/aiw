@@ -1,0 +1,10 @@
+schema: 1
+workflowId: 63116345-e824-4c99-9a99-a88b447f2581
+ticket: AIW-669
+lane: light
+laneReason: Two small contained additions to existing modules plus one subcommand; resumable from request plus git diff.
+entries:
+  - note: npm run check → exit 0 (88 files/721 tests)
+    recordedAt: 2026-11-05T03:50:06.369Z
+  - note: "npx vitest run src/eval/ src/cli.test.ts → exit 0 (260 tests: evidence cap 20, terminal compaction to 5, idempotency, validator contract cases, proposals validate CLI, CLI compaction e2e)"
+    recordedAt: 2026-11-05T03:50:06.431Z

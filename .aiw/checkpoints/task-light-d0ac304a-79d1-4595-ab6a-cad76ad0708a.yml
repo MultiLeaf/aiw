@@ -1,0 +1,10 @@
+schema: 1
+workflowId: d0ac304a-79d1-4595-ab6a-cad76ad0708a
+ticket: AIW-667
+lane: light
+laneReason: "Contained change: one pure parser module plus git invocation in one command; resumable from request plus git diff."
+entries:
+  - note: npm run check → exit 0 (format, eslint, tsc, build, 87 files/712 tests, security)
+    recordedAt: 2026-11-05T03:35:55.555Z
+  - note: "npx vitest run src/eval/git.test.ts → exit 0 (6 tests: parser ratios/tops/ties, runner injection+failure, real git repo integration)"
+    recordedAt: 2026-11-05T03:35:55.619Z

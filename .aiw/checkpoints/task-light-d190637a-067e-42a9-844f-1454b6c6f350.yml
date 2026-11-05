@@ -1,0 +1,10 @@
+schema: 1
+workflowId: d190637a-067e-42a9-844f-1454b6c6f350
+ticket: AIW-666
+lane: light
+laneReason: Small understood review-fix batch on src/eval; risk contained to new modules plus one command; resumable from request plus git diff.
+entries:
+  - note: npm run check → exit 0 (format:check, eslint, tsc, build, 86 files/706 tests, security:check)
+    recordedAt: 2026-11-05T03:27:22.209Z
+  - note: "npx vitest run src/eval/ → exit 0 (73 tests: monitor wiring, content-aware frameworks, idempotent import, kind update, empty drafts, stale-draft removal, show coverage)"
+    recordedAt: 2026-11-05T03:27:22.271Z

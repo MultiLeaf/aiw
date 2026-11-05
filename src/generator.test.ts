@@ -55,6 +55,32 @@ describe("project resource generator", () => {
     expect(contents.join("\n")).not.toContain("npm test");
   });
 
+  it("emits a semantic-retrieval-first rule when semantic retrieval is available", () => {
+    const paths: string[] = [];
+    generateProjectResources(profile, ["typescript-quality"], (path) => paths.push(path), true);
+    const rule = paths.find((path) => path === "generated/rules/semantic-retrieval.md");
+    expect(rule).toBeDefined();
+    const contents: string[] = [];
+    generateProjectResources(
+      profile,
+      ["typescript-quality"],
+      (path, content) => {
+        if (path === "generated/rules/semantic-retrieval.md") contents.push(content);
+      },
+      true,
+    );
+    expect(contents.join("\n")).toContain("aiw semantic query");
+    expect(contents.join("\n")).toMatch(/grep|rg/);
+  });
+
+  it("omits the semantic-retrieval rule when semantic mapping is disabled", () => {
+    const paths: string[] = [];
+    generateProjectResources(profile, ["typescript-quality"], (path) => paths.push(path));
+    expect(paths).not.toContain("generated/rules/semantic-retrieval.md");
+    generateProjectResources(profile, ["typescript-quality"], (path) => paths.push(path), false);
+    expect(paths).not.toContain("generated/rules/semantic-retrieval.md");
+  });
+
   it("uses distinct test commands from monorepo workspaces", () => {
     const contents: string[] = [];
     const monorepo: ProjectProfile = {

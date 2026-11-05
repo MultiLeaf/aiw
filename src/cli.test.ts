@@ -2904,6 +2904,32 @@ resources:
     ).resolves.toBeTruthy();
   });
 
+  it("emits a semantic-retrieval-first rule when semantic mapping is enabled with an index", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+    );
+    await mkdir(join(cwd, ".aiw", "semantic"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw", "semantic", "index.json"),
+      JSON.stringify({ schema: 1, model: "test-model", chunks: [] }),
+    );
+    await run(["generate", "--select=typescript-quality"], cwd);
+    const rule = await readFile(join(cwd, ".aiw/generated/rules/semantic-retrieval.md"), "utf8");
+    expect(rule).toContain("aiw semantic query");
+    expect(rule).toMatch(/grep/);
+  });
+
+  it("omits the semantic-retrieval rule when semantic mapping is disabled", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["generate", "--select=typescript-quality"], cwd);
+    await expect(stat(join(cwd, ".aiw/generated/rules/semantic-retrieval.md"))).rejects.toThrow();
+  });
+
   it("preserves manually changed generated resources", async () => {
     const cwd = await project();
     await run(["install"], cwd);

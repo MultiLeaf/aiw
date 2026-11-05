@@ -1,0 +1,9 @@
+schema: 1
+stage: traceability
+fingerprint: sha256-79db3f8503874985905f6896e7af6a7a04521d0f7fd1d7a64ac7a54772a631b0
+generatedAt: 2026-11-05T03:06:34.850Z
+title: "traceability"
+requirementIds: [REQ-001, REQ-001, REQ-002, REQ-002, REQ-003, REQ-003, REQ-004, REQ-004, REQ-005, REQ-005, REQ-006, REQ-006, REQ-007, REQ-007]
+taskIds: [TASK-002, TASK-003, TASK-004, TASK-008, TASK-002, TASK-001, TASK-007, TASK-001, TASK-005, TASK-001, TASK-004, TASK-006, TASK-007, TASK-008]
+decisionIds: []
+criteriaCount: 0

@@ -1,0 +1,5 @@
+schema: 1
+workflowId: d190637a-067e-42a9-844f-1454b6c6f350
+stages: {}
+lane: light
+laneReason: Small understood review-fix batch on src/eval; risk contained to new modules plus one command; resumable from request plus git diff.

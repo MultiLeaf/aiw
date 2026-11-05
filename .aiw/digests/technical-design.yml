@@ -1,0 +1,9 @@
+schema: 1
+stage: technical-design
+fingerprint: sha256-cad03157178ea0a332fa71565dfc8049610bc0433c6ab93748824a7fb6e841b6
+generatedAt: 2026-11-05T02:12:22.480Z
+title: "Technical Design: Adaptive Resource Evaluator"
+requirementIds: [REQ-001, REQ-007, REQ-001, REQ-003, REQ-001, REQ-002, REQ-003, REQ-007, REQ-007, REQ-003, REQ-006, REQ-001, REQ-004, REQ-006, REQ-002, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-007, REQ-003, REQ-007, REQ-006, REQ-003, REQ-005, REQ-004, REQ-002, REQ-003, REQ-006, REQ-007]
+taskIds: []
+decisionIds: [ADR-1, ADR-2, ADR-3, ADR-4, ADR-5]
+criteriaCount: 0

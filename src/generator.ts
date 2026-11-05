@@ -8,6 +8,7 @@ export function generateProjectResources(
   profile: ProjectProfile,
   selected: string[],
   write: ResourceWriter,
+  semanticRetrieval = false,
 ): void {
   const linterCommand = safeInlineValue(profile.quality.linter?.command);
   const formatterCommand = safeInlineValue(profile.quality.formatter?.command);
@@ -46,6 +47,11 @@ export function generateProjectResources(
       `# Project Context\n\nThis project uses ${profile.frameworks.map((framework) => (framework === "nextjs" ? "Next.js" : framework)).join(", ")}. Follow the detected project structure and existing framework conventions.\n`,
     );
   if (selected.length > 0) {
+    if (semanticRetrieval)
+      write(
+        resolveGeneratedPath("rules/semantic-retrieval.md"),
+        "# Semantic Retrieval First\n\n- Prefer `aiw semantic query <terms>` over raw grep/rg when exploring unfamiliar context or locating relevant code; ranked semantic matches point at the most relevant chunks for a question.\n- Still use grep/rg (or git grep) for exact-string matches such as identifiers, error messages, and literal paths.\n- Semantic results are retrieval aids, never confirmed facts; verify against file contents before relying on them.\n",
+      );
     write(
       resolveGeneratedPath("context/project-profile.md"),
       `# Confirmed Project Profile\n\n- Languages: ${profile.runtime.languages.join(", ") || "none detected"}\n- Frameworks: ${profile.frameworks.join(", ") || "none detected"}\n- Package manager: ${profile.packageManager}\n- All generated content is in English.\n`,

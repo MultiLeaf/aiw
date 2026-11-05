@@ -1,0 +1,8 @@
+schema: 1
+workflowId: 520a87d4-8e8f-4e84-b482-32e8be775f69
+ticket: FRIC-001
+lane: light
+laneReason: Small contained generator addition; resumable from request plus git diff; understood risk
+entries:
+  - note: "npm run lint, typecheck, build, and npm test: all passed (88 test files, 725 tests). New tests in src/generator.test.ts and src/cli.test.ts cover FRIC-001 emission and omission."
+    recordedAt: 2026-11-05T04:39:34.676Z

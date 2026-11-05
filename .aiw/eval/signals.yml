@@ -1,0 +1,15 @@
+schema: 1
+limitations: ["git-history-unavailable"]
+facts:
+  - id: fact-001
+    key: build.system
+    value: "node-npm"
+    evidence: ["package.json"]
+  - id: fact-002
+    key: test.command
+    value: "npm test"
+    evidence: ["package.json"]
+  - id: fact-003
+    key: ci.provider
+    value: "github-actions"
+    evidence: [".github/workflows"]

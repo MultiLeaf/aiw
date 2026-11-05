@@ -1,0 +1,10 @@
+schema: 1
+workflowId: 1a4f1a97-893d-4142-8f40-9a22d5017f6d
+ticket: AIW-668
+lane: light
+laneReason: Single scenario YAML validated by the bundled registry test; resumable from request plus git diff.
+entries:
+  - note: npx vitest run src/eval/scenarios.test.ts → exit 0 (22 tests; registry now ships six families incl. evaluator, bounded budgets, {prompt} placeholder)
+    recordedAt: 2026-11-05T03:40:25.967Z
+  - note: npm run check → exit 0 (87 files/712 tests)
+    recordedAt: 2026-11-05T03:40:26.027Z

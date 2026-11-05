@@ -1,4 +1,5 @@
 import { parseDocument } from "yaml";
+import { join } from "path";
 import type { FileSystem } from "./types.js";
 import { loadSettings } from "./settings.js";
 
@@ -115,6 +116,12 @@ export function loadSemanticConfig(fs: FileSystem, aiwPath: string): SemanticCon
   const configPath = `${aiwPath}/${SEMANTIC_CONFIG_PATH}`;
   if (!fs.exists(configPath)) return undefined;
   return parseSemanticConfig(fs.read(configPath));
+}
+
+/** FRIC-001: semantic retrieval is usable when mapping is enabled and an index exists. */
+export function semanticRetrievalAvailable(fs: FileSystem, aiwPath: string): boolean {
+  const config = loadSemanticConfig(fs, aiwPath);
+  return config?.enabled === true && fs.exists(join(aiwPath, SEMANTIC_INDEX_PATH));
 }
 
 function parseSemanticDocument(text: string): SemanticConfig {

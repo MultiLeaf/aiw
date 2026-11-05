@@ -1,0 +1,9 @@
+schema: 1
+workflowId: 520a87d4-8e8f-4e84-b482-32e8be775f69
+status: complete
+startedAt: 2026-11-05T04:36:11.967Z
+updatedAt: 2026-11-05T04:39:34.738Z
+ticket: FRIC-001
+title: Semantic-retrieval-first generated rule
+lane: light
+laneReason: Small contained generator addition; resumable from request plus git diff; understood risk

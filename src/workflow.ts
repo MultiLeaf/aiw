@@ -108,6 +108,7 @@ import {
   buildSemanticIndex,
   createOllamaEmbeddingProvider,
   loadSemanticConfig,
+  semanticRetrievalAvailable,
   parseSemanticIndex,
   querySemanticIndex,
   rerankSemanticMatches,
@@ -2290,14 +2291,19 @@ export async function runCommand(
         );
       }
       const conflicts: string[] = [];
-      generateProjectResources(profile, selected, (path, content) => {
-        const destination = join(aiw, path);
-        if (fs.exists(destination)) {
-          if (detectDrift(content, fs.read(destination))) conflicts.push(path);
-          return;
-        }
-        fs.write(destination, content);
-      });
+      generateProjectResources(
+        profile,
+        selected,
+        (path, content) => {
+          const destination = join(aiw, path);
+          if (fs.exists(destination)) {
+            if (detectDrift(content, fs.read(destination))) conflicts.push(path);
+            return;
+          }
+          fs.write(destination, content);
+        },
+        semanticRetrievalAvailable(fs, aiw),
+      );
       return {
         exitCode: conflicts.length ? 1 : 0,
         output: conflicts.length
@@ -4445,6 +4451,8 @@ function syncSelectedResources(
       });
   };
 
+  const semanticRetrieval = semanticRetrievalAvailable(fs, aiw);
+
   for (const reference of resourceSelections) {
     const key = `${reference.type}/${reference.id}`;
     const resource = bundleByKey.get(key);
@@ -4456,33 +4464,40 @@ function syncSelectedResources(
     );
   }
 
-  generateProjectResources(profile, selected, (path, content) => {
-    generatedFiles.set(join(aiw, path), content);
-    const rule = path.match(/^generated\/rules\/(project-quality|tdd-project-policy)\.md$/);
-    if (rule) addResource("rules", rule[1], content);
-    const rootContext = path === "generated/context/root-context.md";
-    if (rootContext) {
-      const neutralContextPath = join(
-        root,
-        describeResource("universal", "context", "project").path,
+  generateProjectResources(
+    profile,
+    selected,
+    (path, content) => {
+      generatedFiles.set(join(aiw, path), content);
+      const rule = path.match(
+        /^generated\/rules\/(project-quality|tdd-project-policy|semantic-retrieval)\.md$/,
       );
-      addOwned(neutralContextPath, content, {
-        kind: "neutral-resource",
-        target: "universal",
-        resourceType: "context",
-        resourceId: "project",
-      });
-      const targetContextPath = describeResource(target, "context", "project").path;
-      if (targetContextPath !== renderAiInitPath(target)) {
-        addOwned(join(root, targetContextPath), content, {
-          kind: "target-resource",
-          target,
+      if (rule) addResource("rules", rule[1], content);
+      const rootContext = path === "generated/context/root-context.md";
+      if (rootContext) {
+        const neutralContextPath = join(
+          root,
+          describeResource("universal", "context", "project").path,
+        );
+        addOwned(neutralContextPath, content, {
+          kind: "neutral-resource",
+          target: "universal",
           resourceType: "context",
           resourceId: "project",
         });
+        const targetContextPath = describeResource(target, "context", "project").path;
+        if (targetContextPath !== renderAiInitPath(target)) {
+          addOwned(join(root, targetContextPath), content, {
+            kind: "target-resource",
+            target,
+            resourceType: "context",
+            resourceId: "project",
+          });
+        }
       }
-    }
-  });
+    },
+    semanticRetrieval,
+  );
 
   const ownershipPath = join(aiw, "ownership.yml");
   if (fs.pathType?.(ownershipPath) !== "file")
