@@ -61,6 +61,7 @@ import { generateProjectResources, generateProposalResource } from "./generator.
 import { collectSignals, serializeEvidenceBundle, parseEvidenceBundle } from "./eval/signals.js";
 import { renderBrief } from "./eval/brief.js";
 import { harvestApprovalObservations, monitorSession } from "./eval/monitor.js";
+import { collectGitSummary } from "./eval/git.js";
 import {
   approveProposal,
   createEmptyStore,
@@ -2390,7 +2391,8 @@ export async function runCommand(
     }
     if (command === "evaluate") {
       const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
-      const bundle = collectSignals(scanFiles.files, undefined, (path) =>
+      const gitSummary = await collectGitSummary(root, services.runShell ?? defaultShellRunner);
+      const bundle = collectSignals(scanFiles.files, gitSummary, (path) =>
         fs.exists(join(root, path)) ? fs.read(join(root, path)) : "",
       );
       const evalDir = join(aiw, "eval");
