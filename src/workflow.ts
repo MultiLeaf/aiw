@@ -60,9 +60,11 @@ async function readStdin(): Promise<string> {
 import { generateProjectResources, generateProposalResource } from "./generator.js";
 import { collectSignals, serializeEvidenceBundle, parseEvidenceBundle } from "./eval/signals.js";
 import { renderBrief } from "./eval/brief.js";
+import { harvestApprovalObservations, monitorSession } from "./eval/monitor.js";
 import {
   approveProposal,
   createEmptyStore,
+  draftSignatureHash,
   parseProposalStore,
   recordOccurrence,
   rejectProposal,
@@ -2388,10 +2390,16 @@ export async function runCommand(
     }
     if (command === "evaluate") {
       const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
-      const bundle = collectSignals(scanFiles.files);
+      const bundle = collectSignals(scanFiles.files, undefined, (path) =>
+        fs.exists(join(root, path)) ? fs.read(join(root, path)) : "",
+      );
       const evalDir = join(aiw, "eval");
       const signalsPath = join(evalDir, "signals.yml");
       const briefPath = join(evalDir, "brief.md");
+      const draftsPath = join(evalDir, "proposals-draft.yml");
+      // A4: drafts written against a previous signal set must not survive a
+      // re-evaluation; the skill re-drafts from the fresh brief.
+      if (fs.exists(draftsPath)) fs.remove?.(draftsPath);
       fs.write(signalsPath, serializeEvidenceBundle(bundle));
       fs.write(briefPath, renderBrief(bundle));
       return {
@@ -2437,13 +2445,21 @@ export async function runCommand(
         const store = fs.exists(storePath)
           ? parseProposalStore(fs.read(storePath))
           : createEmptyStore();
-        for (const record of validation.records)
+        const isUnchanged = (record: (typeof validation.records)[number]): boolean => {
+          const hash = draftSignatureHash(record);
+          const existing = store.proposals.find(
+            (candidate) => candidate.signature === record.signature,
+          );
+          return existing?.draftHash === hash;
+        };
+        const changed = validation.records.filter((record) => !isUnchanged(record));
+        for (const record of validation.records) {
+          if (isUnchanged(record)) continue;
           recordOccurrence(store, {
             kind: record.kind as (typeof PROPOSAL_KINDS)[number],
             signature: record.signature,
             origin: "onboarding",
           });
-        for (const record of validation.records) {
           const proposal = store.proposals.find(
             (candidate) => candidate.signature === record.signature,
           );
@@ -2451,8 +2467,19 @@ export async function runCommand(
             proposal.title = record.title;
             proposal.outline = record.outline;
             proposal.evidence = record.evidence;
+            proposal.kind = record.kind as (typeof PROPOSAL_KINDS)[number];
+            proposal.draftHash = draftSignatureHash(record);
           }
         }
+        if (changed.length === 0)
+          return {
+            exitCode: 0,
+            output: `no proposals to import${
+              fs.exists(storePath)
+                ? " — drafts unchanged since the last import"
+                : " — the evaluator proposed nothing for this project"
+            }\n`,
+          };
         fs.write(storePath, serializeProposalStore(store));
         const overlapNote = validation.overlaps.length
           ? `\noverlaps annotated for review: ${validation.overlaps
@@ -2461,7 +2488,7 @@ export async function runCommand(
           : "";
         return {
           exitCode: 0,
-          output: `imported ${validation.records.length} proposal(s) into ${relative(root, storePath)}${overlapNote}\n`,
+          output: `imported ${changed.length} proposal(s) into ${relative(root, storePath)}${overlapNote}\n`,
         };
       }
       if (action === "list") {
@@ -3565,6 +3592,31 @@ export async function runCommand(
       );
       fs.write(statePath, serializeHeartbeatState(nextState));
       const lines = [describeHeartbeatOutcome(outcome)];
+      // REQ-003 wiring: a new session is the boundary where the previous
+      // session's rejections become monitor occurrences. Monitor failures
+      // must never break the heartbeat.
+      if (outcome.decision === "session-start") {
+        try {
+          const ledgerPath = join(aiw, "approvals.yml");
+          if (fs.exists(ledgerPath)) {
+            const artifacts = harvestApprovalObservations(fs.read(ledgerPath));
+            if (artifacts.length > 0) {
+              const proposalsPath = join(aiw, "proposals.yml");
+              const store = fs.exists(proposalsPath)
+                ? parseProposalStore(fs.read(proposalsPath))
+                : createEmptyStore();
+              const { surfaced } = monitorSession(store, artifacts);
+              fs.write(proposalsPath, serializeProposalStore(store));
+              if (surfaced.length > 0)
+                lines.push(
+                  `monitor: ${surfaced.length} recurring pattern(s) crossed the proposal threshold — run aiw proposals list`,
+                );
+            }
+          }
+        } catch {
+          // observation is best-effort; heartbeat stays authoritative
+        }
+      }
       if (outcome.checkpoint) {
         const checkpointPath = join(
           aiw,

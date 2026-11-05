@@ -30,7 +30,9 @@ function slugTokens(value: string): string[] {
 }
 
 export function parseDrafts(content: string): DraftRecord[] {
-  const raw = parseDocument(content).toJS();
+  const trimmed = content.trim();
+  if (!trimmed) return [];
+  const raw = parseDocument(trimmed).toJS();
   if (!Array.isArray(raw)) throw new Error("Drafts file must contain a YAML list of records");
   return (raw as Record<string, unknown>[]).map((entry) => ({
     kind: String(entry.kind ?? ""),

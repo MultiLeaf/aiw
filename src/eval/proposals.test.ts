@@ -199,3 +199,74 @@ describe("aiw proposals commands", () => {
     expect(result.output).toContain("rule");
   });
 });
+
+// ---- AIW-666 follow-ups: idempotent import, kind update, empty drafts ----
+
+describe("aiw proposals follow-ups", () => {
+  it("is idempotent: re-importing the same draft adds no occurrence (A2)", async () => {
+    const cwd = await evaluatedProject();
+    await run(["proposals", "import"], cwd);
+    await run(["proposals", "import"], cwd);
+    const store = parseProposalStore(await readFile(join(cwd, ".aiw/proposals.yml"), "utf8"));
+    expect(store.proposals[0]?.occurrences).toBe(1);
+  });
+
+  it("records a new occurrence only when the draft content changes (A2)", async () => {
+    const cwd = await evaluatedProject();
+    await run(["proposals", "import"], cwd);
+    const draftPath = join(cwd, ".aiw/eval/proposals-draft.yml");
+    await writeFile(
+      draftPath,
+      [
+        "- kind: rule",
+        "  signature: gradle-test-before-done",
+        '  title: "Run Gradle tests before completing"',
+        '  outline: "Require ./gradlew test AND integration tests before completion."',
+        "  evidence: [fact-001, fact-002]",
+        "",
+      ].join("\n"),
+    );
+    await run(["proposals", "import"], cwd);
+    const store = parseProposalStore(await readFile(join(cwd, ".aiw/proposals.yml"), "utf8"));
+    expect(store.proposals[0]?.occurrences).toBe(2);
+    expect(store.proposals[0]?.outline).toContain("integration tests");
+  });
+
+  it("updates the kind when a re-draft changes it (A5)", async () => {
+    const cwd = await evaluatedProject();
+    await run(["proposals", "import"], cwd);
+    await writeFile(
+      join(cwd, ".aiw/eval/proposals-draft.yml"),
+      [
+        "- kind: skill",
+        "  signature: gradle-test-before-done",
+        '  title: "Run Gradle tests before completing"',
+        '  outline: "Skill wrapping ./gradlew test before completion."',
+        "  evidence: [fact-001]",
+        "",
+      ].join("\n"),
+    );
+    await run(["proposals", "import"], cwd);
+    const store = parseProposalStore(await readFile(join(cwd, ".aiw/proposals.yml"), "utf8"));
+    expect(store.proposals[0]?.kind).toBe("skill");
+  });
+
+  it("reports a clean no-proposals result for an empty drafts file (B2/REQ-001)", async () => {
+    const cwd = await evaluatedProject();
+    await writeFile(join(cwd, ".aiw/eval/proposals-draft.yml"), "");
+    const result = await run(["proposals", "import"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("no proposals");
+    expect(existsSync(join(cwd, ".aiw/proposals.yml"))).toBe(false);
+  });
+
+  it("shows a proposal with its full evidence trail (B3)", async () => {
+    const cwd = await evaluatedProject();
+    await run(["proposals", "import"], cwd);
+    const result = await run(["proposals", "show", "--id=prop-001"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("prop-001 [rule] proposed");
+    expect(result.output).toContain("title: Run Gradle tests before completing");
+    expect(result.output).toContain("evidence: fact-001, fact-002");
+  });
+});

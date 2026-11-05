@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parseDocument } from "yaml";
 import { defaultPolicy } from "./policy.js";
 import {
@@ -28,6 +29,23 @@ export type Occurrence = {
   evidence?: string;
 };
 
+/** Stable content hash of a draft record: identical re-imports are no-ops. */
+export function draftSignatureHash(record: {
+  kind: string;
+  signature: string;
+  title: string;
+  outline: string;
+  evidence: string[];
+}): string {
+  return createHash("sha256")
+    .update(
+      [record.kind, record.signature, record.title, record.outline, record.evidence.join(",")].join(
+        "\u0000",
+      ),
+    )
+    .digest("hex");
+}
+
 /**
  * Record one observation of a pattern. Occurrences deduplicate by signature:
  * the proposal is created once and its evidence list grows per occurrence.
@@ -56,6 +74,7 @@ export function recordOccurrence(store: ProposalStore, occurrence: Occurrence): 
     rejectReason: null,
     rejectedAtOccurrences: null,
     provenance: "",
+    draftHash: null,
   });
 }
 
@@ -148,6 +167,7 @@ export function serializeProposalStore(store: ProposalStore): string {
       `    reject_reason: ${proposal.rejectReason === null ? "null" : scalar(proposal.rejectReason)}`,
       `    rejected_at_occurrences: ${proposal.rejectedAtOccurrences ?? "null"}`,
       `    provenance: ${scalar(proposal.provenance)}`,
+      `    draft_hash: ${proposal.draftHash === null ? "null" : scalar(proposal.draftHash)}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -182,6 +202,8 @@ function parseProposal(raw: RawProposal, index: number): ProposalRecord {
         ? null
         : Number(raw.rejected_at_occurrences),
     provenance: String(raw.provenance ?? ""),
+    draftHash:
+      raw.draft_hash === null || raw.draft_hash === undefined ? null : String(raw.draft_hash),
   };
 }
 

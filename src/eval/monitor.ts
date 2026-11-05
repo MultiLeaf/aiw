@@ -1,3 +1,4 @@
+import { parseDocument } from "yaml";
 import { recordOccurrence, shouldSurfaceProposal, type Occurrence } from "./proposals.js";
 import type { ProposalStore } from "./types.js";
 
@@ -28,6 +29,31 @@ export function extractObservations(artifacts: SessionArtifact[]): Occurrence[] 
       evidence: artifact.ref,
     } satisfies Occurrence;
   });
+}
+
+/**
+ * Harvest monitor observations from the AIW approval ledger: every stage a
+ * human rejected is a "this keeps going wrong" signal, cited by reason.
+ */
+export function harvestApprovalObservations(content: string): SessionArtifact[] {
+  const trimmed = content.trim();
+  if (!trimmed) return [];
+  let raw: unknown;
+  try {
+    raw = parseDocument(trimmed).toJS();
+  } catch {
+    return [];
+  }
+  const stages = (raw as { stages?: Record<string, { status?: string; reason?: string }> })?.stages;
+  if (!stages || typeof stages !== "object") return [];
+  return Object.entries(stages)
+    .filter(([, entry]) => entry?.status === "rejected")
+    .map(([stage, entry]) => ({
+      type: "rejection" as const,
+      stage,
+      reason: String(entry?.reason ?? ""),
+      ref: "approvals.yml",
+    }));
 }
 
 /**

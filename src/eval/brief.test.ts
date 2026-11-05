@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -52,5 +54,23 @@ describe("aiw evaluate command", () => {
     const result = await run(["evaluate"], cwd);
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain(".aiw/eval/brief.md");
+  });
+});
+
+// ---- AIW-666 follow-up: stale draft invalidation (A4) ----
+
+describe("aiw evaluate stale draft handling", () => {
+  it("removes a previous proposals-draft so imports always match the fresh brief (A4)", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "aiw-eval-"));
+    await writeFile(join(cwd, "pyproject.toml"), '[project]\nname = "x"\n');
+    await mkdir(join(cwd, ".aiw/eval"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw/eval/proposals-draft.yml"),
+      "- kind: rule\n  signature: stale\n",
+    );
+    const result = await run(["evaluate"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(cwd, ".aiw/eval/proposals-draft.yml"))).toBe(false);
+    expect(existsSync(join(cwd, ".aiw/eval/signals.yml"))).toBe(true);
   });
 });

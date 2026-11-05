@@ -17,13 +17,15 @@ export type EvidenceBundle = {
   limitations: string[];
 };
 
-type Rule = { keys: [string, string][]; requires?: string[]; forbids?: string[] };
+type BuildRule = { keys: [string, string][]; evidenceFiles: string[] };
 
 /**
  * Deterministic stack detection over a sorted file listing. Evidence always
  * names real files so downstream proposals cannot cite imaginary tooling.
+ * `evidenceFiles` are filtered by presence, so a rule matched by any of its
+ * files (for example gradlew without build.gradle.kts) still cites what exists.
  */
-const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
+const BUILD_RULES: { match: (files: string[]) => boolean; rule: BuildRule }[] = [
   {
     match: (files) =>
       files.some((file) => /^build\.gradle(\.kts)?$/.test(file) || file === "gradlew"),
@@ -32,6 +34,7 @@ const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
         ["build.system", "gradle"],
         ["test.command", "./gradlew test"],
       ],
+      evidenceFiles: ["build.gradle.kts", "build.gradle", "gradlew"],
     },
   },
   {
@@ -41,6 +44,7 @@ const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
         ["build.system", "maven"],
         ["test.command", "mvn test"],
       ],
+      evidenceFiles: ["pom.xml"],
     },
   },
   {
@@ -51,6 +55,7 @@ const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
         ["build.system", "python-pyproject"],
         ["test.command", "pytest"],
       ],
+      evidenceFiles: ["pyproject.toml", "setup.py", "setup.cfg"],
     },
   },
   {
@@ -61,6 +66,7 @@ const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
         ["language", "cpp"],
         ["test.command", "ctest --output-on-failure"],
       ],
+      evidenceFiles: ["CMakeLists.txt"],
     },
   },
   {
@@ -70,6 +76,7 @@ const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
         ["build.system", "go-modules"],
         ["test.command", "go test ./..."],
       ],
+      evidenceFiles: ["go.mod"],
     },
   },
   {
@@ -79,27 +86,45 @@ const BUILD_RULES: { match: (files: string[]) => boolean; rule: Rule }[] = [
         ["build.system", "node-npm"],
         ["test.command", "npm test"],
       ],
+      evidenceFiles: ["package.json"],
     },
   },
 ];
 
-const EVIDENCE_BY_RULE: Record<string, string[]> = {
-  gradle: ["build.gradle.kts", "gradlew"],
-  maven: ["pom.xml"],
-  "python-pyproject": ["pyproject.toml", "setup.py", "setup.cfg"],
-  cmake: ["CMakeLists.txt"],
-  "go-modules": ["go.mod"],
-  "node-npm": ["package.json"],
-};
+const PYTHON_FRAMEWORKS = ["django", "flask", "fastapi"] as const;
 
-function frameworkFor(files: string[]): { value: string; evidence: string } | undefined {
-  if (files.includes("build.gradle.kts") && files.some((file) => file.startsWith("src/main/java")))
-    return { value: "spring", evidence: "build.gradle.kts" };
-  if (files.includes("pyproject.toml")) return { value: "fastapi", evidence: "pyproject.toml" };
+/**
+ * Framework facts come from declared dependencies (file content), never from
+ * file presence alone — a plain pyproject or Gradle project gets no framework
+ * fact instead of a guess.
+ */
+function frameworkFor(
+  files: string[],
+  readFile?: (path: string) => string,
+): { value: string; evidence: string } | undefined {
+  if (!readFile) return undefined;
+  const pythonManifest = ["pyproject.toml", "requirements.txt", "setup.py"].find((file) =>
+    files.includes(file),
+  );
+  if (pythonManifest) {
+    const content = readFile(pythonManifest).toLowerCase();
+    const match = PYTHON_FRAMEWORKS.find((framework) => content.includes(framework));
+    if (match) return { value: match, evidence: pythonManifest };
+    return undefined;
+  }
+  const jvmManifest = ["build.gradle.kts", "build.gradle", "pom.xml"].find((file) =>
+    files.includes(file),
+  );
+  if (jvmManifest && readFile(jvmManifest).toLowerCase().includes("spring"))
+    return { value: "spring", evidence: jvmManifest };
   return undefined;
 }
 
-export function collectSignals(files: string[], git?: GitSummary): EvidenceBundle {
+export function collectSignals(
+  files: string[],
+  git?: GitSummary,
+  readFile?: (path: string) => string,
+): EvidenceBundle {
   const sorted = [...files].sort();
   const facts: SignalFact[] = [];
   let index = 0;
@@ -110,21 +135,12 @@ export function collectSignals(files: string[], git?: GitSummary): EvidenceBundl
 
   for (const { match, rule } of BUILD_RULES) {
     if (!match(sorted)) continue;
-    const evidence = rule.keys
-      .flatMap(([key]) =>
-        key === "build.system" ? EVIDENCE_BY_RULE[String(rule.keys[0]?.[1])] : [],
-      )
-      .filter((file) => sorted.includes(file));
-    for (const [key, value] of rule.keys)
-      push(
-        key,
-        value,
-        key === "build.system" ? evidence : evidence.length ? evidence : ["build files"],
-      );
+    const evidence = rule.evidenceFiles.filter((file) => sorted.includes(file));
+    for (const [key, value] of rule.keys) push(key, value, evidence);
     break;
   }
 
-  const framework = frameworkFor(sorted);
+  const framework = frameworkFor(sorted, readFile);
   if (framework) push("framework", framework.value, [framework.evidence]);
 
   if (sorted.some((file) => file.startsWith(".github/workflows/") && file.endsWith(".yml")))

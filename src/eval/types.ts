@@ -18,6 +18,8 @@ export type ProposalRecord = {
   rejectReason: string | null;
   rejectedAtOccurrences: number | null;
   provenance: string;
+  /** Content hash of the last imported draft; identical re-imports are no-ops. */
+  draftHash: string | null;
 };
 
 export type ProposalPolicy = {

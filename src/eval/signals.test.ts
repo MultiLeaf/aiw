@@ -44,7 +44,10 @@ describe("signal collector", () => {
   });
 
   it("detects pytest tooling for a Python project (REQ-002)", () => {
-    const bundle = collectSignals(fixture("python-pytest"));
+    const root = join(__dirname, "..", "fixtures", "eval-signals", "python-pytest");
+    const bundle = collectSignals(fixture("python-pytest"), undefined, (path) =>
+      readFileSync(join(root, path), "utf8"),
+    );
     const fact = (key: string): string | undefined =>
       bundle.facts.find((entry) => entry.key === key)?.value;
     expect(fact("build.system")).toBe("python-pyproject");
@@ -75,5 +78,66 @@ describe("signal collector", () => {
 
   it("rejects unknown bundle schemas", () => {
     expect(() => parseEvidenceBundle("schema: 7\n")).toThrow(/schema/i);
+  });
+});
+
+// ---- AIW-666 follow-ups: content-aware frameworks, robust evidence ----
+
+import { readFileSync } from "node:fs";
+
+describe("content-aware framework detection (A1 fix)", () => {
+  const reader =
+    (root: string) =>
+    (path: string): string => {
+      try {
+        return readFileSync(join(root, path), "utf8");
+      } catch {
+        return "";
+      }
+    };
+
+  it("detects fastapi only when the dependency is declared (REQ-002 honesty)", () => {
+    const withReader = collectSignals(
+      fixture("python-pytest"),
+      undefined,
+      reader(join(__dirname, "..", "fixtures", "eval-signals", "python-pytest")),
+    );
+    expect(withReader.facts.find((entry) => entry.key === "framework")?.value).toBe("fastapi");
+    const plain = collectSignals(["pyproject.toml"], undefined, () => "[project]\nname = 'x'\n");
+    expect(plain.facts.some((entry) => entry.key === "framework")).toBe(false);
+  });
+
+  it("detects spring only when declared in the build file", () => {
+    const withReader = collectSignals(
+      fixture("java-gradle"),
+      undefined,
+      reader(join(__dirname, "..", "fixtures", "eval-signals", "java-gradle")),
+    );
+    expect(withReader.facts.find((entry) => entry.key === "framework")?.value).toBe("spring");
+    const plain = collectSignals(
+      ["build.gradle.kts", "src/main/java/App.java"],
+      undefined,
+      () => "plugins { java }\n",
+    );
+    expect(plain.facts.some((entry) => entry.key === "framework")).toBe(false);
+  });
+
+  it("detects django and flask from dependency content", () => {
+    const django = collectSignals(
+      ["pyproject.toml"],
+      undefined,
+      () => 'dependencies = ["django"]\n',
+    );
+    expect(django.facts.find((entry) => entry.key === "framework")?.value).toBe("django");
+    const flask = collectSignals(["pyproject.toml"], undefined, () => "flask\n");
+    expect(flask.facts.find((entry) => entry.key === "framework")?.value).toBe("flask");
+  });
+
+  it("keeps build facts when a rule is matched by a secondary file (A3 robustness)", () => {
+    // gradlew present, no build.gradle(.kts): rule still fires with gradlew evidence
+    const bundle = collectSignals(["gradlew", "src/main/java/App.java"]);
+    const build = bundle.facts.find((entry) => entry.key === "build.system");
+    expect(build?.value).toBe("gradle");
+    expect(build?.evidence).toContain("gradlew");
   });
 });
