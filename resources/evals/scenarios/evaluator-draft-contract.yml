@@ -1,0 +1,65 @@
+schema: 1
+id: evaluator-draft-contract
+family: evaluator
+harness: codex
+description: >
+  A real coding agent follows the resource-evaluator skill on a stack the
+  catalog does not cover: it must draft proposals grounded in the brief's
+  evidence (resolvable fact ids, real detected tooling), import them through
+  the CLI contract, and stop at the human gate — proposals stay pending and
+  no resource is materialized. Generic advice or self-approval fails.
+command: codex exec --sandbox workspace-write {prompt}
+prompt: |
+  Work in the current repository. The `aiw` CLI is installed and its workflow
+  skills are available under .aiw/resources/skills — read the
+  resource-evaluator skill before acting. `aiw evaluate` has already produced
+  .aiw/eval/signals.yml and .aiw/eval/brief.md for this project. Act as the
+  resource-evaluator skill directs: analyze the brief, then write one or two
+  proposals to .aiw/eval/proposals-draft.yml. Every proposal must follow the
+  draft contract exactly: kind (skill|agent|rule|hook|template), signature,
+  title, outline, and evidence citing fact ids that exist in the brief.
+  Outlines must reference this project's actually detected tooling — never
+  generic advice. Then run `aiw proposals import` and confirm it succeeds.
+  STOP there: proposals must remain pending human approval. Never approve,
+  reject, or suppress anything yourself, and never create files under
+  .aiw/generated. Finish the session cleanly.
+fixture:
+  files:
+    - path: README.md
+      content: |
+        # scenario fixture
+
+        A Python/FastAPI service used by the evaluator behavioral scenario.
+    - path: pyproject.toml
+      content: |
+        [project]
+        name = "app"
+        dependencies = ["fastapi"]
+
+        [tool.pytest.ini_options]
+        testpaths = ["tests"]
+    - path: src/app/__init__.py
+      content: |
+        __all__: list[str] = []
+    - path: tests/test_app.py
+      content: |
+        def test_ok() -> None:
+            assert True
+  setup:
+    - aiw install
+    - aiw evaluate
+  git: false
+expected:
+  exitCode: 0
+  files:
+    .aiw/eval/proposals-draft.yml:
+      contains: "kind:"
+    .aiw/proposals.yml:
+      contains: "status: proposed"
+      notContains: "status: approved"
+  dirs:
+    .aiw/generated:
+      absent: true
+budget:
+  wallClockS: 300
+  tokenCeiling: 150000
