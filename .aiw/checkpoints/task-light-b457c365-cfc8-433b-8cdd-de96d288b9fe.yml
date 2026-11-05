@@ -1,0 +1,8 @@
+schema: 1
+workflowId: b457c365-cfc8-433b-8cdd-de96d288b9fe
+ticket: FRIC-002
+lane: light
+laneReason: Small contained CLI/session change; resumable from request plus git diff; understood risk
+entries:
+  - note: "npm run lint, typecheck, build, and npm test: all passed (88 files, 728 tests). New cli.test.ts cases: local ticket self-served when no ticket given, --no-ticket sequences LOCAL-001 then LOCAL-002 across archived sessions, --no-ticket with --ticket rejected, explicit ticket flows unchanged."
+    recordedAt: 2026-11-05T04:43:05.783Z

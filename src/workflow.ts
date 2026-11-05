@@ -368,6 +368,23 @@ function laneAdvisory(root: string, fs: FileSystem, lightChosen: boolean): strin
   return undefined;
 }
 
+/** FRIC-002: allocate the next LOCAL-### ticket from current and archived sessions. */
+function nextLocalTicket(fs: FileSystem, aiw: string): string {
+  let max = 0;
+  const consider = (text: string) => {
+    for (const match of text.matchAll(/^\s*ticket:\s*(LOCAL-(\d+)\s*)$/gm))
+      max = Math.max(max, Number(match[2]));
+  };
+  const sessionPath = join(aiw, "workflow.yml");
+  if (fs.exists(sessionPath)) consider(fs.read(sessionPath));
+  const checkpoints = join(aiw, "checkpoints");
+  if (fs.exists(checkpoints) && fs.list)
+    for (const name of fs.list(checkpoints) ?? [])
+      if (name.startsWith("workflow-") && name.endsWith("-session.yml"))
+        consider(fs.read(join(checkpoints, name)));
+  return `LOCAL-${String(max + 1).padStart(3, "0")}`;
+}
+
 function beginWorkflowSession(
   fs: FileSystem,
   aiw: string,
@@ -447,20 +464,19 @@ export async function runCommand(
     if (command === "task") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const usage =
-        "Usage: aiw task start --ticket=TEAM-123 [--title=text] [--id=workflow-id] [--lane=light --lane-reason=text] | aiw task status | aiw task escalate --reason=text | aiw task evidence --validation=text";
+        "Usage: aiw task start --ticket=TEAM-123 [--title=text] [--id=workflow-id] [--lane=light --lane-reason=text] | aiw task start [--no-ticket] [--title=text] ... | aiw task status | aiw task escalate --reason=text | aiw task evidence --validation=text";
       const action = args[1];
       const sessionPath = join(aiw, "workflow.yml");
       if (action === "start") {
-        const options = parseNamedOptions(args.slice(2), [
-          "ticket",
-          "title",
-          "id",
-          "lane",
-          "lane-reason",
-          "process",
-        ]);
-        if (!options?.ticket) return { exitCode: 1, error: usage };
-        validateTaskTicket(options.ticket);
+        const noTicket = args.slice(2).includes("--no-ticket");
+        const options = parseNamedOptions(
+          args.slice(2).filter((argument) => argument !== "--no-ticket"),
+          ["ticket", "title", "id", "lane", "lane-reason", "process"],
+        );
+        if (!options || (noTicket && options.ticket)) return { exitCode: 1, error: usage };
+        // FRIC-002: no ticket given (or --no-ticket) — self-serve a local ticket.
+        const resolvedTicket = options.ticket ?? nextLocalTicket(fs, aiw);
+        validateTaskTicket(resolvedTicket);
         const processName = options.process;
         if (processName !== undefined) {
           if (!isWorkflowProcess(processName))
@@ -500,7 +516,7 @@ export async function runCommand(
         const lane = options.lane === "light" ? ("light" as const) : undefined;
         const result = beginWorkflowSession(fs, aiw, {
           ...(options.id ? { id: options.id } : {}),
-          ticket: options.ticket,
+          ticket: resolvedTicket,
           ...(options.title ? { title: options.title } : {}),
           ...(lane ? { lane, laneReason: laneReason! } : {}),
           ...(processName ? { process: processName } : {}),
@@ -512,7 +528,7 @@ export async function runCommand(
           return {
             exitCode: 0,
             output:
-              `Task started for ticket ${options.ticket}${title} (light lane): ${result.output}\n` +
+              `Task started for ticket ${resolvedTicket}${title} (light lane): ${result.output}\n` +
               (advisory ? `${advisory}\n` : "") +
               "Resume test: this work is small when it is understood, risk is contained, and the work could be resumed from your request plus `git diff`.\n" +
               `Rationale recorded: ${laneReason}\n` +
@@ -521,9 +537,9 @@ export async function runCommand(
         return {
           exitCode: 0,
           output:
-            `Task started for ticket ${options.ticket}${title}: ${result.output}\n` +
+            `Task started for ticket ${resolvedTicket}${title}: ${result.output}\n` +
             (advisory ? `${advisory}\n` : "") +
-            `Next steps: ask the user whether the requirement is clear enough to skip brainstorming (record an accepted skip with \`aiw skip brainstorming --reason="Requirement provided by ticket ${options.ticket}"\`), then create the specification with \`aiw spec --ticket=${options.ticket} --title=...\`.`,
+            `Next steps: ask the user whether the requirement is clear enough to skip brainstorming (record an accepted skip with \`aiw skip brainstorming --reason="Requirement provided by ticket ${resolvedTicket}"\`), then create the specification with \`aiw spec --ticket=${resolvedTicket} --title=...\`.`,
         };
       }
       if (action === "escalate") {

@@ -3073,6 +3073,40 @@ describe("ticket-driven task", () => {
     expect(result.error).toContain("TEAM-123");
   });
 
+  it("creates a local ticket when no ticket is given", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--title=Small fix"], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("LOCAL-001");
+    const session = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
+    expect(session).toContain("ticket: LOCAL-001");
+    const status = await run(["task", "status"], cwd);
+    expect(status.output).toContain("Ticket: LOCAL-001");
+  });
+
+  it("honors an explicit --no-ticket and sequences local ticket numbers", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const first = await run(["task", "start", "--no-ticket"], cwd);
+    expect(first.exitCode).toBe(0);
+    expect(first.output).toContain("LOCAL-001");
+    await run(["workflow", "abandon", "--reason=superseded"], cwd);
+    const second = await run(["task", "start"], cwd);
+    expect(second.exitCode).toBe(0);
+    expect(second.output).toContain("LOCAL-002");
+    const session = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
+    expect(session).toContain("ticket: LOCAL-002");
+  });
+
+  it("rejects combining --no-ticket with --ticket", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const result = await run(["task", "start", "--ticket=PROJ-1", "--no-ticket"], cwd);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("Usage");
+  });
+
   it("reports ticket, stages, and next step in task status", async () => {
     const cwd = await project();
     await run(["install"], cwd);

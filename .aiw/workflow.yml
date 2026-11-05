@@ -1,9 +1,9 @@
 schema: 1
-workflowId: 520a87d4-8e8f-4e84-b482-32e8be775f69
+workflowId: b457c365-cfc8-433b-8cdd-de96d288b9fe
 status: complete
-startedAt: 2026-11-05T04:36:11.967Z
-updatedAt: 2026-11-05T04:39:34.738Z
-ticket: FRIC-001
-title: Semantic-retrieval-first generated rule
+startedAt: 2026-11-05T04:40:14.071Z
+updatedAt: 2026-11-05T04:43:05.850Z
+ticket: FRIC-002
+title: Optional or self-served ticket in task start
 lane: light
-laneReason: Small contained generator addition; resumable from request plus git diff; understood risk
+laneReason: Small contained CLI/session change; resumable from request plus git diff; understood risk
