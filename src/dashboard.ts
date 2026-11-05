@@ -38,7 +38,14 @@ export function buildDashboardModel(root: string, fs: FileSystem): DashboardMode
   const manifest = read(join(aiw, "manifest.yml"));
   const profile = read(join(aiw, "profile.yml"));
   const recommendations = read(join(aiw, "recommendations.yml"));
-  const traceability = read(join(aiw, "generated/artifacts/traceability.yml"));
+  const workflowId = fs.exists(join(aiw, "workflow.yml"))
+    ? /^workflowId: ([0-9a-f-]+)/m.exec(read(join(aiw, "workflow.yml")))?.[1]
+    : undefined;
+  const scopedTraceability = workflowId
+    ? read(join(aiw, "generated/artifacts", workflowId, "traceability.yml"))
+    : "";
+  const traceability =
+    scopedTraceability || read(join(aiw, "generated/artifacts/traceability.yml"));
   return {
     project: manifest.match(/^\s{2}name:\s*(.+)$/m)?.[1]?.trim() ?? root.split("/").at(-1) ?? root,
     target: manifest.match(/^\s{2}active:\s*(.+)$/m)?.[1]?.trim() ?? "not configured",

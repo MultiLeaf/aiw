@@ -1,43 +1,43 @@
 schema: 1
-workflowId: fc2a481d-9d80-4632-a355-5bc6e1da5ae2
+workflowId: 9fd618d1-b576-44f7-bff3-57680034b6b8
 stages:
   brainstorming:
     status: skipped
     qualityGate: not-applicable
-    updatedAt: 2026-11-05T04:48:59.323Z
-    reason: Requirement provided by ticket FRIC-003
+    updatedAt: 2026-11-05T13:18:39.165Z
+    reason: Requirement provided by ticket FRIC-005
   specification:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-05T04:49:48.608Z
-    artifactHash: sha256-19b2d1dd3507fca80b94389a257148577732dd4b4ea6fa790999a654a0131ee5
+    updatedAt: 2026-11-05T16:21:31.744Z
+    artifactHash: sha256-0cc178c1e00e34add82cda2c1d1e9813635ec753a9b507b32a5bbd854a6ba72f
   technical-design:
-    status: skipped
-    qualityGate: not-applicable
-    updatedAt: 2026-11-05T04:50:07.164Z
-    reason: Contained change reusing existing usage-sidecar/cost-attribution modules; no architecture impact
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T16:24:30.069Z
+    artifactHash: sha256-19ec758f6636bf1bf98e75f2ffec813e699eea23bbc41a8da0308a8d103169f9
   plan:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-05T04:56:40.373Z
-    artifactHash: sha256-986c78afe3c2ff26c1b2657f4c5643321783ba3416009458100febbcceb3ed58
+    updatedAt: 2026-11-05T16:39:55.191Z
+    artifactHash: sha256-73ae5ef451218f1cdd559c854e9868884b3beb5bfe7c057a4802118d97c4f4de
   implementation:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-05T04:56:40.501Z
-    artifactHash: sha256-93c0fd04dc21b4c831784814883df97053eb2affdef1eedec87bc654134159ba
+    updatedAt: 2026-11-05T18:03:16.346Z
+    artifactHash: sha256-f2a30b6b747070f0dde5e8c94e359af50f581f723dab755320e1722751c043d4
   verification:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-05T04:58:26.937Z
-    artifactHash: sha256-26f462c3cc83f1bb5de05d2dbf2f11c9ddeaf2c950486f125def0528ed850f1d
+    updatedAt: 2026-11-05T20:03:34.762Z
+    artifactHash: sha256-858ad7c161bb9c66706378f356d1bc3573c64a4c59e2d93865bba88a0aad2ff6
   review:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-05T04:59:14.852Z
-    artifactHash: sha256-32c875e4b83f9e6c700e0e923b5095cccaf08c046e84bac0030e975598761306
+    updatedAt: 2026-11-05T20:35:49.397Z
+    artifactHash: sha256-c2894eaf8eee5c6304f36f6e30449ff46a049d3f9725308f836b5869bc5ebf97
   traceability:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-05T04:59:51.035Z
-    artifactHash: sha256-caa5de544db3a988b0d7a5ddd854a50205dbe6de383a0015f4bf575c2c411622
+    updatedAt: 2026-11-05T21:01:56.419Z
+    artifactHash: sha256-44c26413fe310db47e1475bd2abeefbd6d28ea73d5fd195c52abc727b021e197

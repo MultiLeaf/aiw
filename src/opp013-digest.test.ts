@@ -49,7 +49,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["workflow", "start", "--id=digest-1"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
     await run(["spec"], cwd);
-    await writeFile(join(cwd, ".aiw/generated/specs/specification.md"), SPEC);
+    await writeFile(join(cwd, ".aiw/generated/specs/digest-1/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
     const approved = await run(["approve", "specification"], cwd);
     expect(approved.output).toContain("Digest available");
@@ -68,11 +68,11 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["workflow", "start", "--id=digest-2"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
     await run(["spec"], cwd);
-    await writeFile(join(cwd, ".aiw/generated/specs/specification.md"), SPEC);
+    await writeFile(join(cwd, ".aiw/generated/specs/digest-2/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
     await run(["approve", "specification"], cwd);
     await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+      join(cwd, ".aiw/generated/specs/digest-2/specification.md"),
       SPEC + "\nEdited after approval.\n",
     );
     const served = await run(["digest", "--stage=specification"], cwd);
@@ -86,7 +86,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["workflow", "start", "--id=digest-3"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
     await run(["spec"], cwd);
-    await writeFile(join(cwd, ".aiw/generated/specs/specification.md"), SPEC);
+    await writeFile(join(cwd, ".aiw/generated/specs/digest-3/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
     await run(["approve", "specification"], cwd);
     const context = await run(["context", "--stage=plan"], cwd);
@@ -108,7 +108,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["workflow", "start", "--id=digest-4"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
     await run(["spec"], cwd);
-    await writeFile(join(cwd, ".aiw/generated/specs/specification.md"), SPEC);
+    await writeFile(join(cwd, ".aiw/generated/specs/digest-4/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
     await run(["approve", "specification"], cwd);
     const ledger = await readFile(join(cwd, ".aiw", "approvals.yml"), "utf8");

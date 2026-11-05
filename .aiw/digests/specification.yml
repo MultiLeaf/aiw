@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-19b2d1dd3507fca80b94389a257148577732dd4b4ea6fa790999a654a0131ee5
-generatedAt: 2026-11-05T04:49:48.610Z
-title: "Specification: Usage and Cost Report on Workflow Completion"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004]
+fingerprint: sha256-0cc178c1e00e34add82cda2c1d1e9813635ec753a9b507b32a5bbd854a6ba72f
+generatedAt: 2026-11-05T16:21:31.747Z
+title: "Specification: Namespace Per-Workflow Generated Artifacts"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
 decisionIds: []
-criteriaCount: 8
+criteriaCount: 12

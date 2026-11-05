@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-986c78afe3c2ff26c1b2657f4c5643321783ba3416009458100febbcceb3ed58
-generatedAt: 2026-11-05T04:56:40.376Z
-title: "Implementation Plan: Usage and Cost Report on Workflow Completion"
-requirementIds: [REQ-001, REQ-004, REQ-001, REQ-002, REQ-003, REQ-001, REQ-001, REQ-002, REQ-003, REQ-004, REQ-003, REQ-001, REQ-004, REQ-001]
-taskIds: [TASK-001, TASK-002, TASK-003]
+fingerprint: sha256-73ae5ef451218f1cdd559c854e9868884b3beb5bfe7c057a4802118d97c4f4de
+generatedAt: 2026-11-05T16:39:55.194Z
+title: "Implementation Plan: Namespace Per-Workflow Generated Artifacts"
+requirementIds: [REQ-001, REQ-005, REQ-001, REQ-004, REQ-001, REQ-003, REQ-002, REQ-004, REQ-005, REQ-001]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
 decisionIds: []
 criteriaCount: 0

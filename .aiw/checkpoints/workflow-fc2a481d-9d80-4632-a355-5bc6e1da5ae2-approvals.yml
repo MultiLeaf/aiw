@@ -1,0 +1,43 @@
+schema: 1
+workflowId: fc2a481d-9d80-4632-a355-5bc6e1da5ae2
+stages:
+  brainstorming:
+    status: skipped
+    qualityGate: not-applicable
+    updatedAt: 2026-11-05T04:48:59.323Z
+    reason: Requirement provided by ticket FRIC-003
+  specification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T04:49:48.608Z
+    artifactHash: sha256-19b2d1dd3507fca80b94389a257148577732dd4b4ea6fa790999a654a0131ee5
+  technical-design:
+    status: skipped
+    qualityGate: not-applicable
+    updatedAt: 2026-11-05T04:50:07.164Z
+    reason: Contained change reusing existing usage-sidecar/cost-attribution modules; no architecture impact
+  plan:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T04:56:40.373Z
+    artifactHash: sha256-986c78afe3c2ff26c1b2657f4c5643321783ba3416009458100febbcceb3ed58
+  implementation:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T04:56:40.501Z
+    artifactHash: sha256-93c0fd04dc21b4c831784814883df97053eb2affdef1eedec87bc654134159ba
+  verification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T04:58:26.937Z
+    artifactHash: sha256-26f462c3cc83f1bb5de05d2dbf2f11c9ddeaf2c950486f125def0528ed850f1d
+  review:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T04:59:14.852Z
+    artifactHash: sha256-32c875e4b83f9e6c700e0e923b5095cccaf08c046e84bac0030e975598761306
+  traceability:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-05T04:59:51.035Z
+    artifactHash: sha256-caa5de544db3a988b0d7a5ddd854a50205dbe6de383a0015f4bf575c2c411622

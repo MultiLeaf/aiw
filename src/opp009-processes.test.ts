@@ -73,7 +73,9 @@ describe("OPP-009 processes as entry points", () => {
     expect(started.exitCode).toBe(0);
     const assess = await run(["assess", "--title=Plugin marketplace"], cwd);
     expect(assess.exitCode).toBe(0);
-    const assessmentPath = join(cwd, ".aiw/generated/reports/assessment.md");
+    const sessionText = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
+    const workflowId = /workflowId: ([0-9a-f-]+)/.exec(sessionText)?.[1];
+    const assessmentPath = join(cwd, ".aiw/generated/reports", workflowId!, "assessment.md");
     // invalid outcome fails the gate
     await writeFile(
       assessmentPath,

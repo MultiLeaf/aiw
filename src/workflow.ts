@@ -183,6 +183,11 @@ import {
   effectiveLane,
 } from "./human-approval.js";
 import { buildCompletionReport } from "./completion-report.js";
+import {
+  archiveWorkflowArtifacts,
+  resolveStageArtifact,
+  stageArtifactPaths,
+} from "./artifact-paths.js";
 import { parse as parseYaml, stringify } from "yaml";
 import { measureContextQuality, serializeContextQuality } from "./context-quality.js";
 import {
@@ -375,7 +380,7 @@ function laneAdvisory(root: string, fs: FileSystem, lightChosen: boolean): strin
 /** FRIC-002: allocate the next LOCAL-### ticket from current and archived sessions. */
 function nextLocalTicket(fs: FileSystem, aiw: string): string {
   let max = 0;
-  const consider = (text: string) => {
+  const consider = (text: string): void => {
     for (const match of text.matchAll(/^\s*ticket:\s*(LOCAL-(\d+)\s*)$/gm))
       max = Math.max(max, Number(match[2]));
   };
@@ -387,6 +392,23 @@ function nextLocalTicket(fs: FileSystem, aiw: string): string {
       if (name.startsWith("workflow-") && name.endsWith("-session.yml"))
         consider(fs.read(join(checkpoints, name)));
   return `LOCAL-${String(max + 1).padStart(3, "0")}`;
+}
+
+/** FRIC-005: workflow id of the recorded session, if any. */
+function activeWorkflowId(fs: FileSystem, aiw: string): string | undefined {
+  const sessionPath = join(aiw, "workflow.yml");
+  if (!fs.exists(sessionPath)) return undefined;
+  try {
+    return parseWorkflowSession(fs.read(sessionPath)).workflowId;
+  } catch {
+    return undefined;
+  }
+}
+
+/** FRIC-005: write path for a stage artifact — scoped when a workflow is active. */
+function stageArtifactWritePath(fs: FileSystem, aiw: string, stage: HumanApprovalStage): string {
+  const { scoped, legacy } = stageArtifactPaths(aiw, stage, activeWorkflowId(fs, aiw));
+  return scoped ?? legacy;
 }
 
 /** FRIC-003: gather recorded usage/cost data and write the completion report. Never blocks completion. */
@@ -403,7 +425,7 @@ async function writeCompletionReport(
     const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
     if (fs.exists(sidecarPath))
       usage = summarizeTaskUsage(parseUsageSidecar(fs.read(sidecarPath)), scope);
-    const tracePath = join(aiw, "generated/artifacts/traceability.yml");
+    const tracePath = resolveStageArtifact(fs, aiw, "traceability", session.workflowId).path;
     if (usage && fs.exists(tracePath))
       attribution = computeCostAttribution(
         parseUsageSidecar(fs.read(sidecarPath)),
@@ -807,12 +829,16 @@ export async function runCommand(
             }),
           );
           const lightSummary = await writeCompletionReport(fs, aiw, session, ledger);
+          const lightArchive = archiveWorkflowArtifacts(fs, aiw, session.workflowId);
           return {
             exitCode: 0,
             output:
               `Workflow completed (light lane): ${session.workflowId}. Evidence: ${evidencePath}\n` +
               `${lightSummary}\n` +
-              `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}`,
+              `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}` +
+              (lightArchive.length
+                ? `\nArchived ${lightArchive.length} workflow artifact(s) to checkpoints/workflow-${session.workflowId}-artifacts/.`
+                : ""),
           };
         }
         const unresolved = processStages(ledger).filter(
@@ -834,12 +860,16 @@ export async function runCommand(
           }),
         );
         const fullSummary = await writeCompletionReport(fs, aiw, session, ledger);
+        const fullArchive = archiveWorkflowArtifacts(fs, aiw, session.workflowId);
         return {
           exitCode: 0,
           output:
             `Workflow completed: ${session.workflowId}.\n` +
             `${fullSummary}\n` +
-            `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}`,
+            `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}` +
+            (fullArchive.length
+              ? `\nArchived ${fullArchive.length} workflow artifact(s) to checkpoints/workflow-${session.workflowId}-artifacts/.`
+              : ""),
         };
       }
       return {
@@ -875,12 +905,12 @@ export async function runCommand(
         fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
         return { exitCode: 0, output: `Human-approved skip recorded for ${workflowStage}.` };
       }
-      const artifact = approvalArtifactPath(aiw, workflowStage);
+      const artifact = approvalArtifactPath(fs, aiw, workflowStage);
       if (!artifact || !fs.exists(artifact))
         throw new BlockingError(
           describeBlockingReason("approval_evidence_missing", {
             stage: workflowStage,
-            artifactPath: artifact ?? undefined,
+            artifactPath: stageArtifactWritePath(fs, aiw, workflowStage),
             detail: `Approval evidence is missing for ${workflowStage}.`,
           }),
         );
@@ -2802,7 +2832,7 @@ export async function runCommand(
       assertStageReady(aiw, fs, "brainstorming");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Brainstorm";
-      const path = join(aiw, "generated/specs/brainstorm.md");
+      const path = stageArtifactWritePath(fs, aiw, "brainstorming");
       fs.write(
         path,
         `# ${title}\n\n## Goal\n\n## Users\n\n## Facts\n\n## Assumptions\n\n## Hypotheses\n\n## Constraints\n\n## Risks\n\n## Non-goals\n\n## Open Questions\n\n`,
@@ -2816,7 +2846,7 @@ export async function runCommand(
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Specification";
       const ticket = args.find((arg) => arg.startsWith("--ticket="))?.slice(9);
       if (ticket !== undefined) validateTaskTicket(ticket);
-      const path = join(aiw, "generated/specs/specification.md");
+      const path = stageArtifactWritePath(fs, aiw, "specification");
       fs.write(
         path,
         `# ${title}\n${ticket ? `\n> Ticket: ${ticket}\n` : ""}\n## Context\n\n## Requirements\n\n### REQ-001: Requirement title\n\n- **Description:**\n- **Acceptance criteria:**\n  - Given\n  - When\n  - Then\n\n## Non-functional Requirements\n\n## Constraints\n\n## Open Questions\n\n`,
@@ -2844,7 +2874,7 @@ export async function runCommand(
       assertStageReady(aiw, fs, "plan");
       const title =
         args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Implementation Plan";
-      const path = join(aiw, "generated/plans/implementation-plan.md");
+      const path = stageArtifactWritePath(fs, aiw, "plan");
       fs.write(
         path,
         `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test → exit 0\n  - Regression: <optional — touched existing behavior → the test proving it holds>\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
@@ -2854,8 +2884,13 @@ export async function runCommand(
     if (command === "verify") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "verification");
-      const specPath = join(aiw, "generated/specs/specification.md");
-      const planPath = join(aiw, "generated/plans/implementation-plan.md");
+      const specPath = resolveStageArtifact(
+        fs,
+        aiw,
+        "specification",
+        activeWorkflowId(fs, aiw),
+      ).path;
+      const planPath = resolveStageArtifact(fs, aiw, "plan", activeWorkflowId(fs, aiw)).path;
       const issues: string[] = [];
       let regressionNotice: string | undefined;
       let specification = "";
@@ -2892,8 +2927,13 @@ export async function runCommand(
     if (command === "trace") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "traceability");
-      const specPath = join(aiw, "generated/specs/specification.md");
-      const planPath = join(aiw, "generated/plans/implementation-plan.md");
+      const specPath = resolveStageArtifact(
+        fs,
+        aiw,
+        "specification",
+        activeWorkflowId(fs, aiw),
+      ).path;
+      const planPath = resolveStageArtifact(fs, aiw, "plan", activeWorkflowId(fs, aiw)).path;
       if (!fs.exists(specPath) || !fs.exists(planPath))
         return {
           exitCode: 1,
@@ -2914,7 +2954,7 @@ export async function runCommand(
       const requirement = args.find((arg) => arg.startsWith("--requirement="))?.slice(14);
       const serialized = serializeTraceabilityGraph(graph, requirement);
       if (requirement) return { exitCode: 0, output: serialized };
-      const path = join(aiw, "generated/artifacts/traceability.yml");
+      const path = stageArtifactWritePath(fs, aiw, "traceability");
       fs.write(path, serialized);
       return { exitCode: 0, output: `Traceability graph created: ${path}` };
     }
@@ -3094,7 +3134,7 @@ export async function runCommand(
       const lines: string[] = [];
       let served = 0;
       for (const stage of stages) {
-        const artifactPath = approvalArtifactPath(aiw, stage);
+        const artifactPath = approvalArtifactPath(fs, aiw, stage);
         const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
         if (freshness.state === "missing") continue;
         lines.push(formatDigestLine(freshness));
@@ -3114,7 +3154,7 @@ export async function runCommand(
       assertStageReady(aiw, fs, "diagnosis");
       const title =
         args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Diagnosis";
-      const path = join(aiw, "generated/reports/diagnosis.md");
+      const path = stageArtifactWritePath(fs, aiw, "diagnosis");
       fs.write(
         path,
         `# ${title}\n\n## Reproduction\n\n- Command: \`<command that reproduces the bug>\`\n- Observed: <what actually happens>\n\n## Expected\n\n- <the correct behavior>\n\n## Root Cause\n\n- <evidence-backed cause, file:line when known>\n\n## Scope\n\n- In scope: <files and behavior this fix touches>\n- Out of scope: <explicitly excluded>\n`,
@@ -3126,7 +3166,7 @@ export async function runCommand(
       assertStageReady(aiw, fs, "assessment");
       const title =
         args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Assessment";
-      const path = join(aiw, "generated/reports/assessment.md");
+      const path = stageArtifactWritePath(fs, aiw, "assessment");
       fs.write(
         path,
         `# ${title}\n\n## Evidence\n\n- <attributed evidence: source, finding>\n\n## Outcome\n\ngo | clarify | stop\n\n## Rationale\n\n- <why this outcome follows from the evidence>\n\n## Next Step\n\n- <go: recommended feature scope · clarify: the open questions · stop: conditions that would reopen>\n`,
@@ -3148,12 +3188,12 @@ export async function runCommand(
         };
       const workflowStage = stage as HumanApprovalStage;
       assertStageReady(aiw, fs, workflowStage);
-      const artifactPath = approvalArtifactPath(aiw, workflowStage);
+      const artifactPath = approvalArtifactPath(fs, aiw, workflowStage);
       if (!artifactPath || !fs.exists(artifactPath))
         throw new BlockingError(
           describeBlockingReason("gate_evidence_missing", {
             stage,
-            artifactPath: artifactPath ?? undefined,
+            artifactPath: stageArtifactWritePath(fs, aiw, workflowStage),
             detail: `Quality gate blocked: required evidence is missing for ${stage}.`,
           }),
         );
@@ -3194,7 +3234,7 @@ export async function runCommand(
       fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
       return {
         exitCode: 0,
-        output: `${hasQualityGate ? `Quality gate passed for ${stage}.` : `Evidence recorded for ${stage}; no automated quality gate applies.`} Human approval is still required: run aiw approve ${stage}.`,
+        output: `${hasQualityGate ? `Quality gate passed for ${stage}.` : `Evidence recorded for ${stage}; no automated quality gate applies.`} Human approval is still required: run aiw approve ${stage}.${resolveStageArtifact(fs, aiw, workflowStage, activeWorkflowId(fs, aiw)).legacyFallback ? ` Advisory: ${stage} artifact read from the legacy fixed path; new writes go to the workflow-scoped path.` : ""}`,
       };
     }
     if (command === "validate") {
@@ -3507,7 +3547,7 @@ export async function runCommand(
         const digestLines: string[] = [];
         if (fs.exists(join(aiw, "workflow.yml"))) {
           for (const stage of processStages(readWorkflowState(aiw, fs, false).ledger)) {
-            const artifactPath = approvalArtifactPath(aiw, stage);
+            const artifactPath = approvalArtifactPath(fs, aiw, stage);
             const freshness = digestFreshness(aiw, fs, stage, artifactPath ?? undefined);
             if (freshness.state !== "missing") digestLines.push(formatDigestLine(freshness));
           }
@@ -3647,7 +3687,12 @@ export async function runCommand(
           error:
             "No usage sidecar recorded yet. Record runs with `aiw usage-sidecar record` or run `aiw scan`.",
         };
-      const tracePath = join(aiw, "generated/artifacts/traceability.yml");
+      const tracePath = resolveStageArtifact(
+        fs,
+        aiw,
+        "traceability",
+        activeWorkflowId(fs, aiw),
+      ).path;
       if (!fs.exists(tracePath))
         return {
           exitCode: 1,
@@ -4088,7 +4133,7 @@ function readWorkflowState(
     const record = ledger.stages[stage];
     if (!record?.artifactHash || !["pending-human", "approved"].includes(record.status))
       return false;
-    const artifact = approvalArtifactPath(aiw, stage);
+    const artifact = approvalArtifactPath(fs, aiw, stage);
     return (
       !artifact ||
       !fs.exists(artifact) ||
@@ -4155,7 +4200,7 @@ export function compareVerificationPairs(
   fs: FileSystem,
   stage: "implementation" | "verification",
 ): string[] {
-  const planPath = join(aiw, "generated/plans/implementation-plan.md");
+  const planPath = resolveStageArtifact(fs, aiw, "plan", activeWorkflowId(fs, aiw)).path;
   if (!fs.exists(planPath)) return [];
   const plan = fs.read(planPath);
   if (!plan.includes("→")) return [];
@@ -4175,10 +4220,12 @@ export function compareVerificationPairs(
     }
   }
   if (declared.length === 0) return [];
-  const reportPath =
-    stage === "implementation"
-      ? join(aiw, "generated/reports/implementation-report.md")
-      : join(aiw, "generated/reports/verification-report.md");
+  const reportPath = resolveStageArtifact(
+    fs,
+    aiw,
+    stage === "implementation" ? "implementation" : "verification",
+    activeWorkflowId(fs, aiw),
+  ).path;
   const issues: string[] = [];
   const observed = new Map<string, string>();
   if (fs.exists(reportPath)) {
@@ -4285,20 +4332,8 @@ function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage
     );
 }
 
-function approvalArtifactPath(aiw: string, stage: HumanApprovalStage): string {
-  if (stage === "technical-design") return join(aiw, "generated/reports/technical-design.md");
-  const paths: Record<Exclude<HumanApprovalStage, "technical-design">, string> = {
-    brainstorming: "generated/specs/brainstorm.md",
-    specification: "generated/specs/specification.md",
-    plan: "generated/plans/implementation-plan.md",
-    implementation: "generated/reports/implementation-report.md",
-    verification: "generated/reports/verification-report.md",
-    review: "generated/reports/code-review.md",
-    traceability: "generated/artifacts/traceability.yml",
-    diagnosis: "generated/reports/diagnosis.md",
-    assessment: "generated/reports/assessment.md",
-  };
-  return resolve(aiw, paths[stage]);
+function approvalArtifactPath(fs: FileSystem, aiw: string, stage: HumanApprovalStage): string {
+  return resolveStageArtifact(fs, aiw, stage, activeWorkflowId(fs, aiw)).path;
 }
 
 function formatConfidence(confidence: number | undefined): string {

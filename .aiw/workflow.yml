@@ -1,7 +1,7 @@
 schema: 1
-workflowId: fc2a481d-9d80-4632-a355-5bc6e1da5ae2
+workflowId: 9fd618d1-b576-44f7-bff3-57680034b6b8
 status: complete
-startedAt: 2026-11-05T04:46:48.760Z
-updatedAt: 2026-11-05T04:59:51.100Z
-ticket: FRIC-003
-title: Usage and cost report on workflow completion
+startedAt: 2026-11-05T05:00:18.822Z
+updatedAt: 2026-11-05T21:01:56.482Z
+ticket: FRIC-005
+title: Namespace per-workflow generated artifacts

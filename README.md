@@ -213,6 +213,12 @@ npx @multileaf/ai-workflow task evidence --validation="npm test: passed"
 npx @multileaf/ai-workflow workflow complete
 # If scope grows: aiw task escalate --reason=...
 
+# Stage artifacts live under workflow-scoped paths
+# (.aiw/generated/<kind>/<workflowId>/…) so concurrent or sequential workflows
+# never overwrite each other; legacy fixed paths are still read with an advisory,
+# and completion archives the workflow's artifacts to
+# .aiw/checkpoints/workflow-<id>-artifacts/.
+
 # Completion prints a usage/cost summary (tokens, models, cost attribution when
 # a traceability graph exists, stage timeline) and writes a durable report to
 # .aiw/generated/reports/usage-<workflowId>.md. With no recorded usage it says

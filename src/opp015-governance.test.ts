@@ -84,7 +84,7 @@ describe("OPP-015 token and recovery governance", () => {
     await run(["skip", "brainstorming", "--reason=requirement provided by ticket"], cwd);
     await run(["spec"], cwd);
     await writeFile(
-      join(cwd, ".aiw", "generated", "specs", "specification.md"),
+      join(cwd, ".aiw", "generated", "specs", "opp15-regression", "specification.md"),
       "## Requirements\nREQ-001\n## Acceptance Criteria\n- Given a user\n- When they act\n- Then it works\n",
     );
     await run(["gate", "specification"], cwd);
@@ -92,14 +92,14 @@ describe("OPP-015 token and recovery governance", () => {
     await run(["skip", "technical-design", "--reason=not needed"], cwd);
     await run(["plan"], cwd);
     await writeFile(
-      join(cwd, ".aiw", "generated", "plans", "implementation-plan.md"),
+      join(cwd, ".aiw", "generated", "plans", "opp15-regression", "implementation-plan.md"),
       "TASK-001\nRequirement: REQ-001\nCode: src/main.ts\nTests: src/main.test.ts\nValidation: npm test\nEvidence: output\nTASK-002\nRequirement: REQ-001\nCode: src/other.ts\nTests: src/other.test.ts\nValidation: npm run lint\nRegression: keeps old output → src/other.test.ts\nEvidence: output\n",
     );
     await run(["gate", "plan"], cwd);
     await run(["approve", "plan"], cwd);
-    await mkdir(join(cwd, ".aiw", "generated", "reports"), { recursive: true });
+    await mkdir(join(cwd, ".aiw", "generated", "reports", "opp15-regression"), { recursive: true });
     await writeFile(
-      join(cwd, ".aiw", "generated", "reports", "implementation-report.md"),
+      join(cwd, ".aiw", "generated", "reports", "opp15-regression", "implementation-report.md"),
       "## Changed Files\nsrc/main.ts\n## Tests\nmain.test.ts\n## Validation\nnpm test\n## Deviations\nNone\n",
     );
     await run(["gate", "implementation"], cwd);

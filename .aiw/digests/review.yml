@@ -1,10 +1,10 @@
 schema: 1
 stage: review
-fingerprint: sha256-32c875e4b83f9e6c700e0e923b5095cccaf08c046e84bac0030e975598761306
-generatedAt: 2026-11-05T04:59:14.855Z
+fingerprint: sha256-c2894eaf8eee5c6304f36f6e30449ff46a049d3f9725308f836b5869bc5ebf97
+generatedAt: 2026-11-05T20:35:49.400Z
 title: "Code Review"
-requirementIds: [REQ-003]
+requirementIds: []
 taskIds: [TASK-001]
-decisionIds: []
+decisionIds: [ADR-002]
 criteriaCount: 0
 decision: "Accept."

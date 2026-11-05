@@ -1,0 +1,32 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: [ADR-002]
+    tasks: [TASK-001, TASK-002]
+    code: [src/artifact-paths.ts, src/workflow.ts]
+    tests: [src/artifact-paths.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/implementation-report.md', '.aiw/generated/reports/verification-report.md']
+  - requirement: REQ-002
+    decisions: [ADR-002]
+    tasks: [TASK-003]
+    code: [src/artifact-paths.ts, src/workflow.ts, src/dashboard.ts]
+    tests: [src/artifact-paths.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/verification-report.md']
+  - requirement: REQ-003
+    decisions: [ADR-002]
+    tasks: [TASK-002]
+    code: [src/workflow.ts]
+    tests: [src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/verification-report.md']
+  - requirement: REQ-004
+    decisions: [ADR-002]
+    tasks: [TASK-003]
+    code: [src/artifact-paths.ts, src/workflow.ts]
+    tests: [src/artifact-paths.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/verification-report.md']
+  - requirement: REQ-005
+    decisions: [ADR-002]
+    tasks: [TASK-004]
+    code: [src/artifact-paths.ts, src/workflow.ts]
+    tests: [src/artifact-paths.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/verification-report.md']

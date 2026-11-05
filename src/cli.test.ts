@@ -75,30 +75,41 @@ async function advanceWorkflowTo(cwd: string, target: string): Promise<void> {
     }
     if (stage === "specification") {
       await run(["spec"], cwd);
-      await writeFile(
-        join(cwd, ".aiw/generated/specs/specification.md"),
+      await mkdir(dirname(join(cwd, ".aiw/generated/specs/test-workflow/specification.md")), {
+        recursive: true,
+      });
+      await writeArtifact(
+        cwd,
+        ".aiw/generated/specs/test-workflow/specification.md",
         "## Requirements\nREQ-001\n## Acceptance criteria\nGiven a user\nWhen they act\nThen it works\n",
       );
     } else if (stage === "plan") {
       await run(["plan"], cwd);
-      await writeFile(
-        join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+      await mkdir(dirname(join(cwd, ".aiw/generated/plans/test-workflow/implementation-plan.md")), {
+        recursive: true,
+      });
+      await writeArtifact(
+        cwd,
+        ".aiw/generated/plans/test-workflow/implementation-plan.md",
         "TASK-001\nRequirement: REQ-001\nCode: src/main.ts\nTests: src/main.test.ts\nValidation: npm test\nEvidence: test output\n",
       );
     } else if (stage === "implementation") {
-      await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
-      await writeFile(
-        join(cwd, ".aiw/generated/reports/implementation-report.md"),
+      await mkdir(join(cwd, ".aiw/generated/reports/test-workflow"), { recursive: true });
+      await writeArtifact(
+        cwd,
+        ".aiw/generated/reports/test-workflow/implementation-report.md",
         "## Changed Files\nsrc/main.ts\n## Tests\nmain.test.ts\n## Validation\nnpm test\n## Deviations\nNone\n",
       );
     } else if (stage === "verification") {
-      await writeFile(
-        join(cwd, ".aiw/generated/reports/verification-report.md"),
+      await writeArtifact(
+        cwd,
+        ".aiw/generated/reports/test-workflow/verification-report.md",
         "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
       );
     } else if (stage === "review") {
-      await writeFile(
-        join(cwd, ".aiw/generated/reports/code-review.md"),
+      await writeArtifact(
+        cwd,
+        ".aiw/generated/reports/test-workflow/code-review.md",
         "## Scope\nFeature\n## Findings\nNone\n## Checks\nTests reviewed\n## Residual Risks\nNone\n## Decision\nAccept\n",
       );
     } else if (stage === "traceability") {
@@ -109,6 +120,13 @@ async function advanceWorkflowTo(cwd: string, target: string): Promise<void> {
     const approval = await run(["approve", stage], cwd);
     if (approval.exitCode !== 0) throw new Error(approval.error ?? `Approval failed: ${stage}`);
   }
+}
+
+/** FRIC-005: write a workflow-scoped artifact, creating its directory. */
+async function writeArtifact(cwd: string, relative: string, content: string): Promise<void> {
+  const path = join(cwd, relative);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content);
 }
 
 describe("AI Workflow CLI", () => {
@@ -1435,7 +1453,7 @@ tasks:
       "utf8",
     );
     expect(evidence).toContain("ticket: FND-009");
-    expect(evidence).toContain("generated/specs/brainstorm.md");
+    expect(evidence).toContain("generated/specs/test-workflow/brainstorm.md");
     expect(evidence).toContain("result: pass");
   });
 
@@ -1464,7 +1482,10 @@ tasks:
     await advanceWorkflowTo(cwd, "brainstorming");
     const result = await run(["brainstorm", "--title=Portable Workflow"], cwd);
     expect(result.exitCode).toBe(0);
-    const artifact = await readFile(join(cwd, ".aiw/generated/specs/brainstorm.md"), "utf8");
+    const artifact = await readFile(
+      join(cwd, ".aiw/generated/specs/test-workflow/brainstorm.md"),
+      "utf8",
+    );
     expect(artifact).toContain("# Portable Workflow");
     for (const section of [
       "Goal",
@@ -1484,7 +1505,10 @@ tasks:
     await advanceWorkflowTo(cwd, "specification");
     const result = await run(["spec", "--title=Workflow Specification"], cwd);
     expect(result.exitCode).toBe(0);
-    const artifact = await readFile(join(cwd, ".aiw/generated/specs/specification.md"), "utf8");
+    const artifact = await readFile(
+      join(cwd, ".aiw/generated/specs/test-workflow/specification.md"),
+      "utf8",
+    );
     expect(artifact).toContain("# Workflow Specification");
     expect(artifact).toContain("REQ-001");
     expect(artifact).toContain("Acceptance criteria");
@@ -1516,7 +1540,7 @@ tasks:
     const result = await run(["plan", "--title=First Increment"], cwd);
     expect(result.exitCode).toBe(0);
     const artifact = await readFile(
-      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+      join(cwd, ".aiw/generated/plans/test-workflow/implementation-plan.md"),
       "utf8",
     );
     expect(artifact).toContain("REQ-001");
@@ -1543,12 +1567,14 @@ tasks:
     const cwd = await project();
     await run(["install"], cwd);
     await advanceWorkflowTo(cwd, "specification");
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/test-workflow/specification.md",
       "# Spec\n\nREQ-001\n\nREQ-002\n\nAcceptance criteria\n",
     );
-    await writeFile(
-      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/plans/test-workflow/implementation-plan.md",
       "# Plan\n\nREQ-001\n\nValidation: npm test\n",
     );
     const result = await run(["gate", "specification"], cwd);
@@ -1562,7 +1588,10 @@ tasks:
     await advanceWorkflowTo(cwd, "traceability");
     const result = await run(["trace"], cwd);
     expect(result.exitCode).toBe(0);
-    const trace = await readFile(join(cwd, ".aiw/generated/artifacts/traceability.yml"), "utf8");
+    const trace = await readFile(
+      join(cwd, ".aiw/generated/artifacts/test-workflow/traceability.yml"),
+      "utf8",
+    );
     expect(trace).toContain("requirement: REQ-001");
     expect(trace).toContain("tasks: [TASK-001]");
     expect(trace).toContain("decisions:");
@@ -1584,8 +1613,9 @@ tasks:
     await run(["install"], cwd);
     await advanceWorkflowTo(cwd, "plan");
     expect((await run(["gate", "plan"], cwd)).error).toContain("Quality gate blocked");
-    await writeFile(
-      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/plans/test-workflow/implementation-plan.md",
       "TASK-001\nRequirement: REQ-001\nCode: src/main.ts\nTests: src/main.test.ts\nValidation: npm test\nEvidence: test output\n",
     );
     expect((await run(["gate", "plan"], cwd)).output).toContain("Quality gate passed");
@@ -1602,16 +1632,18 @@ tasks:
     expect((await run(["spec"], cwd)).error).toContain("brainstorming");
     expect((await run(["skip", "brainstorming", "--reason=Not needed"], cwd)).exitCode).toBe(0);
     await run(["spec"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/approval-test/specification.md",
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
     );
     expect((await run(["gate", "specification"], cwd)).exitCode).toBe(0);
     expect((await run(["plan"], cwd)).error).toContain("specification");
     expect((await run(["approve", "specification"], cwd)).exitCode).toBe(0);
-    await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
-    await writeFile(
-      join(cwd, ".aiw/generated/reports/technical-design.md"),
+    await mkdir(join(cwd, ".aiw/generated/reports/approval-test"), { recursive: true });
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/reports/approval-test/technical-design.md",
       "## Context\nNeed\n## Proposed Design\nModule\n## Alternatives\nA or B\n## Interfaces\nAPI\n## Risks\nMigration\n## Validation\nTests\n",
     );
     expect((await run(["gate", "technical-design"], cwd)).exitCode).toBe(0);
@@ -1631,12 +1663,13 @@ tasks:
     await run(["workflow", "start", "--id=stale-test"], cwd);
     await run(["skip", "brainstorming", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/stale-test/specification.md",
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
     );
     await run(["gate", "specification"], cwd);
-    const specification = join(cwd, ".aiw/generated/specs/specification.md");
+    const specification = join(cwd, ".aiw/generated/specs/stale-test/specification.md");
     await writeFile(specification, `${await readFile(specification, "utf8")}Updated.\n`);
     expect((await run(["approve", "specification"], cwd)).error).toContain("changed after review");
     expect((await run(["workflow", "status"], cwd)).output).toContain("specification: stale");
@@ -1651,8 +1684,9 @@ tasks:
       "Approval evidence is missing",
     );
     await run(["brainstorm"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/full-stage-run/brainstorm.md",
       "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
     );
     expect((await run(["gate", "brainstorming"], cwd)).exitCode).toBe(0);
@@ -1660,17 +1694,19 @@ tasks:
     expect((await run(["approve", "brainstorming"], cwd)).exitCode).toBe(0);
 
     await run(["spec"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/full-stage-run/specification.md",
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they act\nThen the feature works\n",
     );
     expect((await run(["gate", "specification"], cwd)).exitCode).toBe(0);
     expect((await run(["plan"], cwd)).error).toContain("specification");
     expect((await run(["approve", "specification"], cwd)).exitCode).toBe(0);
 
-    await mkdir(join(cwd, ".aiw/generated/reports"), { recursive: true });
-    await writeFile(
-      join(cwd, ".aiw/generated/reports/technical-design.md"),
+    await mkdir(join(cwd, ".aiw/generated/reports/full-stage-run"), { recursive: true });
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/reports/full-stage-run/technical-design.md",
       "## Context\nRequirement context\n## Proposed Design\nA modular implementation\n## Alternatives\nAlternative A\n## Interfaces\nStable API\n## Risks\nRegression risk\n## Validation\nAutomated tests\n",
     );
     expect((await run(["gate", "technical-design"], cwd)).exitCode).toBe(0);
@@ -1679,20 +1715,23 @@ tasks:
     await run(["plan"], cwd);
     expect((await run(["gate", "plan"], cwd)).exitCode).toBe(0);
     expect((await run(["approve", "plan"], cwd)).exitCode).toBe(0);
-    await writeFile(
-      join(cwd, ".aiw/generated/reports/implementation-report.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/reports/full-stage-run/implementation-report.md",
       "## Changed Files\nsrc/feature.ts\n## Tests\nsrc/feature.test.ts\n## Validation\nValidation: npm test → exit 0 (8 passed)\n## Deviations\nNone\n",
     );
     expect((await run(["gate", "implementation"], cwd)).exitCode).toBe(0);
     expect((await run(["approve", "implementation"], cwd)).exitCode).toBe(0);
-    await writeFile(
-      join(cwd, ".aiw/generated/reports/verification-report.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/reports/full-stage-run/verification-report.md",
       "## Requirements Checked\nREQ-001\n## Checks Passed\nValidation: npm test → exit 0 (8 passed)\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
     );
     expect((await run(["gate", "verification"], cwd)).exitCode).toBe(0);
     expect((await run(["approve", "verification"], cwd)).exitCode).toBe(0);
-    await writeFile(
-      join(cwd, ".aiw/generated/reports/code-review.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/reports/full-stage-run/code-review.md",
       "## Scope\nFeature implementation\n## Findings\nNone\n## Checks\nTests and diff reviewed\n## Residual Risks\nNone\n## Decision\nAccept\n",
     );
     expect((await run(["gate", "review"], cwd)).exitCode).toBe(0);
@@ -1702,7 +1741,17 @@ tasks:
     expect((await run(["gate", "traceability"], cwd)).exitCode).toBe(0);
     expect((await run(["workflow", "complete"], cwd)).error).toContain("traceability");
     expect((await run(["approve", "traceability"], cwd)).exitCode).toBe(0);
-    expect((await run(["workflow", "complete"], cwd)).exitCode).toBe(0);
+    const completion = await run(["workflow", "complete"], cwd);
+    expect(completion.exitCode).toBe(0);
+    // REQ-005: completion archives the workflow's scoped artifacts.
+    expect(completion.output).toContain("Archived");
+    expect(
+      (
+        await stat(
+          join(cwd, ".aiw/checkpoints/workflow-full-stage-run-artifacts/specs/specification.md"),
+        )
+      ).isFile(),
+    ).toBe(true);
     // FRIC-003: completion prints a usage summary and writes the report artifact.
     const reportPath = join(cwd, ".aiw/generated/reports/usage-full-stage-run.md");
     expect((await stat(reportPath)).isFile()).toBe(true);
@@ -1756,8 +1805,9 @@ tasks:
     await run(["workflow", "start", "--id=rejection-run"], cwd);
     await run(["skip", "brainstorming", "--reason=Scope is already clear"], cwd);
     await run(["spec"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/rejection-run/specification.md",
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they act\nThen it works\n",
     );
     await run(["gate", "specification"], cwd);
@@ -1769,8 +1819,9 @@ tasks:
       "Next action: revise specification",
     );
     await run(["spec"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/rejection-run/specification.md",
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a member\nWhen they request setup\nThen setup completes\n",
     );
     expect((await run(["gate", "specification"], cwd)).exitCode).toBe(0);
@@ -1782,9 +1833,14 @@ tasks:
     await run(["install"], cwd);
     await mkdir(join(cwd, ".aiw/generated/specs"), { recursive: true });
     await mkdir(join(cwd, ".aiw/generated/plans"), { recursive: true });
-    await writeFile(join(cwd, ".aiw/generated/specs/specification.md"), "REQ-001 already exists\n");
-    await writeFile(
-      join(cwd, ".aiw/generated/plans/implementation-plan.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/rejection-run/specification.md",
+      "REQ-001 already exists\n",
+    );
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/plans/rejection-run/implementation-plan.md",
       "TASK-001 already exists\n",
     );
 
@@ -1811,8 +1867,9 @@ tasks:
     const cwd = await project();
     await run(["install"], cwd);
     await advanceWorkflowTo(cwd, "specification");
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/specification.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/test-workflow/specification.md",
       "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they start setup\nThen setup completes\n",
     );
     expect((await run(["gate", "specification"], cwd)).output).toContain("Quality gate passed");
@@ -1820,9 +1877,10 @@ tasks:
     const verificationCwd = await project();
     await run(["install"], verificationCwd);
     await advanceWorkflowTo(verificationCwd, "verification");
-    await mkdir(join(verificationCwd, ".aiw/generated/reports"), { recursive: true });
-    await writeFile(
-      join(verificationCwd, ".aiw/generated/reports/verification-report.md"),
+    await mkdir(join(verificationCwd, ".aiw/generated/reports/test-workflow"), { recursive: true });
+    await writeArtifact(
+      verificationCwd,
+      ".aiw/generated/reports/test-workflow/verification-report.md",
       "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n",
     );
     expect((await run(["gate", "verification"], verificationCwd)).output).toContain(
@@ -3093,6 +3151,78 @@ describe("telemetry show", () => {
   });
 });
 
+describe("workflow-scoped artifacts (FRIC-005)", () => {
+  it("isolates artifacts between sequential workflows and archives them at completion", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=first-run"], cwd);
+    await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["spec"], cwd);
+    const firstPath = join(cwd, ".aiw/generated/specs/first-run/specification.md");
+    await writeArtifact(cwd, ".aiw/generated/specs/first-run/specification.md", "REQ-001 first\n");
+    await run(["gate", "specification"], cwd);
+    await run(["approve", "specification"], cwd);
+    await run(["workflow", "abandon", "--reason=done with first"], cwd);
+    await run(["workflow", "start", "--id=second-run"], cwd);
+    await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["spec"], cwd);
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/second-run/specification.md",
+      "REQ-001 second\n",
+    );
+    await run(["gate", "specification"], cwd);
+    await run(["approve", "specification"], cwd);
+    // REQ-003: first workflow's artifact is untouched by the second workflow.
+    await expect(readFile(firstPath, "utf8")).resolves.toBe("REQ-001 first\n");
+  });
+
+  it("reads legacy fixed-path artifacts with an advisory (REQ-004)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=legacy-adv"], cwd);
+    await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["spec"], cwd);
+    // Simulate a pre-namespacing installation: only the legacy fixed path exists.
+    await rm(join(cwd, ".aiw/generated/specs/legacy-adv"), { recursive: true, force: true });
+    await mkdir(join(cwd, ".aiw/generated/specs"), { recursive: true });
+    const legacyPath = join(cwd, ".aiw/generated/specs/specification.md");
+    await writeFile(
+      legacyPath,
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they act\nThen it works\n",
+    );
+    const gate = await run(["gate", "specification"], cwd);
+    expect(gate.exitCode).toBe(0);
+    expect(gate.output).toContain("legacy fixed path");
+    await run(["approve", "specification"], cwd);
+    // REQ-004: a rewrite goes to the scoped path; legacy stays untouched.
+    await run(["spec"], cwd).catch(() => undefined);
+    await expect(readFile(legacyPath, "utf8")).resolves.toContain("REQ-001");
+  });
+
+  it("archives workflow artifacts at completion and tolerates light-lane no artifacts (REQ-005)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await run(["workflow", "start", "--id=archive-run"], cwd);
+    await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["spec"], cwd);
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/archive-run/specification.md",
+      "## Requirements\nREQ-001\n## Acceptance Criteria\nGiven a user\nWhen they act\nThen it works\n",
+    );
+    await run(["gate", "specification"], cwd);
+    await run(["approve", "specification"], cwd);
+    await run(["workflow", "abandon", "--reason=stop before full completion"], cwd);
+    // complete a light-lane workflow with no stage artifacts
+    await run(["task", "start", "--no-ticket", "--lane=light", "--lane-reason=small"], cwd);
+    await run(["task", "evidence", "--validation=ok"], cwd);
+    const completed = await run(["workflow", "complete"], cwd);
+    expect(completed.exitCode).toBe(0);
+    expect(completed.output).not.toContain("Archived");
+  });
+});
+
 describe("ticket-driven task", () => {
   it("starts a task from a ticket and records it in the session", async () => {
     const cwd = await project();
@@ -3171,8 +3301,10 @@ describe("ticket-driven task", () => {
     await run(["task", "start", "--ticket=PROJ-142"], cwd);
     await run(["skip", "brainstorming", "--reason=provided by ticket"], cwd);
     await run(["spec", "--ticket=PROJ-142", "--title=Export endpoint"], cwd);
+    const sessionText = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
+    const workflowId = /workflowId: ([0-9a-f-]+)/.exec(sessionText)?.[1];
     const spec = await readFile(
-      join(cwd, ".aiw", "generated", "specs", "specification.md"),
+      join(cwd, ".aiw", "generated", "specs", workflowId!, "specification.md"),
       "utf8",
     );
     expect(spec).toContain("> Ticket: PROJ-142");
@@ -3501,7 +3633,7 @@ describe("blocking reason codes and exact continuations", () => {
     const result = await run(["gate", "plan"], cwd);
     expect(result.exitCode).toBe(1);
     expect(result.error).toContain("[reason: gate_evidence_missing]");
-    expect(result.error).toContain(".aiw/generated/plans/implementation-plan.md");
+    expect(result.error).toContain(".aiw/generated/plans/test-workflow/implementation-plan.md");
     expect(result.error).toContain("aiw gate plan");
   });
 
@@ -3510,8 +3642,9 @@ describe("blocking reason codes and exact continuations", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=continuation-check"], cwd);
     await run(["brainstorm"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/continuation-check/brainstorm.md",
       "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
     );
     await run(["gate", "brainstorming"], cwd);
@@ -3526,8 +3659,9 @@ describe("blocking reason codes and exact continuations", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=continuation-exec"], cwd);
     await run(["brainstorm"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/continuation-exec/brainstorm.md",
       "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
     );
     await run(["gate", "brainstorming"], cwd);
@@ -3555,14 +3689,16 @@ describe("blocking reason codes and exact continuations", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=stale-json"], cwd);
     await run(["brainstorm"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/stale-json/brainstorm.md",
       "## Goal\nDeliver the feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
     );
     await run(["gate", "brainstorming"], cwd);
     await run(["approve", "brainstorming"], cwd);
-    await writeFile(
-      join(cwd, ".aiw/generated/specs/brainstorm.md"),
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/stale-json/brainstorm.md",
       "## Goal\nDeliver the changed feature\n## Users\nProject users\n## Constraints\nExisting APIs\n## Risks\nRegression\n## Non-goals\nUnrelated work\n",
     );
     const result = await run(["approve", "brainstorming", "--json"], cwd);
