@@ -1,4 +1,5 @@
 import type { ProjectProfile } from "./profile.js";
+import type { ProposalRecord } from "./eval/types.js";
 import { resolveGeneratedPath } from "./drift.js";
 
 export type ResourceWriter = (path: string, content: string) => void;
@@ -71,4 +72,31 @@ function safeInlineValue(value: string | undefined): string | undefined {
     .join("")
     .replace(/\s+/g, " ")
     .slice(0, 180);
+}
+
+/**
+ * Materialize an approved evaluator proposal as a project-local resource with
+ * provenance frontmatter. Only the approve path may call this (REQ-004);
+ * output is always under generated/ via resolveGeneratedPath (REQ-006).
+ */
+export function generateProposalResource(proposal: ProposalRecord, write: ResourceWriter): void {
+  if (proposal.status !== "approved")
+    throw new Error(
+      `Refusing to materialize proposal ${proposal.id}: only approved proposals can be materialized (status: ${proposal.status})`,
+    );
+  const directory = `${proposal.kind}s`;
+  write(
+    resolveGeneratedPath(`${directory}/${proposal.signature}.md`),
+    [
+      "---",
+      "provenance: aiw-evaluator",
+      `proposal: ${proposal.id}`,
+      "---",
+      "",
+      `# ${proposal.title}`,
+      "",
+      proposal.outline,
+      "",
+    ].join("\n"),
+  );
 }

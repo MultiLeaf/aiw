@@ -1,4 +1,5 @@
 import type { ProjectProfile } from "./profile.js";
+import type { ShellRunner } from "./eval/scenarios.js";
 import type { EmbeddingProvider } from "./semantic.js";
 import type { ProjectScan } from "./scanner.js";
 import type { CapabilityRecommendation } from "./recommendations.js";
@@ -42,6 +43,8 @@ export interface WorkflowDependencies {
   embeddingProvider?: EmbeddingProvider;
   aiProvider?: AiProvider;
   decisionProvider?: DecisionProvider;
+  /** Overrides shell execution for git signal collection in `aiw evaluate`. */
+  runShell?: ShellRunner;
 }
 
 export interface WorkflowService {

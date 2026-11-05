@@ -318,10 +318,10 @@ describe("bundled scenario registry (resources/evals/scenarios)", () => {
         .map((name) => ({ path: name, content: readFileSync(join(registryDir, name), "utf8") }))
     : [];
 
-  it("ships the five contract families as parseable scenarios", () => {
+  it("ships the six contract families as parseable scenarios", () => {
     const scenarios = parseScenarioRegistry(files);
     expect([...scenarios.map((scenario) => scenario.family)].sort()).toEqual(
-      ["approval", "escalation", "light-lane", "process", "rejection"].sort(),
+      ["approval", "escalation", "evaluator", "light-lane", "process", "rejection"].sort(),
     );
   });
 

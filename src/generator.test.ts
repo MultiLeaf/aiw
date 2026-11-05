@@ -90,3 +90,56 @@ describe("project resource generator", () => {
     );
   });
 });
+
+// ---- evaluator proposal materialization (TASK-006) ----
+
+import { generateProposalResource } from "./generator.js";
+import type { ProposalRecord } from "./eval/types.js";
+
+const proposal = (overrides: Partial<ProposalRecord> = {}): ProposalRecord => ({
+  id: "prop-001",
+  kind: "rule",
+  origin: "onboarding",
+  signature: "gradle-test-before-done",
+  status: "approved",
+  title: "Run Gradle tests before completing",
+  outline: "Require ./gradlew test before any task completion.",
+  evidence: ["fact-001"],
+  occurrences: 3,
+  lastSeq: 3,
+  rejectReason: null,
+  rejectedAtOccurrences: null,
+  provenance: "evaluator/run-1",
+  ...overrides,
+});
+
+describe("evaluator proposal materialization", () => {
+  it("writes approved proposals under generated/ with provenance frontmatter (REQ-006)", () => {
+    const files = new Map<string, string>();
+    generateProposalResource(proposal(), (path, content) => files.set(path, content));
+    const path = "generated/rules/gradle-test-before-done.md";
+    expect(files.get(path)).toContain("provenance: aiw-evaluator");
+    expect(files.get(path)).toContain("proposal: prop-001");
+    expect(files.get(path)).toContain("Run Gradle tests before completing");
+    expect(files.get(path)).toContain("./gradlew test");
+  });
+
+  it("routes kinds to their resource directories", () => {
+    const paths: string[] = [];
+    generateProposalResource(proposal({ kind: "skill", signature: "sig-s" }), (path) =>
+      paths.push(path),
+    );
+    generateProposalResource(proposal({ kind: "agent", signature: "sig-a" }), (path) =>
+      paths.push(path),
+    );
+    expect(paths).toEqual(["generated/skills/sig-s.md", "generated/agents/sig-a.md"]);
+  });
+
+  it("refuses to materialize proposals that are not approved (REQ-004)", () => {
+    const paths: string[] = [];
+    expect(() =>
+      generateProposalResource(proposal({ status: "proposed" }), (path) => paths.push(path)),
+    ).toThrow(/approved/);
+    expect(paths).toEqual([]);
+  });
+});

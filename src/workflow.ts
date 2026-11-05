@@ -57,7 +57,25 @@ async function readStdin(): Promise<string> {
     terminal.close();
   }
 }
-import { generateProjectResources } from "./generator.js";
+import { generateProjectResources, generateProposalResource } from "./generator.js";
+import { collectSignals, serializeEvidenceBundle, parseEvidenceBundle } from "./eval/signals.js";
+import { renderBrief } from "./eval/brief.js";
+import { harvestApprovalObservations, monitorSession } from "./eval/monitor.js";
+import { collectGitSummary } from "./eval/git.js";
+import {
+  approveProposal,
+  createEmptyStore,
+  compactProposalStore,
+  draftSignatureHash,
+  parseProposalStore,
+  recordOccurrence,
+  rejectProposal,
+  serializeProposalStore,
+  suppressProposal,
+} from "./eval/proposals.js";
+import { PROPOSAL_KINDS } from "./eval/types.js";
+import { parseDrafts, validateDrafts } from "./eval/validate.js";
+import { validateGeneratedResources } from "./eval/generated.js";
 import { detectDrift } from "./drift.js";
 import { parseManifest, serializeManifest } from "./manifest.js";
 import {
@@ -2373,6 +2391,192 @@ export async function runCommand(
         output: `${lines.join("\n")}\n${advisory && blocking > 0 ? `${blocking} scenario(s) failed (advisory mode: exit 0).\n` : ""}`,
       };
     }
+    if (command === "evaluate") {
+      const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
+      const gitSummary = await collectGitSummary(root, services.runShell ?? defaultShellRunner);
+      const bundle = collectSignals(scanFiles.files, gitSummary, (path) =>
+        fs.exists(join(root, path)) ? fs.read(join(root, path)) : "",
+      );
+      const evalDir = join(aiw, "eval");
+      const signalsPath = join(evalDir, "signals.yml");
+      const briefPath = join(evalDir, "brief.md");
+      const draftsPath = join(evalDir, "proposals-draft.yml");
+      // A4: drafts written against a previous signal set must not survive a
+      // re-evaluation; the skill re-drafts from the fresh brief.
+      if (fs.exists(draftsPath)) fs.remove?.(draftsPath);
+      fs.write(signalsPath, serializeEvidenceBundle(bundle));
+      fs.write(briefPath, renderBrief(bundle));
+      return {
+        exitCode: 0,
+        output: `signals written to ${relative(root, signalsPath)}\nhand off ${relative(root, briefPath)} to the resource-evaluator skill\n`,
+      };
+    }
+    if (command === "proposals") {
+      const usage =
+        "Usage: aiw proposals <import|list|show|approve|reject|suppress|validate> [--id=id] [--reason=text]";
+      const action = args[1];
+      const storePath = join(aiw, "proposals.yml");
+      const loadStore = (): import("./eval/types.js").ProposalStore => {
+        if (!fs.exists(storePath))
+          throw new Error("No proposals store found; run `aiw proposals import` first.");
+        return parseProposalStore(fs.read(storePath));
+      };
+      if (action === "import") {
+        const signalsPath = join(aiw, "eval", "signals.yml");
+        const draftsPath = join(aiw, "eval", "proposals-draft.yml");
+        if (!fs.exists(signalsPath) || !fs.exists(draftsPath))
+          return {
+            exitCode: 1,
+            error: "Run `aiw evaluate` and the resource-evaluator skill first.",
+          };
+        const bundle = parseEvidenceBundle(fs.read(signalsPath));
+        let drafts;
+        try {
+          drafts = parseDrafts(fs.read(draftsPath));
+        } catch (error) {
+          return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+        }
+        const target = detectTarget(root, fs) || "codex";
+        const catalogIds = loadBundledResources(target).map(({ type, id }) => `${type}/${id}`);
+        const validation = validateDrafts(drafts, bundle, catalogIds);
+        if (validation.errors.length)
+          return {
+            exitCode: 1,
+            error: `${validation.errors.length} draft record(s) failed the contract:\n${validation.errors
+              .map(({ record, reason }) => `- ${record}: ${reason.join("; ")}`)
+              .join("\n")}`,
+          };
+        const store = fs.exists(storePath)
+          ? parseProposalStore(fs.read(storePath))
+          : createEmptyStore();
+        const isUnchanged = (record: (typeof validation.records)[number]): boolean => {
+          const hash = draftSignatureHash(record);
+          const existing = store.proposals.find(
+            (candidate) => candidate.signature === record.signature,
+          );
+          return existing?.draftHash === hash;
+        };
+        const changed = validation.records.filter((record) => !isUnchanged(record));
+        for (const record of validation.records) {
+          if (isUnchanged(record)) continue;
+          recordOccurrence(store, {
+            kind: record.kind as (typeof PROPOSAL_KINDS)[number],
+            signature: record.signature,
+            origin: "onboarding",
+          });
+          const proposal = store.proposals.find(
+            (candidate) => candidate.signature === record.signature,
+          );
+          if (proposal) {
+            proposal.title = record.title;
+            proposal.outline = record.outline;
+            proposal.evidence = record.evidence;
+            proposal.kind = record.kind as (typeof PROPOSAL_KINDS)[number];
+            proposal.draftHash = draftSignatureHash(record);
+          }
+        }
+        if (changed.length === 0)
+          return {
+            exitCode: 0,
+            output: `no proposals to import${
+              fs.exists(storePath)
+                ? " — drafts unchanged since the last import"
+                : " — the evaluator proposed nothing for this project"
+            }\n`,
+          };
+        fs.write(storePath, serializeProposalStore(store));
+        const overlapNote = validation.overlaps.length
+          ? `\noverlaps annotated for review: ${validation.overlaps
+              .map(({ signature, catalogId }) => `${signature} ~ ${catalogId}`)
+              .join(", ")}`
+          : "";
+        return {
+          exitCode: 0,
+          output: `imported ${changed.length} proposal(s) into ${relative(root, storePath)}${overlapNote}\n`,
+        };
+      }
+      if (action === "list") {
+        const store = loadStore();
+        if (store.proposals.length === 0)
+          return { exitCode: 0, output: "No proposals recorded.\n" };
+        const lines = store.proposals.map(
+          (proposal) =>
+            `${proposal.id} [${proposal.kind}] ${proposal.status} (${proposal.occurrences} occurrences) ${proposal.title || proposal.signature}`,
+        );
+        return { exitCode: 0, output: `${lines.join("\n")}\n` };
+      }
+      if (action === "validate") {
+        const generatedRoot = join(aiw, "generated");
+        const files: { path: string; content: string }[] = [];
+        for (const kind of PROPOSAL_KINDS) {
+          const dir = join(generatedRoot, `${kind}s`);
+          if (!fs.exists(dir)) continue;
+          for (const name of (fs.listFiles?.(dir) ?? fs.list?.(dir) ?? []).sort())
+            if (name.endsWith(".md"))
+              files.push({ path: `${kind}s/${name}`, content: fs.read(join(dir, name)) });
+        }
+        if (files.length === 0)
+          return { exitCode: 0, output: "No generated resources to validate.\n" };
+        if (!fs.exists(storePath))
+          return {
+            exitCode: 1,
+            error: `Generated resources exist but no proposals store was found at ${relative(root, storePath)}.`,
+          };
+        const issues = validateGeneratedResources(files, loadStore());
+        if (issues.length)
+          return {
+            exitCode: 1,
+            error: `${issues.length} generated resource(s) failed validation:\n${issues
+              .map(({ path, reason }) => `- ${path}: ${reason}`)
+              .join("\n")}`,
+          };
+        return {
+          exitCode: 0,
+          output: `valid: ${files.length} generated resource(s) pass the evaluator contract.\n`,
+        };
+      }
+      const options = parseNamedOptions(args.slice(2), ["id", "reason"]);
+      if (options === undefined) return { exitCode: 1, error: usage };
+      const id = options.id;
+      if (action === "show") {
+        if (!id) return { exitCode: 1, error: usage };
+        const proposal = loadStore().proposals.find((candidate) => candidate.id === id);
+        if (!proposal) return { exitCode: 1, error: `Unknown proposal id: ${id}` };
+        return {
+          exitCode: 0,
+          output:
+            [
+              `${proposal.id} [${proposal.kind}] ${proposal.status}`,
+              `title: ${proposal.title}`,
+              `outline: ${proposal.outline}`,
+              `evidence: ${proposal.evidence.join(", ")}`,
+              `occurrences: ${proposal.occurrences}`,
+              `reject_reason: ${proposal.rejectReason ?? "-"}`,
+            ].join("\n") + "\n",
+        };
+      }
+      if (!id) return { exitCode: 1, error: usage };
+      if (action === "approve" || action === "reject" || action === "suppress") {
+        const store = loadStore();
+        if (action === "reject") {
+          if (!options.reason)
+            return { exitCode: 1, error: "--reason is required when rejecting a proposal." };
+          rejectProposal(store, id, options.reason);
+        } else if (action === "approve") {
+          approveProposal(store, id);
+          const approved = store.proposals.find((candidate) => candidate.id === id);
+          if (approved && approved.title && approved.outline) {
+            generateProposalResource(approved, (path, content) =>
+              fs.write(join(aiw, path), content),
+            );
+          }
+        } else suppressProposal(store, id);
+        compactProposalStore(store);
+        fs.write(storePath, serializeProposalStore(store));
+        return { exitCode: 0, output: `${action} recorded for ${id}\n` };
+      }
+      return { exitCode: 1, error: usage };
+    }
     if (command === "doctor") {
       const required = ["manifest.yml", "profile.yml", "lock.yml", "ownership.yml"];
       const missing = required.filter((file) => !fs.exists(join(aiw, file)));
@@ -3423,6 +3627,31 @@ export async function runCommand(
       );
       fs.write(statePath, serializeHeartbeatState(nextState));
       const lines = [describeHeartbeatOutcome(outcome)];
+      // REQ-003 wiring: a new session is the boundary where the previous
+      // session's rejections become monitor occurrences. Monitor failures
+      // must never break the heartbeat.
+      if (outcome.decision === "session-start") {
+        try {
+          const ledgerPath = join(aiw, "approvals.yml");
+          if (fs.exists(ledgerPath)) {
+            const artifacts = harvestApprovalObservations(fs.read(ledgerPath));
+            if (artifacts.length > 0) {
+              const proposalsPath = join(aiw, "proposals.yml");
+              const store = fs.exists(proposalsPath)
+                ? parseProposalStore(fs.read(proposalsPath))
+                : createEmptyStore();
+              const { surfaced } = monitorSession(store, artifacts);
+              fs.write(proposalsPath, serializeProposalStore(store));
+              if (surfaced.length > 0)
+                lines.push(
+                  `monitor: ${surfaced.length} recurring pattern(s) crossed the proposal threshold — run aiw proposals list`,
+                );
+            }
+          }
+        } catch {
+          // observation is best-effort; heartbeat stays authoritative
+        }
+      }
       if (outcome.checkpoint) {
         const checkpointPath = join(
           aiw,

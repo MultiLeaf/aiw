@@ -54,6 +54,12 @@ files:
     target: codex
     resourceType: rules
     resourceId: dependency-policy
+  - path: .agents/rules/language-policy/language-policy.md
+    checksum: sha256-5a83eee8399030150f6c9e3eb5a11e94dfa63c0e70e3e0743daf57f552e0021e
+    kind: target-resource
+    target: codex
+    resourceType: rules
+    resourceId: language-policy
   - path: .agents/rules/project-quality/project-quality.md
     checksum: sha256-7afff9546b5e0999e54b3c1f16b632386ea8ed27ed53ea35795ab3119b0e0559
     kind: target-resource
@@ -90,6 +96,12 @@ files:
     target: codex
     resourceType: skills
     resourceId: ai-init
+  - path: .agents/skills/brainstorming/SKILL.md
+    checksum: sha256-91bc6c0e23d55e335916770ca580705db0df32e0b34bc22a39a3d69caf15611c
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: brainstorming
   - path: .agents/skills/code-review/SKILL.md
     checksum: sha256-bb4225f3885671e68f91568fbd217950fe056dff150f35749ce94665ed6ac7f8
     kind: target-resource
@@ -120,6 +132,12 @@ files:
     target: codex
     resourceType: skills
     resourceId: tdd-development
+  - path: .agents/skills/technical-design/SKILL.md
+    checksum: sha256-87a8c8b448b47633fbb81b1c514c4dcd9202c12a54f91370cd39200f5f364115
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: technical-design
   - path: .agents/skills/ticket/SKILL.md
     checksum: sha256-16aa4196141c5b016184420fd1498f97ceb22668e4333e8fda6f4163eb6e87a9
     kind: target-resource
@@ -132,6 +150,18 @@ files:
     target: codex
     resourceType: skills
     resourceId: verification
+  - path: .agents/templates/brainstorm/brainstorm.md
+    checksum: sha256-fe535e79bcc088ba90983b4a474adff75190576945190d2c95757fe33d9bd4e5
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: brainstorm
+  - path: .agents/templates/decision-record/decision-record.md
+    checksum: sha256-c8c816499e1e76ce1d9fb5eded0913627a05222aeb5700de95952e461cb8fce8
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: decision-record
   - path: .agents/templates/implementation-plan/implementation-plan.md
     checksum: sha256-268a10328e1de1bb4abfb1e76ac619f619c6a79673c638089b1ad6c098387dea
     kind: target-resource
@@ -156,6 +186,12 @@ files:
     target: codex
     resourceType: templates
     resourceId: task
+  - path: .agents/templates/technical-design/technical-design.md
+    checksum: sha256-0f4f3041b3b5d00ccd98e52045357fdce6d46214d9c20b493487b161fc7aec86
+    kind: target-resource
+    target: codex
+    resourceType: templates
+    resourceId: technical-design
   - path: .agents/templates/test-plan/test-plan.md
     checksum: sha256-168c015b4021d471902ac29dee06fd2351f070543a8a30cdf0826ce6895a77dc
     kind: target-resource
@@ -228,6 +264,12 @@ files:
     target: universal
     resourceType: rules
     resourceId: dependency-policy
+  - path: .aiw/resources/rules/language-policy/language-policy.md
+    checksum: sha256-5a83eee8399030150f6c9e3eb5a11e94dfa63c0e70e3e0743daf57f552e0021e
+    kind: neutral-resource
+    target: universal
+    resourceType: rules
+    resourceId: language-policy
   - path: .aiw/resources/rules/project-quality/project-quality.md
     checksum: sha256-7afff9546b5e0999e54b3c1f16b632386ea8ed27ed53ea35795ab3119b0e0559
     kind: neutral-resource
@@ -264,6 +306,12 @@ files:
     target: universal
     resourceType: skills
     resourceId: ai-init
+  - path: .aiw/resources/skills/brainstorming/SKILL.md
+    checksum: sha256-91bc6c0e23d55e335916770ca580705db0df32e0b34bc22a39a3d69caf15611c
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: brainstorming
   - path: .aiw/resources/skills/code-review/SKILL.md
     checksum: sha256-bb4225f3885671e68f91568fbd217950fe056dff150f35749ce94665ed6ac7f8
     kind: neutral-resource
@@ -294,6 +342,12 @@ files:
     target: universal
     resourceType: skills
     resourceId: tdd-development
+  - path: .aiw/resources/skills/technical-design/SKILL.md
+    checksum: sha256-87a8c8b448b47633fbb81b1c514c4dcd9202c12a54f91370cd39200f5f364115
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: technical-design
   - path: .aiw/resources/skills/ticket/SKILL.md
     checksum: sha256-16aa4196141c5b016184420fd1498f97ceb22668e4333e8fda6f4163eb6e87a9
     kind: neutral-resource
@@ -306,6 +360,18 @@ files:
     target: universal
     resourceType: skills
     resourceId: verification
+  - path: .aiw/resources/templates/brainstorm/brainstorm.md
+    checksum: sha256-fe535e79bcc088ba90983b4a474adff75190576945190d2c95757fe33d9bd4e5
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: brainstorm
+  - path: .aiw/resources/templates/decision-record/decision-record.md
+    checksum: sha256-c8c816499e1e76ce1d9fb5eded0913627a05222aeb5700de95952e461cb8fce8
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: decision-record
   - path: .aiw/resources/templates/implementation-plan/implementation-plan.md
     checksum: sha256-268a10328e1de1bb4abfb1e76ac619f619c6a79673c638089b1ad6c098387dea
     kind: neutral-resource
@@ -330,6 +396,12 @@ files:
     target: universal
     resourceType: templates
     resourceId: task
+  - path: .aiw/resources/templates/technical-design/technical-design.md
+    checksum: sha256-0f4f3041b3b5d00ccd98e52045357fdce6d46214d9c20b493487b161fc7aec86
+    kind: neutral-resource
+    target: universal
+    resourceType: templates
+    resourceId: technical-design
   - path: .aiw/resources/templates/test-plan/test-plan.md
     checksum: sha256-168c015b4021d471902ac29dee06fd2351f070543a8a30cdf0826ce6895a77dc
     kind: neutral-resource

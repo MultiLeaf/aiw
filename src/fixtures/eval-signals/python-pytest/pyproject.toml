@@ -1,0 +1,6 @@
+[project]
+name = "app"
+dependencies = ["fastapi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
