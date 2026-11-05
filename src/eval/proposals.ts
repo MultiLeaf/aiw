@@ -1,0 +1,211 @@
+import { parseDocument } from "yaml";
+import { defaultPolicy } from "./policy.js";
+import {
+  PROPOSAL_KINDS,
+  type ProposalKind,
+  type ProposalRecord,
+  type ProposalStore,
+  type SurfaceVerdict,
+} from "./types.js";
+
+export const PROPOSALS_STORE_SCHEMA = 1;
+
+export function createEmptyStore(): ProposalStore {
+  return {
+    schema: PROPOSALS_STORE_SCHEMA,
+    seq: 0,
+    lastSurfacedSeq: 0,
+    policy: defaultPolicy(),
+    proposals: [],
+  };
+}
+
+export type Occurrence = {
+  kind: ProposalKind;
+  signature: string;
+  origin?: "onboarding" | "monitor";
+  /** Artifact reference for this occurrence; defaults to a sequence marker. */
+  evidence?: string;
+};
+
+/**
+ * Record one observation of a pattern. Occurrences deduplicate by signature:
+ * the proposal is created once and its evidence list grows per occurrence.
+ */
+export function recordOccurrence(store: ProposalStore, occurrence: Occurrence): void {
+  store.seq += 1;
+  const existing = store.proposals.find((proposal) => proposal.signature === occurrence.signature);
+  if (existing) {
+    existing.occurrences += 1;
+    existing.lastSeq = store.seq;
+    existing.evidence.push(occurrence.evidence ?? `occurrences/${store.seq}`);
+    return;
+  }
+  const number = store.proposals.length + 1;
+  store.proposals.push({
+    id: `prop-${String(number).padStart(3, "0")}`,
+    kind: occurrence.kind,
+    origin: occurrence.origin ?? "monitor",
+    signature: occurrence.signature,
+    status: "proposed",
+    title: "",
+    outline: "",
+    evidence: [occurrence.evidence ?? `occurrences/${store.seq}`],
+    occurrences: 1,
+    lastSeq: store.seq,
+    rejectReason: null,
+    rejectedAtOccurrences: null,
+    provenance: "",
+  });
+}
+
+/**
+ * Decide whether a pattern may surface to the human. Pure check plus one
+ * honest side effect: a positive verdict records the surface event
+ * (`lastSurfacedSeq`), which is what makes the cooldown gap measurable.
+ * Callers that only inspect state should read the returned reason.
+ */
+export function shouldSurfaceProposal(store: ProposalStore, signature: string): SurfaceVerdict {
+  const proposal = store.proposals.find((candidate) => candidate.signature === signature);
+  if (!proposal) return { surface: false, reason: "no proposal recorded for this signature" };
+  if (store.policy.suppressed.includes(signature) || proposal.status === "suppressed")
+    return { surface: false, reason: "suppressed by do-not-suggest-again policy" };
+  if (proposal.status === "approved") return { surface: false, reason: "already approved" };
+  if (proposal.status === "rejected") {
+    const cited = proposal.rejectedAtOccurrences ?? proposal.occurrences;
+    if (proposal.occurrences <= cited)
+      return { surface: false, reason: "rejected without new occurrences since rejection" };
+  }
+  if (proposal.occurrences < store.policy.threshold)
+    return {
+      surface: false,
+      reason: `below threshold: ${proposal.occurrences}/${store.policy.threshold} occurrences`,
+    };
+  if (store.lastSurfacedSeq > 0 && store.seq - store.lastSurfacedSeq < store.policy.cooldown)
+    return {
+      surface: false,
+      reason: `cooldown: ${store.seq - store.lastSurfacedSeq}/${store.policy.cooldown} sequence gap since last surfacing`,
+    };
+  store.lastSurfacedSeq = store.seq;
+  return { surface: true, reason: `threshold met with ${proposal.occurrences} occurrences` };
+}
+
+function byId(store: ProposalStore, id: string): ProposalRecord {
+  const proposal = store.proposals.find((candidate) => candidate.id === id);
+  if (!proposal) throw new Error(`Unknown proposal id: ${id}`);
+  return proposal;
+}
+
+export function approveProposal(store: ProposalStore, id: string): void {
+  store.seq += 1;
+  byId(store, id).status = "approved";
+}
+
+export function rejectProposal(store: ProposalStore, id: string, reason: string): void {
+  store.seq += 1;
+  const proposal = byId(store, id);
+  proposal.status = "rejected";
+  proposal.rejectReason = reason;
+  proposal.rejectedAtOccurrences = proposal.occurrences;
+}
+
+export function suppressProposal(store: ProposalStore, id: string): void {
+  store.seq += 1;
+  const proposal = byId(store, id);
+  proposal.status = "suppressed";
+  if (!store.policy.suppressed.includes(proposal.signature))
+    store.policy.suppressed.push(proposal.signature);
+}
+
+function scalar(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`;
+}
+
+/** Deterministic serialization: same store state yields byte-identical YAML. */
+export function serializeProposalStore(store: ProposalStore): string {
+  const lines = [
+    `schema: ${store.schema}`,
+    `seq: ${store.seq}`,
+    `last_surfaced_seq: ${store.lastSurfacedSeq}`,
+    "policy:",
+    `  threshold: ${store.policy.threshold}`,
+    `  cooldown: ${store.policy.cooldown}`,
+    `  suppressed: [${store.policy.suppressed.join(", ")}]`,
+    "proposals:",
+  ];
+  for (const proposal of store.proposals) {
+    lines.push(
+      `  - id: ${proposal.id}`,
+      `    kind: ${proposal.kind}`,
+      `    origin: ${proposal.origin}`,
+      `    signature: ${scalar(proposal.signature)}`,
+      `    status: ${proposal.status}`,
+      `    title: ${scalar(proposal.title)}`,
+      `    outline: ${scalar(proposal.outline)}`,
+      `    evidence: [${proposal.evidence.map(scalar).join(", ")}]`,
+      `    occurrences: ${proposal.occurrences}`,
+      `    last_seq: ${proposal.lastSeq}`,
+      `    reject_reason: ${proposal.rejectReason === null ? "null" : scalar(proposal.rejectReason)}`,
+      `    rejected_at_occurrences: ${proposal.rejectedAtOccurrences ?? "null"}`,
+      `    provenance: ${scalar(proposal.provenance)}`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+type RawProposal = Record<string, unknown>;
+
+function parseProposal(raw: RawProposal, index: number): ProposalRecord {
+  const kind = String(raw.kind);
+  if (!PROPOSAL_KINDS.includes(kind as ProposalKind))
+    throw new Error(`Invalid proposal kind: ${kind}`);
+  const status = raw.status;
+  if (!["proposed", "approved", "rejected", "suppressed"].includes(String(status)))
+    throw new Error(`Invalid proposal status: ${status}`);
+  return {
+    id: String(raw.id ?? `prop-${String(index + 1).padStart(3, "0")}`),
+    kind: kind as ProposalKind,
+    origin: (raw.origin === "onboarding" ? "onboarding" : "monitor") as "onboarding" | "monitor",
+    signature: String(raw.signature ?? ""),
+    status: status as "proposed" | "approved" | "rejected" | "suppressed",
+    title: String(raw.title ?? ""),
+    outline: String(raw.outline ?? ""),
+    evidence: Array.isArray(raw.evidence) ? raw.evidence.map(String) : [],
+    occurrences: Number(raw.occurrences ?? 0),
+    lastSeq: Number(raw.last_seq ?? 0),
+    rejectReason:
+      raw.reject_reason === null || raw.reject_reason === undefined
+        ? null
+        : String(raw.reject_reason),
+    rejectedAtOccurrences:
+      raw.rejected_at_occurrences === null || raw.rejected_at_occurrences === undefined
+        ? null
+        : Number(raw.rejected_at_occurrences),
+    provenance: String(raw.provenance ?? ""),
+  };
+}
+
+export function parseProposalStore(content: string): ProposalStore {
+  const document = parseDocument(content);
+  const raw = document.toJS() as Record<string, unknown> | null;
+  if (!raw || Number(raw.schema) !== PROPOSALS_STORE_SCHEMA)
+    throw new Error(`Unsupported proposal store schema: ${String(raw?.schema)}`);
+  const policy = defaultPolicy();
+  const rawPolicy = raw.policy as Record<string, unknown> | undefined;
+  if (rawPolicy) {
+    if (Number.isFinite(Number(rawPolicy.threshold)))
+      policy.threshold = Number(rawPolicy.threshold);
+    if (Number.isFinite(Number(rawPolicy.cooldown))) policy.cooldown = Number(rawPolicy.cooldown);
+    if (Array.isArray(rawPolicy.suppressed)) policy.suppressed = rawPolicy.suppressed.map(String);
+  }
+  const proposals = Array.isArray(raw.proposals)
+    ? (raw.proposals as RawProposal[]).map((entry, index) => parseProposal(entry, index))
+    : [];
+  return {
+    schema: PROPOSALS_STORE_SCHEMA,
+    seq: Number(raw.seq ?? 0),
+    lastSurfacedSeq: Number(raw.last_surfaced_seq ?? 0),
+    policy,
+    proposals,
+  };
+}

@@ -28,6 +28,7 @@ resources:
     - { id: documentation-maintenance, version: 0.1.0, path: skills/documentation-maintenance.md }
     - { id: adapter-development, version: 0.1.0, path: skills/adapter-development.md }
     - { id: skill-authoring, version: 0.1.0, path: skills/skill-authoring.md }
+    - { id: resource-evaluator, version: 0.1.0, path: skills/resource-evaluator.md }
     - { id: nestjs-development, version: 0.1.0, path: skills/nestjs-development.md }
     - { id: prisma-data-access, version: 0.1.0, path: skills/prisma-data-access.md }
     - { id: vite-frontend, version: 0.1.0, path: skills/vite-frontend.md }
