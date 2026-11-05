@@ -16,7 +16,7 @@ recommendations:
     confidence: 1
     decision_relevance: 0.9105453978311193
     decision_confidence: 0.5653532744974261
-    selected: true
+    selected: false
     requires: [verification]
     resources: [skills/tdd-development, rules/tdd-policy, agents/test-engineer, hooks/pre-implementation, hooks/post-implementation, templates/test-plan]
     selected_resources: []
@@ -27,7 +27,7 @@ recommendations:
     confidence: 1
     decision_relevance: 0.8795611834053839
     decision_confidence: 0.4693790839471548
-    selected: true
+    selected: false
     requires: [implementation-planning]
     resources: [skills/verification, agents/quality-reviewer, templates/test-plan, templates/verification-report]
     selected_resources: []
@@ -38,7 +38,7 @@ recommendations:
     confidence: 0.86
     decision_relevance: 0.6095241625665028
     decision_confidence: 0.034894063330029756
-    selected: true
+    selected: false
     requires: [verification]
     resources: [skills/code-review, agents/quality-reviewer]
     selected_resources: []
@@ -49,7 +49,7 @@ recommendations:
     confidence: 0.83
     decision_relevance: 0.44842626854777434
     decision_confidence: 0.007688371451628928
-    selected: true
+    selected: false
     requires: []
     resources: [skills/security-review, rules/security-policy, rules/dependency-policy, agents/security-reviewer, templates/security-review]
     selected_resources: []
@@ -60,7 +60,7 @@ recommendations:
     confidence: 0.82
     decision_relevance: 0.3530935289036874
     decision_confidence: 0.06319946393560216
-    selected: false
+    selected: true
     requires: []
     resources: [skills/technical-design, agents/technical-architect, templates/technical-design, templates/decision-record]
     selected_resources: []
@@ -71,7 +71,7 @@ recommendations:
     confidence: 0.88
     decision_relevance: 0.34953273595379414
     decision_confidence: 0.06634994347198109
-    selected: true
+    selected: false
     requires: [requirements-specification]
     resources: [skills/implementation-planning, agents/technical-architect, templates/implementation-plan]
     selected_resources: []
@@ -82,7 +82,7 @@ recommendations:
     confidence: 0.9
     decision_relevance: 0.26284183737131667
     decision_confidence: 0.1689954637840656
-    selected: true
+    selected: false
     requires: []
     resources: [skills/ticket, templates/task]
     selected_resources: []
@@ -93,7 +93,7 @@ recommendations:
     confidence: 0.92
     decision_relevance: 0.2247353007352621
     decision_confidence: 0.23127975621625962
-    selected: false
+    selected: true
     requires: []
     resources: [skills/brainstorming, rules/language-policy, templates/brainstorm]
     selected_resources: []
@@ -104,7 +104,7 @@ recommendations:
     confidence: 0.9
     decision_relevance: 0.1871326821624266
     decision_confidence: 0.30456543157045124
-    selected: true
+    selected: false
     requires: []
     resources: [skills/requirements-specification, agents/requirements-analyst, templates/specification]
     selected_resources: []
