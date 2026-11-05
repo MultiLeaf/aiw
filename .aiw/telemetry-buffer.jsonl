@@ -12,3 +12,6 @@
 {"schema":1,"command":"generate","outcome":"success"}
 {"schema":1,"command":"sync","outcome":"failure"}
 {"schema":1,"command":"sync","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"success"}
+{"schema":1,"command":"unknown","outcome":"success"}

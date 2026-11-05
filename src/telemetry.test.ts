@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createTelemetryEvent,
+  isTelemetryConfigured,
+  maybeOfferTelemetryConsent,
   purgeTelemetryBuffer,
   readTelemetryBuffer,
   recordConfiguredTelemetry,
@@ -128,6 +130,37 @@ describe("local telemetry buffer", () => {
     expect(readTelemetryBuffer(fs, ".aiw")).toHaveLength(1);
     purgeTelemetryBuffer(fs, ".aiw");
     expect(readTelemetryBuffer(fs, ".aiw")).toEqual([]);
+  });
+
+  it("offers telemetry consent once during doctor when interactive and unset", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    const questions: string[] = [];
+    const first = await maybeOfferTelemetryConsent(fs, ".aiw", true, async (question) => {
+      questions.push(question);
+      return "y";
+    });
+    expect(first.prompted).toBe(true);
+    expect(first.enabled).toBe(true);
+    expect(questions.length).toBe(1);
+    expect(questions[0]).toContain("command name");
+    expect(isTelemetryConfigured(fs, ".aiw")).toBe(true);
+    const second = await maybeOfferTelemetryConsent(fs, ".aiw", true, async () => {
+      throw new Error("must not prompt again");
+    });
+    expect(second.prompted).toBe(false);
+    expect(second.enabled).toBe(true);
+  });
+
+  it("never prompts for telemetry consent in non-interactive doctor runs", async () => {
+    const files: Record<string, string> = {};
+    const fs = memoryFs(files);
+    const result = await maybeOfferTelemetryConsent(fs, ".aiw", false, async () => {
+      throw new Error("must not prompt");
+    });
+    expect(result.prompted).toBe(false);
+    expect(result.enabled).toBe(false);
+    expect(isTelemetryConfigured(fs, ".aiw")).toBe(false);
   });
 });
 

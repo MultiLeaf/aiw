@@ -1,0 +1,8 @@
+schema: 1
+workflowId: 561f6a52-8567-4b19-84c0-d647ff3dd923
+ticket: FRIC-004
+lane: light
+laneReason: Small contained onboarding/doctor prompt addition; resumable from request plus git diff; understood risk
+entries:
+  - note: "npm run lint, typecheck, build, and npm test: all passed (88 files, 730 tests). New telemetry.test.ts cases: doctor consent prompts once interactively when unset and never re-prompts; non-interactive runs never prompt and leave telemetry unset. CLI test confirms doctor non-interactive output has no telemetry note."
+    recordedAt: 2026-11-05T04:46:01.042Z

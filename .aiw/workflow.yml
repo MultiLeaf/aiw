@@ -1,9 +1,9 @@
 schema: 1
-workflowId: b457c365-cfc8-433b-8cdd-de96d288b9fe
+workflowId: 561f6a52-8567-4b19-84c0-d647ff3dd923
 status: complete
-startedAt: 2026-11-05T04:40:14.071Z
-updatedAt: 2026-11-05T04:43:05.850Z
-ticket: FRIC-002
-title: Optional or self-served ticket in task start
+startedAt: 2026-11-05T04:43:48.583Z
+updatedAt: 2026-11-05T04:46:01.108Z
+ticket: FRIC-004
+title: Telemetry opt-in during install and doctor
 lane: light
-laneReason: Small contained CLI/session change; resumable from request plus git diff; understood risk
+laneReason: Small contained onboarding/doctor prompt addition; resumable from request plus git diff; understood risk

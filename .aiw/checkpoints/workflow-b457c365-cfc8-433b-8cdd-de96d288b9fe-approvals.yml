@@ -1,0 +1,5 @@
+schema: 1
+workflowId: b457c365-cfc8-433b-8cdd-de96d288b9fe
+stages: {}
+lane: light
+laneReason: Small contained CLI/session change; resumable from request plus git diff; understood risk

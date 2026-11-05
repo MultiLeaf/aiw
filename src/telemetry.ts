@@ -52,6 +52,26 @@ export async function offerTelemetryConsent(
   return enabled;
 }
 
+export function isTelemetryConfigured(fs: FileSystem, aiwPath: string): boolean {
+  const settings = loadSettings(fs, aiwPath);
+  return (
+    (settings !== undefined && "telemetry" in settings) || fs.exists(`${aiwPath}/telemetry.yml`)
+  );
+}
+
+/** FRIC-004: prompt once (interactive only) when telemetry consent is unset. */
+export async function maybeOfferTelemetryConsent(
+  fs: FileSystem,
+  aiwPath: string,
+  isTty: boolean,
+  answer: (question: string) => Promise<string>,
+): Promise<{ prompted: boolean; enabled: boolean }> {
+  if (isTelemetryConfigured(fs, aiwPath))
+    return { prompted: false, enabled: loadTelemetryConfig(fs, aiwPath).enabled };
+  if (!isTty) return { prompted: false, enabled: false };
+  return { prompted: true, enabled: await offerTelemetryConsent(fs, aiwPath, answer) };
+}
+
 const TELEMETRY_COMMANDS = new Set([
   "adr",
   "audit-package",
@@ -217,11 +237,7 @@ export async function recordConfiguredTelemetry(
   if (!client) {
     try {
       const config = loadTelemetryConfig(fs, aiwPath);
-      const settings = loadSettings(fs, aiwPath);
-      const configured =
-        (settings !== undefined && "telemetry" in settings) ||
-        fs.exists(`${aiwPath}/telemetry.yml`);
-      if (configured) {
+      if (isTelemetryConfigured(fs, aiwPath)) {
         const event = createTelemetryEvent(command, result, config);
         if (event) appendTelemetryBuffer(fs, aiwPath, event);
       }
@@ -232,10 +248,7 @@ export async function recordConfiguredTelemetry(
   }
   try {
     const config = loadTelemetryConfig(fs, aiwPath);
-    const settings = loadSettings(fs, aiwPath);
-    const configured =
-      (settings !== undefined && "telemetry" in settings) || fs.exists(`${aiwPath}/telemetry.yml`);
-    if (!configured) return;
+    if (!isTelemetryConfigured(fs, aiwPath)) return;
     const event = createTelemetryEvent(command, result, config);
     if (event) await client.record(event);
   } catch {

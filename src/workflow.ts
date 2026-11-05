@@ -321,6 +321,7 @@ import {
   DEFAULT_TELEMETRY_CONFIG,
   loadTelemetryConfig,
   offerTelemetryConsent,
+  maybeOfferTelemetryConsent,
   parseTelemetryConfig,
   purgeTelemetryBuffer,
   readTelemetryBuffer,
@@ -2638,7 +2639,23 @@ export async function runCommand(
       } catch (error) {
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
       }
-      return { exitCode: 0, output: "AI Workflow health check passed." };
+      // FRIC-004: interactive doctor offers telemetry consent once when unset.
+      let telemetryNote = "";
+      if (stdin.isTTY) {
+        const terminal = createInterface({ input: stdin, output: stdout });
+        try {
+          const consent = await maybeOfferTelemetryConsent(fs, aiw, true, (question) =>
+            terminal.question(question),
+          );
+          if (consent.prompted)
+            telemetryNote = consent.enabled
+              ? "\nTelemetry enabled. Disable anytime with `aiw telemetry disable`."
+              : "\nTelemetry remains disabled. Enable anytime with `aiw telemetry enable`.";
+        } finally {
+          terminal.close();
+        }
+      }
+      return { exitCode: 0, output: `AI Workflow health check passed.${telemetryNote}` };
     }
     if (command === "repair") {
       if (!fs.exists(join(aiw, "manifest.yml")))

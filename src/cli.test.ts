@@ -2670,7 +2670,11 @@ resources:
     const cwd = await project();
     expect((await run(["doctor"], cwd)).error).toContain("Missing AI Workflow files");
     await run(["install"], cwd);
-    expect((await run(["doctor"], cwd)).output).toContain("health check passed");
+    const result = await run(["doctor"], cwd);
+    expect(result.output).toContain("health check passed");
+    expect(result.output).not.toContain("Telemetry enabled");
+    // Non-interactive doctor never prompts; telemetry consent stays unrecorded.
+    await expect(stat(join(cwd, ".aiw", "telemetry.yml"))).rejects.toThrow();
   });
 
   it("reports an unsupported manifest target through doctor", async () => {

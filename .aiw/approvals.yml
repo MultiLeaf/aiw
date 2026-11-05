@@ -1,5 +1,5 @@
 schema: 1
-workflowId: b457c365-cfc8-433b-8cdd-de96d288b9fe
+workflowId: 561f6a52-8567-4b19-84c0-d647ff3dd923
 stages: {}
 lane: light
-laneReason: Small contained CLI/session change; resumable from request plus git diff; understood risk
+laneReason: Small contained onboarding/doctor prompt addition; resumable from request plus git diff; understood risk
