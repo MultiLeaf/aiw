@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-18
+
+### Added
+
+- Adaptive resource evaluator: dynamic skill/agent/rule proposals from deterministic project signals — signal collection into `.aiw/eval/signals.yml`, a lifecycle-managed anti-spam proposal store, `aiw eval` brief emitter, session-boundary monitor, and human-gated approval with provenance-marked generation under `generated/`.
+- Workflow friction review (dogfooding fixes): a semantic-retrieval-first rule is generated when semantic mapping is enabled (FRIC-001); `task start` works without a ticket, self-serving local `LOCAL-###` identifiers sequenced across archived sessions (FRIC-002); interactive `doctor` offers telemetry consent once when unset, with the privacy summary and reversible enable/disable (FRIC-004); `workflow complete` (full and light lanes) prints a usage/cost summary and writes `.aiw/generated/reports/usage-<workflowId>.md` from sidecar/traceability data, degrading to advisories when absent (FRIC-003).
+- Per-workflow generated artifacts (FRIC-005): stage artifacts live under `generated/<kind>/<workflowId>/` so sequential workflows never overwrite each other; gates, approval fingerprints, verification pairs, traceability, and the dashboard resolve the scoped path first and read legacy fixed paths with an advisory; completion archives the workflow's artifacts to `checkpoints/workflow-<id>-artifacts/` (ADR-002).
+- Decision-model findings triage and lane scope-watch (OPP-007, advisory-only): `aiw decision findings-triage --findings=<path>` runs the deterministic shape check always and, when enabled, one batched evidence-supported question per severe finding (the refuter still owns corroboration); light-lane completion records the tier-vs-lane mismatch advisory and an optional semantic scope-watch line. Routing categories `review.findings-triage` and `workflow.lane-watch` follow the evidence-linked contract.
+- Embedding covering-test detection and judge context scoping (OPP-008, fail-safe): `aiw risk assess` consults the semantic index before asserting `untested_regression` — retrieval can only prevent false flags (`covering: semantic-retrieval` audit label; tiers stay rule-based; no config/`index` or an unreachable model keeps the deterministic sibling heuristic byte-identical); `aiw semantic judge-context --paths=…` renders bounded, labeled context aids for review judges and the refuter.
+
 ## [0.15.0] - 2026-11-04
 
 ### Added
