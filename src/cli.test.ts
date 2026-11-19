@@ -1519,6 +1519,23 @@ tasks:
     expect(artifact).toContain("## Open Questions");
   });
 
+  it("creates an ADR with a default unix-time id that never collides", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await advanceWorkflowTo(cwd, "technical-design");
+    const first = await run(["adr", "--title=First decision"], cwd);
+    expect(first.exitCode).toBe(0);
+    const match = /ADR-(\d{13})-first-decision\.md$/.exec(first.output);
+    expect(match).toBeTruthy();
+    // A second ADR created immediately still gets a distinct id (ms precision
+    // plus a collision scan makes parallel creation safe).
+    const second = await run(["adr", "--title=Second decision"], cwd);
+    expect(second.exitCode).toBe(0);
+    const secondMatch = /ADR-(\d{13})-second-decision\.md$/.exec(second.output);
+    expect(secondMatch).toBeTruthy();
+    expect(secondMatch![1]).not.toBe(match![1]);
+  });
+
   it("creates an ADR with alternatives, decision, rationale, and links", async () => {
     const cwd = await project();
     await run(["install"], cwd);

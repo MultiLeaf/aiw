@@ -1,7 +1,9 @@
 schema: 1
-workflowId: 973e46b4-b792-4591-9757-358cf5d39d1f
+workflowId: 7049a85e-87af-4abe-bb00-89d8d6c11a1f
 status: complete
-startedAt: 2026-11-19T01:15:59.143Z
-updatedAt: 2026-11-19T01:42:22.161Z
-ticket: OPP-008
-title: Embedding covering-test detection and judge context scoping
+startedAt: 2026-11-19T02:04:34.132Z
+updatedAt: 2026-11-19T02:05:51.831Z
+ticket: LOCAL-001
+title: Timestamp-based ADR ids
+lane: light
+laneReason: Small contained adr command change; resumable from request plus git diff; understood risk

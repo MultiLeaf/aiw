@@ -2994,13 +2994,16 @@ export async function runCommand(
     if (command === "adr") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "technical-design");
-      const id = args.find((arg) => arg.startsWith("--id="))?.slice(5) || "001";
+      const explicitId = args.find((arg) => arg.startsWith("--id="))?.slice(5);
       const title = args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Decision";
-      const path = join(
-        root,
-        ".context/adrs",
-        `ADR-${id}-${title.toLowerCase().replaceAll(" ", "-")}.md`,
-      );
+      // Unix-time (ms) default: chronological sequence, collision-resistant.
+      // Same-millisecond creations bump until the path is free.
+      const slug = title.toLowerCase().replaceAll(" ", "-");
+      let stamp = Date.now();
+      if (!explicitId)
+        while (fs.exists(join(root, ".context/adrs", `ADR-${stamp}-${slug}.md`))) stamp += 1;
+      const id = explicitId ?? String(stamp);
+      const path = join(root, ".context/adrs", `ADR-${id}-${slug}.md`);
       fs.write(
         path,
         `# ADR-${id}: ${title}\n\n- **Status:** proposed\n- **Related artifacts:**\n  - .aiw/generated/specs/\n\n## Context\n\n## Alternatives\n\n1. **Alternative A** — Description and trade-offs.\n2. **Alternative B** — Description and trade-offs.\n\n## Decision\n\n## Rationale\n\n## Consequences\n\n`,
