@@ -1,5 +1,43 @@
 schema: 1
-workflowId: 7049a85e-87af-4abe-bb00-89d8d6c11a1f
-stages: {}
-lane: light
-laneReason: Small contained adr command change; resumable from request plus git diff; understood risk
+workflowId: f83c066d-0084-42fb-b501-02c78949f5bd
+stages:
+  brainstorming:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T18:00:18.521Z
+    artifactHash: sha256-9f9af44307eed8c203958a6aa0f7b89ed8f5b607b5a8e7718744b972b124ee86
+  specification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T18:02:33.766Z
+    artifactHash: sha256-8b708a19d949fdff3ca5b61ffcd9dd1effd9fa7a13b486afcf15fd430f935ad4
+  technical-design:
+    status: skipped
+    qualityGate: not-applicable
+    updatedAt: 2026-11-19T18:03:41.454Z
+    reason: Packaged skill following the established skill-resource pattern; no architecture impact
+  plan:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T18:04:52.558Z
+    artifactHash: sha256-ffb78925652fce3c89a64968ff7bd7b0f344df9032815589f95fa8eb0228650c
+  implementation:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T19:18:04.653Z
+    artifactHash: sha256-e0774599c224fd8976fef75b46bbcced8d9ca577c4de40b5fae0dd0ad979f9bb
+  verification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T19:18:48.691Z
+    artifactHash: sha256-96ce7410a9642102c39574ae343e1abdd0c41272cd91b3b2982758d15f59b370
+  review:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T19:22:28.209Z
+    artifactHash: sha256-02a6717de78b889c69ac07a8e09057b61430586f9acd432fb8157b0f82af91dc
+  traceability:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-19T19:24:19.871Z
+    artifactHash: sha256-d7b9089147060c2ff3c1fa09c73f18911ec95c37292a0ccbf5e7aed2f789e004

@@ -1,9 +1,7 @@
 schema: 1
-workflowId: 7049a85e-87af-4abe-bb00-89d8d6c11a1f
+workflowId: f83c066d-0084-42fb-b501-02c78949f5bd
 status: complete
-startedAt: 2026-11-19T02:04:34.132Z
-updatedAt: 2026-11-19T02:05:51.831Z
-ticket: LOCAL-001
-title: Timestamp-based ADR ids
-lane: light
-laneReason: Small contained adr command change; resumable from request plus git diff; understood risk
+startedAt: 2026-11-19T17:28:18.055Z
+updatedAt: 2026-11-19T19:24:19.939Z
+ticket: RES-001
+title: Bounded research skill with evidence-first context building

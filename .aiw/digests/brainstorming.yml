@@ -1,8 +1,8 @@
 schema: 1
 stage: brainstorming
-fingerprint: sha256-8f0627d2da4096232c107b846c562b9a4f1b47434a6dcfc048c28cfcac690b59
-generatedAt: 2026-11-05T01:38:06.864Z
-title: "Brainstorm: Adaptive Resource Evaluator"
+fingerprint: sha256-9f9af44307eed8c203958a6aa0f7b89ed8f5b607b5a8e7718744b972b124ee86
+generatedAt: 2026-11-19T18:00:18.524Z
+title: "Bounded Research Skill"
 requirementIds: []
 taskIds: []
 decisionIds: []

@@ -87,3 +87,23 @@ describe("OPP-011 artifact evals", () => {
     expect(issues).toEqual([]);
   });
 });
+
+// ---- RES-001: research skill contract ----
+
+describe("research skill contract (RES-001)", () => {
+  it("enforces scope gate, budget, citations, redaction, and artifact sections", async () => {
+    const research = await readFile(join("resources", "skills", "research.md"), "utf8");
+    expect(research).toContain("## Scope gate");
+    expect(research).toContain("one investigable question");
+    expect(research).toContain("## Budget and stop conditions");
+    expect(research).toContain("## Evidence rules");
+    expect(research).toContain("file:line");
+    expect(research).toContain("URL with the consultation date");
+    expect(research).toContain("open question");
+    expect(research).toContain("Redact secrets");
+    expect(research).toContain("research.md");
+    expect(research).toContain("task evidence");
+    expect(research).toContain("task start --no-ticket --lane=light");
+    expect(/[A-Za-z]/.test(research)).toBe(true);
+  });
+});

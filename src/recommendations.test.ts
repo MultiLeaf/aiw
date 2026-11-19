@@ -157,6 +157,7 @@ describe("capability recommendations", () => {
     };
     const recommended = recommendCapabilities(empty);
     expect(recommended.map((capability) => capability.id).sort()).toEqual([
+      "bounded-research",
       "brainstorming",
       "code-review",
       "implementation-planning",

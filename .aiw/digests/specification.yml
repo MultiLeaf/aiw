@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-3c1545564cd8dee1f09592c514a9827347cc540a9639542da3c9e9d7e9ed63bd
-generatedAt: 2026-11-19T01:17:55.185Z
-title: "Specification: Embedding Retrieval — Covering-Test Detection and Judge Context Scoping"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004]
+fingerprint: sha256-8b708a19d949fdff3ca5b61ffcd9dd1effd9fa7a13b486afcf15fd430f935ad4
+generatedAt: 2026-11-19T18:02:33.768Z
+title: "Specification: Bounded Research Skill"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
-decisionIds: [ADR-001]
-criteriaCount: 7
+decisionIds: []
+criteriaCount: 13

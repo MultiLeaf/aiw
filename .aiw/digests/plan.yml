@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-d818d360f545308f4b47c201146f10ff2c1686b1f23a58d64cf8b9de7055b9cc
-generatedAt: 2026-11-19T01:28:40.415Z
-title: "Implementation Plan: Embedding Covering-Test Detection and Judge Context Scoping"
-requirementIds: [REQ-001, REQ-004, REQ-001, REQ-003, REQ-004, REQ-001, REQ-002, REQ-004, REQ-003, REQ-001, REQ-003]
-taskIds: [TASK-001, TASK-002, TASK-003, TASK-004]
+fingerprint: sha256-ffb78925652fce3c89a64968ff7bd7b0f344df9032815589f95fa8eb0228650c
+generatedAt: 2026-11-19T18:04:52.561Z
+title: "Implementation Plan: Bounded Research Skill"
+requirementIds: [REQ-001, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-005]
+taskIds: [TASK-001, TASK-002, TASK-003]
 decisionIds: []
 criteriaCount: 0

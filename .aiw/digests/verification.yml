@@ -1,9 +1,9 @@
 schema: 1
 stage: verification
-fingerprint: sha256-a1512e2e897cf6f9eaf5b2f319e3c8a141e2a36b5d1c305f089446b2080bd831
-generatedAt: 2026-11-19T01:39:52.981Z
+fingerprint: sha256-96ce7410a9642102c39574ae343e1abdd0c41272cd91b3b2982758d15f59b370
+generatedAt: 2026-11-19T19:18:48.694Z
 title: "Verification Report"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004]
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
 decisionIds: []
 criteriaCount: 0

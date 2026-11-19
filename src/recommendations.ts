@@ -56,6 +56,19 @@ const CATALOG: Capability[] = [
         : undefined,
   },
   {
+    id: "bounded-research",
+    provider: "multileaf",
+    universal: true,
+    rationale:
+      "Investigations that start from a single question (an error, a log signature, a migration implication) benefit from an evidence-first, budget-capped research contract with a durable artifact for later stages.",
+    permissions: [],
+    resources: local([{ type: "skills", id: "research" }]),
+    matches: (profile) =>
+      hasProjectSignals(profile)
+        ? { evidence: projectEvidence(profile), confidence: 0.85 }
+        : undefined,
+  },
+  {
     id: "requirements-specification",
     provider: "multileaf",
     universal: true,

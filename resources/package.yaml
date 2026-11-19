@@ -33,6 +33,7 @@ resources:
     - { id: prisma-data-access, version: 0.1.0, path: skills/prisma-data-access.md }
     - { id: vite-frontend, version: 0.1.0, path: skills/vite-frontend.md }
     - { id: ticket, version: 0.1.0, path: skills/ticket.md }
+    - { id: research, version: 0.1.0, path: skills/research.md }
     - { id: review-judge-a, version: 0.1.0, path: skills/review-judge-a.md }
     - { id: review-judge-b, version: 0.1.0, path: skills/review-judge-b.md }
     - { id: review-refuter, version: 0.1.0, path: skills/review-refuter.md }

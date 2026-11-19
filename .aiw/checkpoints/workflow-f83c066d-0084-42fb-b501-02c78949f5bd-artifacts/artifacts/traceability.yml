@@ -1,0 +1,32 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001]
+    code: [resources/skills/research.md]
+    tests: [src/opp011-evals.test.ts]
+    evidence: ['.aiw/generated/reports/f83c066d-0084-42fb-b501-02c78949f5bd/verification-report.md']
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-001]
+    code: [resources/skills/research.md]
+    tests: [src/opp011-evals.test.ts]
+    evidence: ['.aiw/generated/reports/f83c066d-0084-42fb-b501-02c78949f5bd/verification-report.md']
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-001]
+    code: [resources/skills/research.md]
+    tests: [src/opp011-evals.test.ts]
+    evidence: ['.aiw/generated/reports/f83c066d-0084-42fb-b501-02c78949f5bd/verification-report.md']
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-001]
+    code: [resources/skills/research.md]
+    tests: [src/opp011-evals.test.ts]
+    evidence: ['.aiw/generated/reports/f83c066d-0084-42fb-b501-02c78949f5bd/verification-report.md']
+  - requirement: REQ-005
+    decisions: []
+    tasks: [TASK-002, TASK-003]
+    code: [resources/package.yaml, src/recommendations.ts]
+    tests: [src/recommendations.test.ts, src/opp011-evals.test.ts]
+    evidence: ['.aiw/generated/reports/f83c066d-0084-42fb-b501-02c78949f5bd/verification-report.md']

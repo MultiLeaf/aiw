@@ -142,6 +142,10 @@ Findings from using AIW on this repository (post-0.15 dogfooding review).
 - [x] **FRIC-004** Offer telemetry opt-in during install/doctor instead of silent default-off. _Acceptance:_ interactive install and `aiw doctor` prompt once to enable telemetry with the privacy summary when it is unset; non-interactive installs and `--yes` flows never prompt and default remains disabled; repeated runs do not re-prompt once a choice is recorded.
 - [x] **FRIC-005** Namespace per-workflow generated artifacts to prevent overwrite and context contamination. _Acceptance:_ stage artifacts are written under a per-workflow path (e.g., `generated/specs/<workflowId>/brainstorm.md`) instead of fixed shared paths like `generated/specs/brainstorm.md`; `approvalArtifactPath`, quality gates, the approval ledger's artifact fingerprints, traceability, and context retrieval resolve paths through the active workflow id; starting a new workflow never overwrites or reads a previous workflow's artifacts; existing installations migrate or read legacy fixed paths with an advisory; completed workflows' artifacts are archived alongside the session.
 
+## Research — P1
+
+- [x] **RES-001** Ship the bounded `research` skill. _Acceptance:_ see `.aiw/generated/specs/f83c066d-0084-42fb-b501-02c78949f5bd/specification.md` (REQ-001…005): scope gate with human confirmation, step/turn budget with stop conditions and escalation, evidence-first citations (fact/hypothesis/unverified; uncited → open question), secret redaction and provenance for host-side external research, durable workflow-scoped `research.md` artifact with light-lane evidence recording, packaged and recommended advisory-only with eval contracts.
+
 ## Backlog rules
 
 - [x] **FND-009** Add self-validation workflow. _Acceptance:_ changes affecting AIW behavior execute against this repository and record generated-output evidence.
