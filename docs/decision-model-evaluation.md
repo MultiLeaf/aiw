@@ -41,6 +41,11 @@ Observed behavior on real plans: an evidence-free plan scored `gate: ready` with
 
 Decision-model output is `inferred` evidence with confidence, never `confirmed`. It can move an artifact to _pending review_, never to _approved_, and cannot replace the fingerprinted human approval ledger. This matches the existing approval contract and keeps the audit trail human-owned.
 
-## Planned integration (OPP-007)
+## Implemented integration (OPP-007)
 
-The next planned decision-model roles follow the same contracts: findings-evidence triage for severe review findings (does the cited proof support the claim — advisory flag, the refuter still decides) and a lane scope-watch that flags mismatch between a chosen light lane and deterministic risk signals. Both stay advisory-only with the deterministic floor unchanged; unconfigured behavior is byte-identical. See [OPP-007](opportunities/OPP-007-decision-findings-triage-scope-watch.md).
+Two advisory flows ship (see [OPP-007](opportunities/OPP-007-decision-findings-triage-scope-watch.md)):
+
+1. **Findings-evidence triage** — `aiw decision findings-triage --findings=<path>` always runs the deterministic shape check (severity present; proof references or `file:line` non-empty; unparseable input fails closed). When the decision model is enabled, one batched request asks "does the cited evidence support the claim?" per severe finding; answers are printed as advisory `evidence_supported: yes/no/unclear` flags and the refuter still owns corroboration/refutation. Provider failures degrade silently to shape-check-only output.
+2. **Lane scope-watch** — light-lane completion always records the deterministic tier-vs-lane mismatch advisory (`risk assess` high on a light lane) in the light checkpoint and completion output; when the model is enabled, one additional advisory scope question (multi-subsystem footprint) is printed. Both notes never block, never change lanes, never change tiers.
+
+Routing categories `review.findings-triage` and `workflow.lane-watch` follow the evidence-linked routing contract: rules with evidence are `evidenced`, without evidence `unevidenced-rule`, absent rules fall back safely. Unconfigured decision settings mean byte-identical behavior and zero network requests.

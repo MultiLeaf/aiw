@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-0cc178c1e00e34add82cda2c1d1e9813635ec753a9b507b32a5bbd854a6ba72f
-generatedAt: 2026-11-05T16:21:31.747Z
-title: "Specification: Namespace Per-Workflow Generated Artifacts"
+fingerprint: sha256-7113ecbc343f204f5fb265becb99ca6c0e2b81e62103311077728acce41f644f
+generatedAt: 2026-11-19T00:36:50.861Z
+title: "Specification: Decision Model — Findings-Evidence Triage and Lane Scope-Watch"
 requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
-decisionIds: []
-criteriaCount: 12
+decisionIds: [ADR-001]
+criteriaCount: 10

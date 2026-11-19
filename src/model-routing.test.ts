@@ -61,3 +61,29 @@ describe("model routing table", () => {
     expect(serializeResolvedRoute(route)).toContain("a human must choose");
   });
 });
+
+// ---- OPP-007: advisory routing categories ----
+
+describe("OPP-007 routing categories", () => {
+  it("resolves the findings-triage and lane-watch categories with evidence labeling (REQ-005)", () => {
+    const table = parseRoutingTable(
+      [
+        "schema: 1",
+        "default: clef-flash:latest",
+        "rules:",
+        "  - category: review.findings-triage",
+        "    model: clef-flash:latest",
+        "    evidence: docs/opportunities/OPP-007-decision-findings-triage-scope-watch.md",
+        "  - category: workflow.lane-watch",
+        "    model: clef-flash:latest",
+      ].join("\n"),
+    );
+    const evidenced = resolveRoute(table, "review.findings-triage");
+    expect(evidenced.advisory).toBe("evidenced");
+    const unevidenced = resolveRoute(table, "workflow.lane-watch");
+    expect(unevidenced.advisory).toBe("unevidenced-rule");
+    // Without any routing.yml rules, the categories fall back safely.
+    const fallback = resolveRoute(defaultRoutingTable(), "review.findings-triage");
+    expect(fallback.advisory).toBe("default-unset");
+  });
+});

@@ -142,3 +142,92 @@ describe("external decision provider", () => {
     ).toThrow(/decision.apiKeyEnv/);
   });
 });
+
+// ---- OPP-007: findings triage + lane scope-watch ----
+
+import {
+  buildFindingsTriageRequest,
+  buildLaneScopeWatchRequest,
+  checkFindingShapes,
+  parseReviewFindings,
+} from "./decision.js";
+
+describe("review findings shape check (OPP-007)", () => {
+  it("passes well-formed findings and fails missing severity or evidence (REQ-001)", () => {
+    const findings = parseReviewFindings(
+      [
+        "id: F-1",
+        "severity: severe",
+        "claim: lockfile is overwritten",
+        "evidence:",
+        "  - src/lock.ts:42",
+        "---",
+        "id: F-2",
+        "claim: no severity",
+        "evidence:",
+        "  - src/other.ts:1",
+        "---",
+        "id: F-3",
+        "severity: severe",
+        "claim: no evidence at all",
+        "---",
+        "id: F-4",
+        "severity: minor",
+        "claim: fine",
+        "evidence:",
+        "  - src/minor.ts:2",
+      ].join("\n"),
+    );
+    expect(findings).toHaveLength(4);
+    const issues = checkFindingShapes(findings);
+    expect(issues.join("\n")).toContain("F-2");
+    expect(issues.join("\n")).toContain("F-3");
+    expect(issues.join("\n")).not.toContain("F-1");
+    expect(issues.join("\n")).not.toContain("F-4");
+  });
+
+  it("fails closed on unparseable input without throwing", () => {
+    const findings = parseReviewFindings("total garbage\n\nnot a findings file");
+    expect(findings).toEqual([]);
+    expect(checkFindingShapes(findings)[0]).toContain("No parsable findings");
+  });
+});
+
+describe("findings triage + lane scope-watch requests (OPP-007)", () => {
+  it("asks one batched question per severe finding only (REQ-002)", () => {
+    const findings = parseReviewFindings(
+      [
+        "id: F-1",
+        "severity: severe",
+        "claim: overflow",
+        "evidence:",
+        "  - src/a.ts:1",
+        "---",
+        "id: F-2",
+        "severity: minor",
+        "claim: style",
+        "evidence:",
+        "  - src/b.ts:1",
+        "---",
+        "id: F-3",
+        "severity: severe",
+        "claim: race",
+        "evidence:",
+        "  - src/c.ts:9",
+      ].join("\n"),
+    );
+    const request = buildFindingsTriageRequest(findings);
+    expect(Object.keys(request.questions).sort()).toEqual(["F-1", "F-3"]);
+    const question = request.questions["F-1"];
+    expect(question.type).toBe("choice");
+    if (question.type === "choice")
+      expect(Object.keys(question.criteria).sort()).toEqual(["no", "unclear", "yes"]);
+    expect(request.state).toContain("F-2"); // full context travels in one batched state
+  });
+
+  it("builds a single-choice lane scope-watch request (REQ-004)", () => {
+    const request = buildLaneScopeWatchRequest("3 files changed across src/auth and src/billing");
+    expect(Object.keys(request.questions)).toEqual(["multi_subsystem"]);
+    expect(request.state).toContain("src/auth");
+  });
+});

@@ -99,6 +99,10 @@ import { scanProject } from "./scanner.js";
 import { readFactOverrides, saveSettingOverrides, saveSettingsSection } from "./settings.js";
 import {
   buildEvidenceTriageRequest,
+  buildFindingsTriageRequest,
+  buildLaneScopeWatchRequest,
+  checkFindingShapes,
+  parseReviewFindings,
   buildRecommendationRankingRequest,
   buildSemanticRerankRequest,
   createOllamaDecisionProvider,
@@ -830,6 +834,51 @@ export async function runCommand(
           );
           const lightSummary = await writeCompletionReport(fs, aiw, session, ledger);
           const lightArchive = archiveWorkflowArtifacts(fs, aiw, session.workflowId);
+          // OPP-007 REQ-003/004: lane mismatch note (always) + optional model scope-watch.
+          const laneNotes: string[] = [];
+          const mismatch = laneAdvisory(root, fs, true);
+          if (mismatch) laneNotes.push(mismatch);
+          const decisionConfig = loadDecisionConfig(fs, aiw);
+          if (decisionConfig?.enabled) {
+            const provider =
+              services.decisionProvider ?? createOllamaDecisionProvider(decisionConfig);
+            try {
+              if (await provider.available()) {
+                const paths = collectWorkingTreeChanges(root) ?? [];
+                const response = await provider.decide(
+                  buildLaneScopeWatchRequest(paths.join("\n") || "no working-tree changes"),
+                );
+                laneNotes.push(
+                  `advisory scope-watch: multi_subsystem=${response.answers.multi_subsystem?.choice ?? "unclear"} (advisory-only)`,
+                );
+              }
+            } catch {
+              // Advisory flow: provider failures degrade silently.
+            }
+          }
+          if (laneNotes.length) {
+            const evidenceFile = fs.exists(evidencePath)
+              ? parseLightEvidence(fs.read(evidencePath))
+              : null;
+            const advisories = laneNotes;
+            fs.write(
+              evidencePath,
+              stringify(
+                {
+                  ...(evidenceFile ?? {
+                    schema: 1,
+                    workflowId: session.workflowId,
+                    ...(session.ticket ? { ticket: session.ticket } : {}),
+                    lane: "light",
+                    ...(session.laneReason ? { laneReason: session.laneReason } : {}),
+                    entries: [],
+                  }),
+                  advisories,
+                },
+                { lineWidth: 0 },
+              ),
+            );
+          }
           return {
             exitCode: 0,
             output:
@@ -838,7 +887,8 @@ export async function runCommand(
               `Report: ${join(aiw, `generated/reports/usage-${session.workflowId}.md`)}` +
               (lightArchive.length
                 ? `\nArchived ${lightArchive.length} workflow artifact(s) to checkpoints/workflow-${session.workflowId}-artifacts/.`
-                : ""),
+                : "") +
+              (laneNotes.length ? `\n${laneNotes.join("\n")}` : ""),
           };
         }
         const unresolved = processStages(ledger).filter(
@@ -1626,7 +1676,8 @@ export async function runCommand(
       };
     }
     if (command === "decision") {
-      const usage = "Usage: aiw decision triage --artifact=<path> | aiw decision status";
+      const usage =
+        "Usage: aiw decision triage --artifact=<path> | aiw decision findings-triage --findings=<path> | aiw decision status";
       const action = args[1];
       const config = loadDecisionConfig(fs, aiw);
       if (action === "status") {
@@ -1668,6 +1719,38 @@ export async function runCommand(
             `  evidence_complete: ${formatNoul(evidence?.noul)}`,
           ].join("\n"),
         };
+      }
+      if (action === "findings-triage") {
+        const parsed = parseNamedOptions(args.slice(2), ["findings"]);
+        if (!parsed?.findings) return { exitCode: 1, error: usage };
+        const findingsPath = safeProjectFile(root, parsed.findings, fs);
+        if (!fs.exists(findingsPath))
+          return { exitCode: 1, error: `Findings file not found: ${parsed.findings}` };
+        const findings = parseReviewFindings(fs.read(findingsPath));
+        const lines: string[] = [];
+        const shapeIssues = checkFindingShapes(findings);
+        lines.push(
+          shapeIssues.length === 0
+            ? "Shape check: all findings are well-formed."
+            : `Shape check failures (deterministic):\n${shapeIssues.map((i) => `  - ${i}`).join("\n")}`,
+        );
+        if (config?.enabled) {
+          const provider = services.decisionProvider ?? createOllamaDecisionProvider(config);
+          try {
+            if (await provider.available()) {
+              const decision = await provider.decide(buildFindingsTriageRequest(findings));
+              lines.push("Advisory evidence triage (refuter still owns corroboration):");
+              for (const finding of findings)
+                if (finding.severity.toLowerCase() === "severe")
+                  lines.push(
+                    `  - ${finding.id}: evidence_supported: ${decision.answers[finding.id]?.choice ?? "unclear"}`,
+                  );
+            }
+          } catch {
+            // Advisory flow: provider failures degrade to shape-check-only output.
+          }
+        }
+        return { exitCode: 0, output: lines.join("\n") };
       }
       return { exitCode: 1, error: usage };
     }

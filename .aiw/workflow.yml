@@ -1,7 +1,7 @@
 schema: 1
-workflowId: 9fd618d1-b576-44f7-bff3-57680034b6b8
+workflowId: b3777a5d-9153-4950-b500-065d0a0eefa5
 status: complete
-startedAt: 2026-11-05T05:00:18.822Z
-updatedAt: 2026-11-05T21:01:56.482Z
-ticket: FRIC-005
-title: Namespace per-workflow generated artifacts
+startedAt: 2026-11-17T20:00:38.390Z
+updatedAt: 2026-11-19T01:15:17.590Z
+ticket: OPP-007
+title: Decision model findings triage and lane scope-watch

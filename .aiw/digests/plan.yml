@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-73ae5ef451218f1cdd559c854e9868884b3beb5bfe7c057a4802118d97c4f4de
-generatedAt: 2026-11-05T16:39:55.194Z
-title: "Implementation Plan: Namespace Per-Workflow Generated Artifacts"
-requirementIds: [REQ-001, REQ-005, REQ-001, REQ-004, REQ-001, REQ-003, REQ-002, REQ-004, REQ-005, REQ-001]
+fingerprint: sha256-a0dc552f3a92daffbafaf5428bbd63530d57d5bff3f6b18337e3eda24c9c368a
+generatedAt: 2026-11-19T00:59:41.343Z
+title: "Implementation Plan: Decision Model — Findings Triage and Lane Scope-Watch"
+requirementIds: [REQ-001, REQ-005, REQ-001, REQ-002, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
 decisionIds: []
 criteriaCount: 0

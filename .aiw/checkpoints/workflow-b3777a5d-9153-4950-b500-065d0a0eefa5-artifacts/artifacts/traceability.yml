@@ -1,0 +1,32 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001]
+    code: [src/decision.ts]
+    tests: [src/decision.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/b3777a5d-9153-4950-b500-065d0a0eefa5/verification-report.md']
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-002, TASK-003]
+    code: [src/decision.ts, src/workflow.ts]
+    tests: [src/decision.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/b3777a5d-9153-4950-b500-065d0a0eefa5/verification-report.md']
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-004]
+    code: [src/workflow.ts]
+    tests: [src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/b3777a5d-9153-4950-b500-065d0a0eefa5/verification-report.md']
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-002, TASK-004]
+    code: [src/decision.ts, src/workflow.ts]
+    tests: [src/decision.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/b3777a5d-9153-4950-b500-065d0a0eefa5/verification-report.md']
+  - requirement: REQ-005
+    decisions: []
+    tasks: [TASK-005]
+    code: [src/model-routing.ts]
+    tests: [src/model-routing.test.ts]
+    evidence: ['.aiw/generated/reports/b3777a5d-9153-4950-b500-065d0a0eefa5/verification-report.md']

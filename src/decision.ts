@@ -225,3 +225,74 @@ export function buildEvidenceTriageRequest(artifact: string): DecisionRequest {
     },
   };
 }
+
+/** OPP-007: a review finding as produced by adversarial-review judges. */
+export type ReviewFinding = {
+  id: string;
+  severity: string;
+  claim: string;
+  evidence: string[];
+};
+
+/** Parse a findings document (YAML `---`-separated entries). Fail-closed: garbage → []. */
+export function parseReviewFindings(text: string): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
+  for (const block of text.split(/^---$/m)) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const id = /^id:\s*(\S+)/m.exec(trimmed)?.[1];
+    if (!id) continue;
+    const severity = /^severity:\s*(.+)$/m.exec(trimmed)?.[1]?.trim() ?? "";
+    const claim = /^claim:\s*(.+)$/m.exec(trimmed)?.[1]?.trim() ?? "";
+    const evidence = [...trimmed.matchAll(/^\s*-\s*(\S+:\d+|\S+)$/gm)].map((m) => m[1]);
+    findings.push({ id, severity, claim, evidence: evidence.filter((e) => !e.startsWith("id:")) });
+  }
+  return findings;
+}
+
+/** REQ-001: deterministic shape check — severity present; evidence or file:line non-empty. */
+export function checkFindingShapes(findings: ReviewFinding[]): string[] {
+  if (findings.length === 0) return ["No parsable findings: every entry fails the shape check."];
+  const issues: string[] = [];
+  for (const finding of findings) {
+    if (!finding.severity) issues.push(`${finding.id}: severity is missing`);
+    if (finding.evidence.length === 0)
+      issues.push(`${finding.id}: no proof references or file:line`);
+  }
+  return issues;
+}
+
+/** REQ-002: batched triage — one choice question per SEVERE finding, single request. */
+export function buildFindingsTriageRequest(findings: ReviewFinding[]): DecisionRequest {
+  const questions: Record<string, DecisionQuestion> = {};
+  for (const finding of findings)
+    if (finding.severity.toLowerCase() === "severe")
+      questions[finding.id] = {
+        type: "choice",
+        instructions: `Does the cited evidence support the claim "${finding.claim}"?`,
+        criteria: {
+          yes: "The cited evidence clearly supports the claim",
+          no: "The cited evidence does not support the claim",
+          unclear: "The evidence is insufficient to decide",
+        },
+      };
+  return { state: JSON.stringify(findings), questions };
+}
+
+/** REQ-004: lane scope-watch — one advisory question about subsystem footprint. */
+export function buildLaneScopeWatchRequest(changeSummary: string): DecisionRequest {
+  return {
+    state: changeSummary,
+    questions: {
+      multi_subsystem: {
+        type: "choice",
+        instructions: "Does this change footprint span multiple subsystems?",
+        criteria: {
+          yes: "The change touches more than one subsystem",
+          no: "The change is contained in a single subsystem",
+          unclear: "The footprint cannot be determined from the summary",
+        },
+      },
+    },
+  };
+}

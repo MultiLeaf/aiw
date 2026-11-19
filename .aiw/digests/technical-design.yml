@@ -1,9 +1,9 @@
 schema: 1
 stage: technical-design
-fingerprint: sha256-19ec758f6636bf1bf98e75f2ffec813e699eea23bbc41a8da0308a8d103169f9
-generatedAt: 2026-11-05T16:24:30.072Z
-title: "Technical Design: Namespace Per-Workflow Generated Artifacts"
-requirementIds: [REQ-004, REQ-005]
+fingerprint: sha256-56651ca5cb52e4a1be5cd75c800e3f5ec2239c2cce94e3f161fd0b5a4c1a6b44
+generatedAt: 2026-11-19T00:57:20.395Z
+title: "Technical Design: Decision Model — Findings Triage and Lane Scope-Watch"
+requirementIds: [REQ-001, REQ-005, REQ-001, REQ-002, REQ-004, REQ-003, REQ-005]
 taskIds: []
-decisionIds: [ADR-002, ADR-002]
+decisionIds: []
 criteriaCount: 0

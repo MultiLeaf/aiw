@@ -3223,6 +3223,119 @@ describe("workflow-scoped artifacts (FRIC-005)", () => {
   });
 });
 
+describe("decision findings triage and lane scope-watch (OPP-007)", () => {
+  async function gitProject(): Promise<string> {
+    const cwd = await mkdtemp(join(tmpdir(), "aiw-opp7-"));
+    const git = (cmd: string, args: string[]): void =>
+      execFileSync(cmd, args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
+    git("git", ["init", "-q"]);
+    git("git", ["config", "user.email", "test@example.com"]);
+    git("git", ["config", "user.name", "Test"]);
+    await writeFile(join(cwd, "README.md"), "# project\n");
+    git("git", ["add", "."]);
+    git("git", ["commit", "-qm", "initial"]);
+    return cwd;
+  }
+
+  const FINDINGS = [
+    "id: F-1",
+    "severity: severe",
+    "claim: lockfile overwritten",
+    "evidence:",
+    "  - src/lock.ts:42",
+    "---",
+    "id: F-2",
+    "severity: minor",
+    "claim: style issue",
+    "evidence:",
+    "  - src/style.ts:1",
+  ].join("\n");
+
+  it("prints the deterministic shape check without the model (REQ-001)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeArtifact(cwd, ".aiw/findings.yml", FINDINGS);
+    const result = await run(["decision", "findings-triage", "--findings=.aiw/findings.yml"], cwd, {
+      decisionProvider: {
+        available: async () => {
+          throw new Error("must not be called when unconfigured");
+        },
+        decide: async () => {
+          throw new Error("must not be called when unconfigured");
+        },
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Shape check: all findings are well-formed.");
+  });
+
+  it("flags shape failures and reports advisory evidence triage when enabled (REQ-002)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "decision:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+    );
+    await writeArtifact(
+      cwd,
+      ".aiw/findings.yml",
+      `${FINDINGS}\n---\nid: F-3\nseverity: severe\nclaim: unsupported\n`,
+    );
+    const result = await run(["decision", "findings-triage", "--findings=.aiw/findings.yml"], cwd, {
+      decisionProvider: {
+        available: async () => true,
+        decide: async () => ({
+          model: "test-model",
+          answers: {
+            "F-1": { type: "choice", choice: "yes" },
+            "F-3": { type: "choice", choice: "no" },
+          },
+        }),
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("F-3: no proof references");
+    expect(result.output).toContain("F-1: evidence_supported: yes");
+    expect(result.output).toContain("F-3: evidence_supported: no");
+    expect(result.output).toContain("refuter still owns corroboration");
+    expect(result.output).not.toContain("F-2: evidence_supported");
+  });
+
+  it("records the lane mismatch note on light-lane completion and adds scope-watch when enabled (REQ-003/004)", async () => {
+    const cwd = await gitProject();
+    await run(["install"], cwd);
+    // Unconfigured completion: advisory-free output (byte-stable, zero network).
+    await run(["task", "start", "--no-ticket", "--lane=light", "--lane-reason=small"], cwd);
+    await run(["task", "evidence", "--validation=ok"], cwd);
+    // Introduce a high-risk working tree (many files across subsystems).
+    for (let i = 0; i < 12; i += 1)
+      await writeFile(join(cwd, `risk-${i}.ts`), "export const x = 1;\n");
+    const baseline = await run(["workflow", "complete"], cwd);
+    expect(baseline.exitCode).toBe(0);
+    const advisoryLine = baseline.output.split("\n").find((l) => l.startsWith("advisory:"));
+    expect(advisoryLine ?? "").toContain("risk assess reports high");
+
+    // Enabled model: completion adds exactly one advisory scope-watch line (REQ-004).
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "decision:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+    );
+    await run(["task", "start", "--no-ticket", "--lane=light", "--lane-reason=small"], cwd);
+    await run(["task", "evidence", "--validation=ok"], cwd);
+    const enabled = await run(["workflow", "complete"], cwd, {
+      decisionProvider: {
+        available: async () => true,
+        decide: async () => ({
+          model: "test-model",
+          answers: { multi_subsystem: { type: "choice", choice: "yes" } },
+        }),
+      },
+    });
+    expect(enabled.exitCode).toBe(0);
+    expect(enabled.output).toContain("advisory scope-watch: multi_subsystem=yes (advisory-only)");
+  });
+});
+
 describe("ticket-driven task", () => {
   it("starts a task from a ticket and records it in the session", async () => {
     const cwd = await project();
