@@ -70,3 +70,12 @@ Without semantic mapping (or when the index is missing, built with another model
 ## Planned integration (OPP-008)
 
 The next planned retrieval consumers follow the same contracts: covering-test detection for `aiw risk assess` (a semantic hit prevents a false `untested_regression` flag; absence fails safe toward `high`) and judge context scoping for the adversarial review skills (bounded retrieved chunks labeled as context aids). Deterministic fallbacks are unchanged; unconfigured behavior is byte-identical. See [OPP-008](opportunities/OPP-008-embedding-covering-tests-judge-context.md).
+
+## Covering-test retrieval and judge context (OPP-008)
+
+Two advisory flows consume the existing index — both fail safe and never change facts:
+
+1. **Covering-test retrieval** (`aiw risk assess`): for changed source paths without a sibling test, one scoped semantic query looks for test chunks exercising that module. A hit removes only the `untested_regression` reason (labeled `covering: semantic-retrieval` for audits); tiers stay rule-based and all other reasons stand. No config, no index, or an unreachable model → the deterministic sibling heuristic result is byte-identical.
+2. **Judge context scoping** (`aiw semantic judge-context --paths=a.ts,b.ts [--budget=N]`): renders changed paths plus top-k retrieved chunks under a bounded budget, each labeled as a context aid (retrieval — not a confirmed fact). Unavailable flows return an advisory error; judges fall back to the raw diff.
+
+A stale index can only miss, which fails safe toward the existing flags. See [OPP-002](opportunities/OPP-002-risk-assess-command.md), [OPP-003](opportunities/OPP-003-adversarial-review-package.md), and [OPP-008](opportunities/OPP-008-embedding-covering-tests-judge-context.md).

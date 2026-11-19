@@ -3453,6 +3453,101 @@ describe("aiw risk assess", () => {
     return cwd;
   }
 
+  it("renders bounded labeled judge context when an index exists (OPP-008 REQ-003)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+    );
+    await mkdir(join(cwd, ".aiw", "semantic"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw", "semantic", "index.json"),
+      JSON.stringify({
+        schema: 1,
+        model: "test-model",
+        chunks: [
+          {
+            file: "src/caller.ts",
+            text: "calls the changed module\nfrom another subsystem\nmore",
+            vector: [1, 0],
+          },
+        ],
+      }),
+    );
+    const result = await run(["semantic", "judge-context", "--paths=src/auth/token.ts"], cwd, {
+      embeddingProvider: {
+        available: async () => true,
+        embed: async () => [[1, 0]],
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("## Changed paths");
+    expect(result.output).toContain("src/caller.ts");
+    expect(result.output).toContain("context aid");
+    expect(result.output).toContain("never confirmed facts");
+    const unavailable = await run(["semantic", "judge-context", "--paths=a.ts"], cwd, {
+      embeddingProvider: {
+        available: async () => false,
+        embed: async () => {
+          throw new Error("no network");
+        },
+      },
+    });
+    expect(unavailable.exitCode).toBe(1);
+    expect(unavailable.error).toContain("fail-safe");
+  });
+
+  it("retrieval prevents a false untested flag without changing other reasons (OPP-008 REQ-001/002)", async () => {
+    const cwd = await gitProject();
+    await mkdir(join(cwd, "src", "auth"), { recursive: true });
+    await writeFile(join(cwd, "src", "auth", "token.ts"), "export const t = 1;\n");
+    // Baseline: no sibling test -> untested_regression stands, byte-identical floor.
+    const baseline = await run(["risk", "assess"], cwd);
+    expect(baseline.output).toContain("untested_regression");
+    expect(baseline.output).not.toContain("covering: semantic-retrieval");
+    // Enable semantic mapping with an index whose differently-named test chunk matches.
+    await mkdir(join(cwd, ".aiw"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw", "settings.yml"),
+      "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+    );
+    await mkdir(join(cwd, ".aiw", "semantic"), { recursive: true });
+    await writeFile(
+      join(cwd, ".aiw", "semantic", "index.json"),
+      JSON.stringify({
+        schema: 1,
+        model: "test-model",
+        chunks: [
+          { file: "tests/integration.spec.ts", text: "exercises token issuance", vector: [1, 0] },
+        ],
+      }),
+    );
+    const result = await run(["risk", "assess"], cwd, {
+      embeddingProvider: {
+        available: async () => true,
+        embed: async () => [[1, 0]],
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("covering: semantic-retrieval (src/auth/token.ts)");
+    expect(result.output).not.toContain("untested_regression");
+    // The auth category reason and the tier remain rule-based (REQ-002).
+    expect(result.output).toContain("risk: high");
+    expect(result.output).toContain("security");
+    const json = JSON.parse(
+      (
+        await run(["risk", "assess", "--json"], cwd, {
+          embeddingProvider: {
+            available: async () => true,
+            embed: async () => [[1, 0]],
+          },
+        })
+      ).output ?? "{}",
+    );
+    expect(json.covering_evidence).toEqual(["src/auth/token.ts"]);
+  });
+
   it("classifies a documentation-only change as passive and not risk-due", async () => {
     const cwd = await gitProject();
     await mkdir(join(cwd, "docs"));

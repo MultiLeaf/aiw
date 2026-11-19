@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-7113ecbc343f204f5fb265becb99ca6c0e2b81e62103311077728acce41f644f
-generatedAt: 2026-11-19T00:36:50.861Z
-title: "Specification: Decision Model — Findings-Evidence Triage and Lane Scope-Watch"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+fingerprint: sha256-3c1545564cd8dee1f09592c514a9827347cc540a9639542da3c9e9d7e9ed63bd
+generatedAt: 2026-11-19T01:17:55.185Z
+title: "Specification: Embedding Retrieval — Covering-Test Detection and Judge Context Scoping"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004]
 taskIds: []
 decisionIds: [ADR-001]
-criteriaCount: 10
+criteriaCount: 7

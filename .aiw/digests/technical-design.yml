@@ -1,9 +1,9 @@
 schema: 1
 stage: technical-design
-fingerprint: sha256-56651ca5cb52e4a1be5cd75c800e3f5ec2239c2cce94e3f161fd0b5a4c1a6b44
-generatedAt: 2026-11-19T00:57:20.395Z
-title: "Technical Design: Decision Model — Findings Triage and Lane Scope-Watch"
-requirementIds: [REQ-001, REQ-005, REQ-001, REQ-002, REQ-004, REQ-003, REQ-005]
+fingerprint: sha256-6b66b3c18b3009d9c9c38ad61d05b55e7100b48e817df7a551bf306b4e8a66e3
+generatedAt: 2026-11-19T01:23:06.498Z
+title: "Technical Design: Embedding Covering-Test Detection and Judge Context Scoping"
+requirementIds: [REQ-001, REQ-004, REQ-004, REQ-002, REQ-001, REQ-002]
 taskIds: []
 decisionIds: []
 criteriaCount: 0

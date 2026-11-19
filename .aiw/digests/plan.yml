@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-a0dc552f3a92daffbafaf5428bbd63530d57d5bff3f6b18337e3eda24c9c368a
-generatedAt: 2026-11-19T00:59:41.343Z
-title: "Implementation Plan: Decision Model — Findings Triage and Lane Scope-Watch"
-requirementIds: [REQ-001, REQ-005, REQ-001, REQ-002, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
-taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
+fingerprint: sha256-d818d360f545308f4b47c201146f10ff2c1686b1f23a58d64cf8b9de7055b9cc
+generatedAt: 2026-11-19T01:28:40.415Z
+title: "Implementation Plan: Embedding Covering-Test Detection and Judge Context Scoping"
+requirementIds: [REQ-001, REQ-004, REQ-001, REQ-003, REQ-004, REQ-001, REQ-002, REQ-004, REQ-003, REQ-001, REQ-003]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004]
 decisionIds: []
 criteriaCount: 0

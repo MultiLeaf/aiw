@@ -26,3 +26,7 @@ A severe finding with neither a reproducing command nor self-proving `file:line`
 - Never refute a claim you were not given; one verdict per issued claim.
 - Pre-existing, base-only, or unknown-causality findings are not yours to drop: mark them `inconclusive` and pass them on.
 - A human still accepts the final review outcome; your verdicts are evidence, not approval.
+
+## Optional retrieval aid
+
+When `aiw semantic judge-context --paths=<changed paths>` is available (semantic mapping enabled with an index), you may include its output as context. Retrieved chunks are context aids, never confirmed facts, and never substitute for `file:line` evidence.

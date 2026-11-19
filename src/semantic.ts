@@ -348,3 +348,63 @@ export async function rerankSemanticMatches(
     if (reranked[index].file !== matches[index].file) changedPositions += 1;
   return { matches: reranked, changedPositions };
 }
+
+/** OPP-008: path-semantics-only query for covering tests (no symbol parsing). */
+export function buildCoveringTestQuery(path: string): string {
+  const generic = new Set(["src", "lib", "app", "index", "main", "test", "tests", "spec"]);
+  const terms = path
+    .split(/[/.-]/)
+    .filter((segment) => segment && !generic.has(segment.toLowerCase()));
+  return `tests exercising ${terms.join(" ") || path}`;
+}
+
+const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|(^|\/)tests?\/)/;
+
+export type CoveringEvidence = { covering: string[]; degraded: boolean };
+
+/**
+ * OPP-008 REQ-001: retrieval-aided covering-test detection. `undefined` keeps
+ * the deterministic sibling heuristic byte-identical (no config/index).
+ * Provider failures degrade to empty coverage (REQ-004: fail safe).
+ */
+export async function semanticCoveringEvidence(
+  fs: FileSystem,
+  aiwPath: string,
+  paths: string[],
+  provider?: EmbeddingProvider,
+): Promise<CoveringEvidence | undefined> {
+  const config = loadSemanticConfig(fs, aiwPath);
+  if (!config?.enabled) return undefined;
+  const indexPath = join(aiwPath, SEMANTIC_INDEX_PATH);
+  if (!fs.exists(indexPath)) return undefined;
+  try {
+    const index = parseSemanticIndex(fs.read(indexPath));
+    const embed = provider ?? createOllamaEmbeddingProvider(config);
+    if (!(await embed.available())) return { covering: [], degraded: true };
+    const covering: string[] = [];
+    for (const path of paths) {
+      const matches = await querySemanticIndex(index, buildCoveringTestQuery(path), embed, config);
+      if (matches.some((match) => TEST_FILE_PATTERN.test(match.file))) covering.push(path);
+    }
+    return { covering, degraded: false };
+  } catch {
+    return { covering: [], degraded: true };
+  }
+}
+
+/** OPP-008 REQ-003: diff first, retrieved chunks fill the remaining budget, labeled as aids. */
+export function renderJudgeContext(
+  diff: string,
+  chunks: { file: string; excerpt: string }[],
+  budget: number,
+): string {
+  const lines: string[] = [diff];
+  let used = diff.length;
+  for (const chunk of chunks) {
+    const block = `\n- ${chunk.file} (context aid (retrieval — not a confirmed fact)): ${chunk.excerpt}`;
+    if (used + block.length > budget) break;
+    lines.push(block);
+    used += block.length;
+  }
+  return lines.join("");
+}

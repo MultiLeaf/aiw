@@ -1,0 +1,26 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001, TASK-002]
+    code: [src/semantic.ts, src/risk-assess.ts]
+    tests: [src/semantic.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/973e46b4-b792-4591-9757-358cf5d39d1f/verification-report.md']
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-002]
+    code: [src/risk-assess.ts]
+    tests: [src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/973e46b4-b792-4591-9757-358cf5d39d1f/verification-report.md']
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-001, TASK-003]
+    code: [src/semantic.ts, src/workflow.ts]
+    tests: [src/semantic.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/973e46b4-b792-4591-9757-358cf5d39d1f/verification-report.md']
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-001, TASK-002]
+    code: [src/semantic.ts, src/risk-assess.ts]
+    tests: [src/semantic.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/973e46b4-b792-4591-9757-358cf5d39d1f/verification-report.md']

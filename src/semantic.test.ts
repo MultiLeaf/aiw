@@ -297,3 +297,124 @@ describe("external embedding provider", () => {
     );
   });
 });
+
+// ---- OPP-008: covering-test retrieval + judge context scoping ----
+
+function memoryFs(files: Record<string, string>): import("./types.js").FileSystem {
+  return {
+    exists: (path: string): boolean => path in files,
+    read: (path: string): string => {
+      if (!(path in files)) throw new Error(`missing: ${path}`);
+      return files[path];
+    },
+    write: (path: string, content: string): void => {
+      files[path] = content;
+    },
+    mkdir: (): void => {},
+    remove: (path: string): void => {
+      delete files[path];
+    },
+  };
+}
+
+import {
+  buildCoveringTestQuery,
+  renderJudgeContext,
+  semanticCoveringEvidence,
+} from "./semantic.js";
+
+describe("covering-test retrieval (OPP-008)", () => {
+  it("builds path-semantics queries without generic terms", () => {
+    expect(buildCoveringTestQuery("src/auth/token.ts")).toContain("auth");
+    expect(buildCoveringTestQuery("src/auth/token.ts")).toContain("token");
+    expect(buildCoveringTestQuery("src/index.ts")).not.toContain("src");
+  });
+
+  it("counts differently-named test chunks as covering evidence (REQ-001)", async () => {
+    const aiw = ".aiw";
+    const fs = memoryFs({
+      [`${aiw}/settings.yml`]:
+        "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+      [`${aiw}/semantic/index.json`]: JSON.stringify({
+        schema: 1,
+        model: "test-model",
+        chunks: [
+          { file: "tests/integration.spec.ts", text: "exercises token issuance", vector: [1, 0] },
+        ],
+      }),
+    });
+    const provider = {
+      available: async (): Promise<boolean> => true,
+      embed: async (): Promise<number[][]> => [[1, 0]],
+    };
+    const result = await semanticCoveringEvidence(fs, aiw, ["src/auth/token.ts"], provider);
+    expect(result?.covering).toEqual(["src/auth/token.ts"]);
+    expect(result?.degraded).toBe(false);
+  });
+
+  it("returns no coverage when retrieval finds nothing (fail-safe)", async () => {
+    const aiw = ".aiw";
+    const fs = memoryFs({
+      [`${aiw}/settings.yml`]:
+        "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+      [`${aiw}/semantic/index.json`]: JSON.stringify({
+        schema: 1,
+        model: "test-model",
+        chunks: [{ file: "src/other.ts", text: "unrelated", vector: [1, 0] }],
+      }),
+    });
+    const result = await semanticCoveringEvidence(fs, aiw, ["src/auth/token.ts"], {
+      available: async () => true,
+      embed: async () => [[0, 1]],
+    });
+    expect(result?.covering).toEqual([]);
+  });
+
+  it("degrades to empty coverage when the provider fails (REQ-004)", async () => {
+    const aiw = ".aiw";
+    const fs = memoryFs({
+      [`${aiw}/settings.yml`]:
+        "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+      [`${aiw}/semantic/index.json`]: JSON.stringify({
+        schema: 1,
+        model: "test-model",
+        chunks: [{ file: "tests/a.spec.ts", text: "x", vector: [1, 0] }],
+      }),
+    });
+    const result = await semanticCoveringEvidence(fs, aiw, ["src/a.ts"], {
+      available: async () => true,
+      embed: async () => {
+        throw new Error("endpoint down");
+      },
+    });
+    expect(result?.covering).toEqual([]);
+    expect(result?.degraded).toBe(true);
+  });
+
+  it("is undefined without semantic config or index (byte-identical floor)", async () => {
+    const fs = memoryFs({});
+    expect(await semanticCoveringEvidence(fs, ".aiw", ["src/a.ts"])).toBeUndefined();
+    const fsConfigOnly = memoryFs({
+      ".aiw/settings.yml":
+        "semantic:\n  enabled: true\n  model: m\n  baseUrl: http://localhost:11434\n",
+    });
+    expect(await semanticCoveringEvidence(fsConfigOnly, ".aiw", ["src/a.ts"])).toBeUndefined();
+  });
+});
+
+describe("judge context rendering (OPP-008)", () => {
+  it("puts the diff first and labels chunks as context aids within budget (REQ-003)", () => {
+    const rendered = renderJudgeContext(
+      "diff --git a/src/a.ts",
+      [
+        { file: "src/caller.ts", excerpt: "calls a() from the changed module" },
+        { file: "src/types.ts", excerpt: "shared contract types" },
+      ],
+      160,
+    );
+    expect(rendered.indexOf("diff --git")).toBeLessThan(rendered.indexOf("src/caller.ts"));
+    expect(rendered).toContain("context aid (retrieval");
+    expect(rendered).toContain("src/caller.ts");
+    expect(rendered).not.toContain("src/types.ts"); // over budget
+  });
+});

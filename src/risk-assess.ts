@@ -14,6 +14,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import type { CommandResult, FileSystem } from "./types.js";
+import { semanticCoveringEvidence } from "./semantic.js";
 
 export type RiskTier = "passive" | "medium" | "high";
 
@@ -265,6 +266,7 @@ export async function runRiskAssess(
   args: string[],
   root: string,
   fs: FileSystem,
+  embeddingProvider?: import("./semantic.js").EmbeddingProvider,
 ): Promise<CommandResult> {
   const jsonRequested = args.includes("--json");
   const parsed = parseRiskAssessArgs(args.filter((argument) => argument !== "--json"));
@@ -287,10 +289,38 @@ export async function runRiskAssess(
       error: `git failed to enumerate changes${parsed.baseRef ? ` for --base-ref=${parsed.baseRef}` : ""}; verify the reference exists.`,
     };
 
+  const siblingProbe = hasCoveringTest(root, fs);
   let assessment = assessRisk(
     changedPaths.map((path) => ({ path })),
-    { hasCoveringTest: hasCoveringTest(root, fs) },
+    {
+      hasCoveringTest: siblingProbe,
+    },
   );
+  // OPP-008 REQ-001: retrieval can only prevent false `untested_regression`
+  // flags; tiers stay rule-based (REQ-002); undefined evidence keeps the
+  // deterministic floor byte-identical.
+  let coveringEvidence: string[] = [];
+  const untested = assessment.reasons
+    .filter((reason) => reason.code === "untested_regression" && reason.path)
+    .map((reason) => reason.path!);
+  if (untested.length > 0) {
+    const evidence = await semanticCoveringEvidence(
+      fs,
+      join(root, ".aiw"),
+      untested,
+      embeddingProvider,
+    );
+    if (evidence && evidence.covering.length > 0) {
+      const covered = new Set(evidence.covering);
+      coveringEvidence = [...covered];
+      assessment = assessRisk(
+        changedPaths.map((path) => ({ path })),
+        {
+          hasCoveringTest: (path: string): boolean => siblingProbe(path) || covered.has(path),
+        },
+      );
+    }
+  }
   if (parsed.escalateItem !== undefined && parsed.escalateReason !== undefined) {
     try {
       assessment = applyEscalation(assessment, parsed.escalateItem, parsed.escalateReason);
@@ -314,6 +344,7 @@ export async function runRiskAssess(
       reasons: assessment.reasons,
       changed_paths: assessment.changedPaths.length,
       risk_due: riskDue,
+      ...(coveringEvidence.length ? { covering_evidence: coveringEvidence } : {}),
     };
     if (parsed.ticket) envelope.ticket = parsed.ticket;
     if (nextCommand) envelope.next_command = nextCommand;
@@ -326,6 +357,8 @@ export async function runRiskAssess(
     lines.push(
       `  - ${reason.code}${reason.path ? `: ${reason.path}` : reason.detail ? ` (${reason.detail})` : ""}`,
     );
+  if (coveringEvidence.length)
+    lines.push(`covering: semantic-retrieval (${coveringEvidence.join(", ")})`);
   const next = nextCommand
     ? `risk due: yes -> ${nextCommand}`
     : nextAction

@@ -1,6 +1,6 @@
 # OPP-008: Embedding retrieval — covering-test detection and judge context scoping
 
-- Status: Proposed
+- Status: Implemented
 - Priority: P3
 - Added: 2026-10-30
 - Decision: [ADR-001](../../.context/adrs/ADR-001-odd-rdd-proportionality-scope.md), Decision A (model-integration addendum)

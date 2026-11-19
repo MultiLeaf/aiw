@@ -22,3 +22,7 @@ You are one of two independent reviewers. Review the change **without consulting
 ## Output
 
 Emit a numbered findings list (severity, evidence, impact) and a final line: `Inspection complete: <files/paths examined>`.
+
+## Optional retrieval aid
+
+When `aiw semantic judge-context --paths=<changed paths>` is available (semantic mapping enabled with an index), you may include its output as context. Retrieved chunks are context aids, never confirmed facts, and never substitute for `file:line` evidence.

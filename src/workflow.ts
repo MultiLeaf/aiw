@@ -114,7 +114,9 @@ import {
   loadSemanticConfig,
   semanticRetrievalAvailable,
   parseSemanticIndex,
+  buildCoveringTestQuery,
   querySemanticIndex,
+  renderJudgeContext,
   rerankSemanticMatches,
   type RerankedMatch,
   SEMANTIC_INDEX_PATH,
@@ -1755,10 +1757,12 @@ export async function runCommand(
       return { exitCode: 1, error: usage };
     }
     if (command === "semantic") {
-      const usage = "Usage: aiw semantic query --text=<query> [--rerank] | aiw semantic status";
+      const usage =
+        "Usage: aiw semantic query --text=<query> [--rerank] | aiw semantic judge-context --paths=a.ts,b.ts [--budget=N] | aiw semantic status";
       const action = args[1];
+      const semanticConfig = loadSemanticConfig(fs, aiw);
       if (action === "status") {
-        const config = loadSemanticConfig(fs, aiw);
+        const config = semanticConfig;
         if (!config)
           return {
             exitCode: 0,
@@ -1771,6 +1775,57 @@ export async function runCommand(
         return {
           exitCode: 0,
           output: `Semantic mapping ${config.enabled ? "enabled" : "disabled"}: model ${config.model} at ${config.baseUrl}\n${built}`,
+        };
+      }
+      if (action === "judge-context") {
+        const parsed = parseNamedOptions(args.slice(2), ["paths", "budget"]);
+        if (!parsed?.paths)
+          return {
+            exitCode: 1,
+            error: "Usage: aiw semantic judge-context --paths=a.ts,b.ts [--budget=N]",
+          };
+        if (!semanticConfig?.enabled)
+          return {
+            exitCode: 1,
+            error:
+              "Semantic mapping is disabled. Set semantic.enabled=true in .aiw/settings.yml to use judge context.",
+          };
+        const config = semanticConfig;
+        const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
+        if (!fs.exists(indexPath))
+          return {
+            exitCode: 1,
+            error:
+              "Semantic index is missing. Run aiw scan to build it before requesting judge context.",
+          };
+        const provider = services.embeddingProvider ?? createOllamaEmbeddingProvider(config);
+        if (!(await provider.available()))
+          return {
+            exitCode: 1,
+            error: `Semantic model ${config.model} is not available at ${config.baseUrl}. Judges fall back to the raw diff (fail-safe).`,
+          };
+        const paths = parsed.paths
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+        const budget = Number(parsed.budget ?? 4000);
+        if (!Number.isFinite(budget) || budget <= 0)
+          return { exitCode: 1, error: "--budget must be a positive number." };
+        const chunks: { file: string; excerpt: string }[] = [];
+        for (const path of paths) {
+          const matches = await querySemanticIndex(
+            parseSemanticIndex(fs.read(indexPath)),
+            buildCoveringTestQuery(path),
+            provider,
+            config,
+          );
+          for (const match of matches) chunks.push({ file: match.file, excerpt: match.excerpt });
+        }
+        return {
+          exitCode: 0,
+          output:
+            renderJudgeContext("## Changed paths\n" + paths.join("\n"), chunks, budget) +
+            "\n(context aids only — retrieval results are never confirmed facts)",
         };
       }
       if (action === "query") {
@@ -3259,7 +3314,7 @@ export async function runCommand(
     if (command === "risk") {
       if (args[1] !== "assess")
         return { exitCode: 1, error: "Usage: aiw risk assess [--base-ref=ref] [--json]" };
-      return runRiskAssess(args.slice(2), root, fs);
+      return runRiskAssess(args.slice(2), root, fs, services.embeddingProvider);
     }
     if (command === "gate") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();

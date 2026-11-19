@@ -1,7 +1,7 @@
 schema: 1
-workflowId: b3777a5d-9153-4950-b500-065d0a0eefa5
+workflowId: 973e46b4-b792-4591-9757-358cf5d39d1f
 status: complete
-startedAt: 2026-11-17T20:00:38.390Z
-updatedAt: 2026-11-19T01:15:17.590Z
-ticket: OPP-007
-title: Decision model findings triage and lane scope-watch
+startedAt: 2026-11-19T01:15:59.143Z
+updatedAt: 2026-11-19T01:42:22.161Z
+ticket: OPP-008
+title: Embedding covering-test detection and judge context scoping
