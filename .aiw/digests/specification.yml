@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-cf0ef31d01d344c9439db540efa6d99f442c410f483fc094c9e2a0eb6f7dc982
-generatedAt: 2026-11-27T04:45:13.272Z
-title: "Specification: Resource Update Command"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004]
+fingerprint: sha256-ecbb6fbc7fad42261631765e716d895094f959da16ed22bd8ff7339e8cf31643
+generatedAt: 2026-11-27T18:04:58.167Z
+title: "Specification: End-to-end flow from idea to merge-ready PR"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
 decisionIds: []
-criteriaCount: 11
+criteriaCount: 5

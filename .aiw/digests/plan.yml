@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-6d7dca7ab9c8acb667faf135813cf3763c156d48a6404c4f415a6ad8b048f13e
-generatedAt: 2026-11-27T04:49:27.867Z
-title: "Implementation Plan: Resource Update Command"
-requirementIds: [REQ-001, REQ-004, REQ-001, REQ-002, REQ-002, REQ-001, REQ-002, REQ-003, REQ-004, REQ-001, REQ-003]
-taskIds: [TASK-001, TASK-002, TASK-003, TASK-004]
+fingerprint: sha256-42d18175e4fc1e27cbb07b66944fa601ec519d147916274378e2e972cdb9abac
+generatedAt: 2026-11-27T18:09:26.680Z
+title: "End-to-end idea to merge-ready PR implementation"
+requirementIds: [REQ-001, REQ-001, REQ-002, REQ-002, REQ-003, REQ-003, REQ-004, REQ-004, REQ-005, REQ-005, REQ-001, REQ-002, REQ-002, REQ-003, REQ-004, REQ-001, REQ-005]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-006, TASK-001, TASK-003, TASK-004, TASK-005, TASK-001, TASK-006, TASK-006, TASK-001]
 decisionIds: []
 criteriaCount: 0

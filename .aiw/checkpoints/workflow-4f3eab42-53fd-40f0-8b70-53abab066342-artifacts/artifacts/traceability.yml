@@ -1,0 +1,38 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001]
+    code: ["src/workflow.ts (gate handler: `--observe` option; additive `observeDecisions[]` checkpoint field, cap 20), src/cli.ts (flag), src/human-gates.test.ts / src/workflow-observe.test.ts"]
+    tests: ["new observe-mode tests (pass & fail artifact cases; state/approvals untouched)"]
+    evidence: ["Record test output and changed files", "`npm run check` → exit 0", "`npx vitest run src/policy-gate.test.ts src/organization-policy.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-escalation.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run` (targeted validator tests) → exit 0; `npm run check` → exit 0", "npm run check"]
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-002]
+    code: ["src/workflow.ts (`rejectionCount` per stage, default 3/min 1, reset on approval), status/reject escalation notice, gate blocking until `approve` or `resolve --stage=`, src/cli.ts"]
+    tests: ["src/workflow-escalation.test.ts (Nth rejection blocks gate; explicit action unblocks; count resets)"]
+    evidence: ["Record test output and changed files", "`npm run check` → exit 0", "`npx vitest run src/policy-gate.test.ts src/organization-policy.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-escalation.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run` (targeted validator tests) → exit 0; `npm run check` → exit 0", "npm run check"]
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-003]
+    code: ["new src/rules-candidates.ts (read/write `.aiw/generated/rules-candidates.yml`, normalized clustering, threshold ≥2), src/cli.ts (`rules-candidates` command, `--accept`/`--dismiss`), src/rules-candidates.test.ts"]
+    tests: ["clustering, accept/dismiss lifecycle, no auto-activation"]
+    evidence: ["Record test output and changed files", "`npm run check` → exit 0", "`npx vitest run src/policy-gate.test.ts src/organization-policy.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-escalation.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run` (targeted validator tests) → exit 0; `npm run check` → exit 0", "npm run check"]
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-004]
+    code: ["review/verification skill templates (resources), report schema validation (optional `triage`, warn-level), src/adapter.ts guidance line, src/*.test.ts for the validator"]
+    tests: ["warn-not-fail on missing triage; accepted values pass"]
+    evidence: ["Record test output and changed files", "`npm run check` → exit 0", "`npx vitest run src/policy-gate.test.ts src/organization-policy.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-escalation.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run` (targeted validator tests) → exit 0; `npm run check` → exit 0", "npm run check"]
+  - requirement: REQ-005
+    decisions: []
+    tasks: [TASK-005]
+    code: ["docs/trust-boundaries.md; README + adapter guidance links; skill template reminder lines"]
+    tests: ["none (docs); link check via docs lint if present"]
+    evidence: ["Record changed files", "`npm run check` → exit 0", "`npx vitest run src/policy-gate.test.ts src/organization-policy.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-escalation.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run` (targeted validator tests) → exit 0; `npm run check` → exit 0", "npm run check"]
+  - requirement: REQ-006
+    decisions: []
+    tasks: [TASK-006]
+    code: ["src/policy-gate.ts / src/organization-policy.ts (strictness ordering `deny > always-require-human > require-approval > allow`; optional `always-require-human` flag, never overridable), tests"]
+    tests: ["ordering conflicts, tie-breaks stricter, always-require-human override attempts"]
+    evidence: ["Record test output and changed files", "`npm run check` → exit 0", "`npx vitest run src/policy-gate.test.ts src/organization-policy.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-escalation.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0; `npm run check` → exit 0", "`npx vitest run` (targeted validator tests) → exit 0; `npm run check` → exit 0", "npm run check"]

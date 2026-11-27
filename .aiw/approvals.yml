@@ -1,43 +1,53 @@
 schema: 1
-workflowId: 4962f74d-8508-41de-a0e6-4b54b190eb92
+workflowId: 72b951e7-a75e-4eab-8edc-0859418470a9
 stages:
   brainstorming:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T04:44:38.797Z
-    artifactHash: sha256-0bc1b1ef2807ca0ebaa4e549e13fd9c33b680acf2688a8093d50848a069dde0c
+    updatedAt: 2026-11-27T18:03:04.074Z
+    artifactHash: sha256-7190d61ac4c92d4a0f7061ceaee3e3bdf4e73e9291b80bca1582d47a45d2e06e
+  product-requirements:
+    status: skipped
+    qualityGate: not-applicable
+    updatedAt: 2026-11-27T18:20:00.000Z
+    reason: Stage introduced after this workflow's specification was approved; product intent is recorded in the approved specification.
   specification:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T04:45:13.270Z
-    artifactHash: sha256-cf0ef31d01d344c9439db540efa6d99f442c410f483fc094c9e2a0eb6f7dc982
+    updatedAt: 2026-11-27T18:04:58.164Z
+    artifactHash: sha256-ecbb6fbc7fad42261631765e716d895094f959da16ed22bd8ff7339e8cf31643
   technical-design:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T04:47:19.038Z
-    artifactHash: sha256-1ebdf99554afcef484c78efb8262c4e5bd6b2343c9559da209dab06bb85c1331
+    updatedAt: 2026-11-27T18:08:07.537Z
+    artifactHash: sha256-091dec89d9231de46f1aa0895ea724f5d78a2acb8ab857dd635a649aa5ae6c28
   plan:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T04:49:27.864Z
-    artifactHash: sha256-6d7dca7ab9c8acb667faf135813cf3763c156d48a6404c4f415a6ad8b048f13e
+    updatedAt: 2026-11-27T18:09:26.677Z
+    artifactHash: sha256-42d18175e4fc1e27cbb07b66944fa601ec519d147916274378e2e972cdb9abac
   implementation:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T05:06:22.319Z
-    artifactHash: sha256-2abc584aa8ecb8a6da4962c01bee20ba034bd837b58bca9c75ff53e0a89fbe13
+    updatedAt: 2026-11-27T18:28:25.538Z
+    artifactHash: sha256-e660d2fca3646dbe82e7050eeaeab8db3a5ebd672c37675ac69f4534b3928d6f
   verification:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T05:07:29.763Z
-    artifactHash: sha256-af32aac020ea9790b7c390fb58f096bbd5c3781fd9ddd78f8b87437d66242621
+    updatedAt: 2026-11-27T18:30:07.929Z
+    artifactHash: sha256-d52830a5d834f418e6aa2382a6d66317c8098dca5e6060e6c9e46a93099ac061
   review:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T05:08:32.307Z
-    artifactHash: sha256-b7f7f72e3a5b9da1dd72413b89f6d8acd6848b709cfae627ee181b8fbe88fff3
+    updatedAt: 2026-11-27T18:31:13.187Z
+    artifactHash: sha256-2038e8df76a89f18a276c509aadbb4e97d8516f24ca0904e82b7a046f40a8973
   traceability:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T05:09:41.725Z
-    artifactHash: sha256-8183973977ab8f80e20f5a9d668ac4346ff5b84e30bfbb9833ef0588450bb646
+    updatedAt: 2026-11-27T18:33:45.136Z
+    artifactHash: sha256-551e86765715c648b842d78662a5efc1a8221f31a5ea89ae72e7487bf4e163b6
+  pr:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T19:49:39.270Z
+    artifactHash: sha256-9bf937ec50eea6deb436d3b7bc8378ed95e083c83971101b6ed291e61a95711e

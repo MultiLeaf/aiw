@@ -1,10 +1,10 @@
 schema: 1
 stage: verification
-fingerprint: sha256-af32aac020ea9790b7c390fb58f096bbd5c3781fd9ddd78f8b87437d66242621
-generatedAt: 2026-11-27T05:07:29.766Z
-title: "Verification Report"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004]
-taskIds: []
+fingerprint: sha256-d52830a5d834f418e6aa2382a6d66317c8098dca5e6060e6c9e46a93099ac061
+generatedAt: 2026-11-27T18:30:07.932Z
+title: "Verification Report: End-to-end idea to merge-ready PR"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-001, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-006]
 decisionIds: []
 criteriaCount: 0
 decision: "Complete."

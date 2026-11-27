@@ -1,9 +1,9 @@
 schema: 1
 stage: technical-design
-fingerprint: sha256-1ebdf99554afcef484c78efb8262c4e5bd6b2343c9559da209dab06bb85c1331
-generatedAt: 2026-11-27T04:47:19.041Z
-title: "Technical Design: Resource Update Command"
-requirementIds: [REQ-001, REQ-004, REQ-004]
+fingerprint: sha256-091dec89d9231de46f1aa0895ea724f5d78a2acb8ab857dd635a649aa5ae6c28
+generatedAt: 2026-11-27T18:08:07.539Z
+title: "Technical Design: End-to-end flow from idea to merge-ready PR"
+requirementIds: [REQ-001, REQ-002, REQ-001, REQ-002, REQ-001, REQ-004, REQ-001, REQ-003, REQ-003, REQ-004, REQ-003, REQ-005, REQ-004, REQ-001, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
 decisionIds: []
 criteriaCount: 0

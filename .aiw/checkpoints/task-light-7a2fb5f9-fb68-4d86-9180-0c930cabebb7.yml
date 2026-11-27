@@ -1,0 +1,10 @@
+schema: 1
+workflowId: 7a2fb5f9-fb68-4d86-9180-0c930cabebb7
+ticket: LOCAL-001
+lane: light
+laneReason: bounded research, resumable from request plus artifact
+entries:
+  - note: "research artifact: .aiw/generated/reports/7a2fb5f9-fb68-4d86-9180-0c930cabebb7/research.md (9 findings, 4 open)"
+    recordedAt: 2026-11-27T15:08:20.278Z
+advisories:
+  - "advisory: risk assess reports high for the current changes (untested_regression, concurrency); consider the full lane, or escalate later with `aiw task escalate --reason=...`."

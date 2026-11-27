@@ -1,8 +1,8 @@
 schema: 1
 stage: brainstorming
-fingerprint: sha256-0bc1b1ef2807ca0ebaa4e549e13fd9c33b680acf2688a8093d50848a069dde0c
-generatedAt: 2026-11-27T04:44:38.800Z
-title: "Resource Update Command"
+fingerprint: sha256-7190d61ac4c92d4a0f7061ceaee3e3bdf4e73e9291b80bca1582d47a45d2e06e
+generatedAt: 2026-11-27T18:03:04.077Z
+title: "Brainstorm: End-to-end flow — from idea to a merge-ready PR"
 requirementIds: []
 taskIds: []
 decisionIds: []

@@ -1,0 +1,43 @@
+schema: 1
+workflowId: 4f3eab42-53fd-40f0-8b70-53abab066342
+stages:
+  brainstorming:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:18:06.428Z
+    artifactHash: sha256-7689ca1aa8568dede6e17b7d2271bec4b6559a80c058f2df7b29ff90a6f7d99b
+  specification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:20:19.025Z
+    artifactHash: sha256-d47aa968ec9d53736cea7c22417cd8bfbbba0c9c1d4aeb89c13c5fde62f8781f
+  technical-design:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:22:38.739Z
+    artifactHash: sha256-7609cb04da103fbb01bce518a31630a63dceb90f033083b0b566353ebe164463
+  plan:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:26:08.877Z
+    artifactHash: sha256-a91d6e8720758526b360e22a6543510a0097c3f2eee75bd83539df00005beb1f
+  implementation:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:47:15.341Z
+    artifactHash: sha256-03bc1f6404b86516dbc8030e8eda3a9c05e055ecab2f4f5588479935b46568a4
+  verification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:48:17.497Z
+    artifactHash: sha256-32c53c67f85a95913343df548f504c20cd36c704ed33c77f551d42f614e2c635
+  review:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:49:35.394Z
+    artifactHash: sha256-4f9241de8fee2be5fb4d14c771c146ce1a391c363bd3c68bbbc7c8591cd99830
+  traceability:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T14:50:01.303Z
+    artifactHash: sha256-be3feeaeff398ac143e3e872ce5d03354f588e51f0af08f586ccf4a438379c2f

@@ -1,9 +1,9 @@
 schema: 1
 stage: implementation
-fingerprint: sha256-2abc584aa8ecb8a6da4962c01bee20ba034bd837b58bca9c75ff53e0a89fbe13
-generatedAt: 2026-11-27T05:06:22.322Z
-title: "Implementation Report"
-requirementIds: []
-taskIds: []
+fingerprint: sha256-e660d2fca3646dbe82e7050eeaeab8db3a5ebd672c37675ac69f4534b3928d6f
+generatedAt: 2026-11-27T18:28:25.541Z
+title: "Implementation Report: End-to-end idea to merge-ready PR"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+taskIds: [TASK-001, TASK-006, TASK-001, TASK-001, TASK-001, TASK-002, TASK-005, TASK-004, TASK-002, TASK-003, TASK-004, TASK-005, TASK-003, TASK-006, TASK-002, TASK-004, TASK-005, TASK-006, TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-006, TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-006]
 decisionIds: []
 criteriaCount: 0

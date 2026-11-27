@@ -1,0 +1,32 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001, TASK-005]
+    code: ["src/types.ts (HUMAN_APPROVAL_STAGES += product-requirements, pr; PROCESSES.feature extended), src/human-approval.ts (STAGE_DEFINITIONS entries, both optional + requiresQualityGate), src/artifact-paths.ts (LEGACY_STAGE_PATHS entries)", "src/workflow.ts (`aiw pr` command scaffolding pr-readiness.md + printing host-side gh instructions), resources/templates/pr-readiness.md, src/quality-gates.ts (pr gate: sections + CI passed line, unresolved comments = 0, conflict check clean; auto-consume orchestration merge forecast when a checkpoint exists)"]
+    tests: ["pr scaffolding; gate positive/negative for each criterion; forecast auto-consumption; workflow complete blocked until pr approved or human-skipped", "src/types.test.ts / src/human-approval.test.ts stage-order and optionality checks; feature process walkthrough updated; bugfix/idea-assessment unchanged"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/cli.test.ts` → exit 0", "`npx vitest run src/completion-report.test.ts src/command-evidence.test.ts` → exit 0", "`npx vitest run src/human-approval.test.ts src/artifact-paths.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts src/cli.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts src/cli.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-001, TASK-002]
+    code: ["src/types.ts (HUMAN_APPROVAL_STAGES += product-requirements, pr; PROCESSES.feature extended), src/human-approval.ts (STAGE_DEFINITIONS entries, both optional + requiresQualityGate), src/artifact-paths.ts (LEGACY_STAGE_PATHS entries)", "src/workflow.ts (`aiw prd` command, brainstorm-pattern), resources/templates/product-requirements.md, src/quality-gates.ts (five-section gate for product-requirements)"]
+    tests: ["prd scaffolding + gate pass/fail; skip mechanics work; specification proceeds when skipped", "src/types.test.ts / src/human-approval.test.ts stage-order and optionality checks; feature process walkthrough updated; bugfix/idea-assessment unchanged"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/cli.test.ts` → exit 0", "`npx vitest run src/completion-report.test.ts src/command-evidence.test.ts` → exit 0", "`npx vitest run src/human-approval.test.ts src/artifact-paths.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts src/cli.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts src/cli.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-003]
+    code: ["src/quality-gates.ts (plan gate: TC-### cases each linked to REQ-###; verification gate: executed-case evidence with result + command), resources/templates/implementation-plan.md (Test Plan section), src/workflow.ts (trace: collect TC-### into tests arrays)"]
+    tests: ["plan gate fails on missing/unlinked TC; verification gate fails on unexecuted/failing cases; trace graph includes TC entries"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/cli.test.ts` → exit 0", "`npx vitest run src/completion-report.test.ts src/command-evidence.test.ts` → exit 0", "`npx vitest run src/human-approval.test.ts src/artifact-paths.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts src/cli.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts src/cli.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-004]
+    code: ["src/quality-gates.ts (Consequential Decisions section; each entry's ADR path must match .context/adrs/ADR-*.md and exist; explicit None passes), resources/templates/technical-design.md (section added)"]
+    tests: ["gate fails on missing section, missing ADR file; passes with valid links and with None"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/cli.test.ts` → exit 0", "`npx vitest run src/completion-report.test.ts src/command-evidence.test.ts` → exit 0", "`npx vitest run src/human-approval.test.ts src/artifact-paths.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts src/cli.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts src/cli.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-005
+    decisions: []
+    tasks: [TASK-006]
+    code: ["src/completion-report.ts (optional PR block from approved pr-readiness.md; explicit no-PR line when skipped), resources/skills/pr-submission.md (new host guidance incl. triage of review comments), edits to resources/skills/implementation-planning.md, verification.md, technical-design.md"]
+    tests: ["completion report with/without PR block; command-evidence parity for `aiw pr`/`aiw prd` mentions"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/cli.test.ts` → exit 0", "`npx vitest run src/completion-report.test.ts src/command-evidence.test.ts` → exit 0", "`npx vitest run src/human-approval.test.ts src/artifact-paths.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts src/cli.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts src/cli.test.ts` → exit 0", "npm run check"]
