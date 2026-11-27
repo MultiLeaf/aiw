@@ -7,6 +7,6 @@ describe("CLI package entrypoint", () => {
   });
 
   it("initializes lock packages as a valid multiline YAML list", () => {
-    expect(readFileSync("src/workflow.ts", "utf8")).toContain('"schema: 1\\npackages:\\n"');
+    expect(readFileSync("src/commands/shared.ts", "utf8")).toContain('"schema: 1\\npackages:\\n"');
   });
 });
