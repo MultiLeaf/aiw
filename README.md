@@ -133,8 +133,17 @@ flowchart TD
     J -->|Incomplete| H
     J -->|Complete| JH{Human approves brainstorm?}
     JH -->|Revise| H
-    JH -->|Approve| K[Write specification]
-    G -->|No| K
+    JH -->|Approve| PRD_Q{Product requirements needed?}
+    G -->|No| PRD_Q
+
+    PRD_Q -->|Yes| PRD[Write product requirements]
+    PRD --> PRDA[(generated/specs/product-requirements.md)]
+    PRDA --> PRDG{PRD quality gate}
+    PRDG -->|Incomplete| PRD
+    PRDG -->|Complete| PRDH{Human approves PRD?}
+    PRDH -->|Revise| PRD
+    PRDH -->|Approve| K[Write specification]
+    PRD_Q -->|Skip with reason| K
 
     K --> L[(generated/specs/specification.md)]
     L --> M{Specification quality gate}
@@ -183,7 +192,18 @@ flowchart TD
     AE --> AF[(generated artifacts and trace output)]
     AF --> AFH{Human approves traceability?}
     AFH -->|Revise| AD
-    AFH -->|Approve| AI[Run repository self-validation]
+    AFH -->|Approve| PR_Q{Pull request readiness needed?}
+
+    PR_Q -->|Yes| PR[Prepare PR readiness report]
+    PR --> PRA[(generated/reports/pr-readiness.md)]
+    PRA --> PRG{PR readiness quality gate}
+    PRG -->|Incomplete| PR
+    PRG -->|Complete| PRH{Human approves PR readiness?}
+    PRH -->|Revise| PR
+    PRH -->|Approve| WFC[Complete workflow]
+    PR_Q -->|Skip with reason| WFC
+
+    WFC --> AI[Run repository self-validation]
     AI --> AJ[(.aiw/checkpoints/self-validation-TICKET.yml)]
     AJ --> AK[Commit and independent integration validation]
 
@@ -237,13 +257,18 @@ npx @multileaf/ai-workflow risk assess [--base-ref=<ref>] [--escalate-item=1-6 -
 # Or start directly from a ticket / already-clear requirement (no brainstorm needed).
 npx @multileaf/ai-workflow task start --ticket=PROJ-142 --title="Add export endpoint"
 npx @multileaf/ai-workflow task status
-# Record an accepted brainstorm skip, then link the specification to the ticket:
+# Record accepted skips for optional discovery stages, then link the specification to the ticket:
 npx @multileaf/ai-workflow skip brainstorming --reason="Requirement provided by ticket PROJ-142"
+npx @multileaf/ai-workflow skip product-requirements --reason="Scope defined in ticket PROJ-142"
 npx @multileaf/ai-workflow spec --ticket=PROJ-142 --title="Add export endpoint"
 npx @multileaf/ai-workflow brainstorm --title="Feature name"
 npx @multileaf/ai-workflow gate brainstorming
 # Present evidence and wait for a human reply before each approve command.
 npx @multileaf/ai-workflow approve brainstorming
+# Optional PRD stage (or skip with `aiw skip product-requirements --reason="..."`).
+npx @multileaf/ai-workflow prd --title="Feature PRD"
+npx @multileaf/ai-workflow gate product-requirements
+npx @multileaf/ai-workflow approve product-requirements
 npx @multileaf/ai-workflow spec --title="Feature requirements"
 npx @multileaf/ai-workflow gate specification
 npx @multileaf/ai-workflow approve specification
@@ -265,6 +290,11 @@ npx @multileaf/ai-workflow verify
 npx @multileaf/ai-workflow trace
 npx @multileaf/ai-workflow gate traceability
 npx @multileaf/ai-workflow approve traceability
+# Scaffold pr-readiness.md, complete host-side git/PR steps, then gate and approve
+# (or skip with `aiw skip pr --reason="..."`); workflow complete requires pr to be approved or skipped.
+npx @multileaf/ai-workflow pr --title="Feature PR"
+npx @multileaf/ai-workflow gate pr
+npx @multileaf/ai-workflow approve pr
 npx @multileaf/ai-workflow workflow complete
 ```
 
