@@ -66,7 +66,7 @@ flowchart TD
     end
 
     subgraph FULL["Full lane — staged SDD, gate + human approve per stage"]
-        FS["workflow start"] --> BR["brainstorming"] --> SP["specification"] --> TD["technical-design<br/>optional, skip needs reason"] --> PL["plan"] --> IM["implementation<br/>TDD"] --> VE["verification"] --> RV["code review"] --> TR["traceability"] --> FC["workflow complete"]
+        FS["workflow start"] --> BR["brainstorming<br/>optional"] --> PRD["product-requirements<br/>optional"] --> SP["specification"] --> TD["technical-design<br/>optional, skip needs reason"] --> PL["plan"] --> IM["implementation<br/>TDD"] --> VE["verification"] --> RV["code review"] --> TR["traceability"] --> PR["pr<br/>optional"] --> FC["workflow complete"]
     end
 
     LS -.->|"stage or approve attempted"| B1["Blocked<br/>reason: lane_escalation_required"]
@@ -95,7 +95,7 @@ Reading notes:
 - Every blocking exit on the diagram prints `[reason: <code>]` and either `Next: run \`aiw ...\`` or an explicit terminal statement — the full mapping lives in [Continuation inventory](continuation-inventory.md).
 - A `high` risk assessment with an active workflow points at continuing the workflow (gate and approve); without one it names `aiw workflow start`.
 
-The SDD approval contract models the ordered stages brainstorming, specification, technical design, plan, implementation, verification, review, and traceability. Brainstorming and technical design are optional; skipping either requires a human-accepted reason. Every other stage must be approved. Automated quality-gate results are stored separately from human decisions and can only move an artifact to pending review, never directly to approved.
+The SDD approval contract models the ordered stages brainstorming, product-requirements, specification, technical design, plan, implementation, verification, review, traceability, and pr. Brainstorming, product-requirements, technical design, and pr are optional; skipping any of them requires a human-accepted reason. Every other stage must be approved. Automated quality-gate results are stored separately from human decisions and can only move an artifact to pending review, never directly to approved.
 
 Each approval is scoped to one workflow ID and bound to a SHA-256 fingerprint of the exact artifact reviewed, so a later feature cannot reuse earlier approvals. A content change or rejection makes that stage and its descendants stale. The CLI persists the versioned ledger in `.aiw/approvals.yml`, blocks stage commands when prerequisites are unresolved, and keeps passing quality gates distinct from human approval. The generated bootstrap and stage skills require the host's native blocking question widget for human decisions when available, with a waiting chat prompt as fallback. Approval records provide an audit trail but cannot prove the identity of a respondent or independently verify that the host widget was used.
 
