@@ -133,4 +133,52 @@ describe("rules candidates CLI (REQ-003)", () => {
     expect(unknown.exitCode).toBe(1);
     expect(unknown.error).toContain("No rules candidate");
   });
+
+  it("preserves manual entries and dismissed statuses across rescans (AIW-002 REQ-005)", async () => {
+    const cwd = await project();
+    await prepareWorkflow(cwd);
+    await rejectCycle(cwd, "Add Given/When/Then to REQ-001", 1);
+    await rejectCycle(cwd, "add given when then to req-001", 2);
+    await run(["rules-candidates"], cwd);
+
+    // A manually added candidate that the scan cannot derive from rejections.
+    const { writeFile: writeManual } = await import("node:fs/promises");
+    await writeManual(
+      join(cwd, ".aiw/generated/rules-candidates.yml"),
+      `${await readFile(join(cwd, ".aiw/generated/rules-candidates.yml"), "utf8")}- id: rc-manual-rule
+  summary: Always run the formatter before gating
+  occurrences:
+    - workflowId: manual
+      stage: review
+      reason: manual entry
+      date: "2026-11-27T00:00:00.000Z"
+  status: accepted
+`,
+    );
+
+    const rescan = await run(["rules-candidates"], cwd);
+    expect(rescan.exitCode).toBe(0);
+    const file = await readFile(join(cwd, ".aiw/generated/rules-candidates.yml"), "utf8");
+    const candidates = parseRulesCandidates(file);
+    expect(candidates).toHaveLength(2);
+    expect(candidates.find((candidate) => candidate.id === "rc-manual-rule")).toMatchObject({
+      summary: "Always run the formatter before gating",
+      status: "accepted",
+    });
+
+    // A dismissed clustered candidate stays dismissed when its cluster reappears.
+    const clusteredId = candidates.find((candidate) => candidate.id !== "rc-manual-rule")!.id;
+    await run(["rules-candidates", `--dismiss=${clusteredId}`], cwd);
+    const after = await run(["rules-candidates"], cwd);
+    expect(after.exitCode).toBe(0);
+    const finalCandidates = parseRulesCandidates(
+      await readFile(join(cwd, ".aiw/generated/rules-candidates.yml"), "utf8"),
+    );
+    expect(finalCandidates.find((candidate) => candidate.id === clusteredId)?.status).toBe(
+      "dismissed",
+    );
+    expect(finalCandidates.find((candidate) => candidate.id === "rc-manual-rule")?.status).toBe(
+      "accepted",
+    );
+  });
 });

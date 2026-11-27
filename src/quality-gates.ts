@@ -176,8 +176,18 @@ export function evaluateQualityGate(stage: QualityGateStage, content: string): s
       const caseIds = [...testPlan.matchAll(/TC-\d+/g)].map((match) => match[0]);
       if (caseIds.length === 0)
         issues.push("Test Plan must define TC-### cases linked to REQ-### requirements.");
+      // AIW-002 REQ-002: a case entry is its line plus following indented
+      // continuation lines, so a wrapped REQ reference still links.
+      const entryLines = testPlan.split("\n");
       for (const caseId of new Set(caseIds)) {
-        const entry = testPlan.match(new RegExp(`^.*${caseId}.*$`, "im"))?.[0] ?? "";
+        const caseIndex = entryLines.findIndex((line) => line.includes(caseId));
+        let entry = entryLines[caseIndex] ?? "";
+        for (
+          let next = caseIndex + 1;
+          next < entryLines.length && /^\s+\S/.test(entryLines[next]!);
+          next += 1
+        )
+          entry += `\n${entryLines[next]}`;
         if (!/REQ-\d+/.test(entry))
           issues.push(`Test case ${caseId} must link to at least one REQ-### requirement.`);
       }

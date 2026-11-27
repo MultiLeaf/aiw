@@ -111,6 +111,28 @@ describe("completion report", () => {
     expect(markdown).toContain("- Conflicts: clean");
   });
 
+  it("extracts sections through fenced code blocks (AIW-002 REQ-003)", () => {
+    const prLedgerWith = (status: string): typeof ledger => ({
+      ...ledger,
+      stages: {
+        ...ledger.stages,
+        pr: { status, qualityGate: "passed", updatedAt: "2026-01-01T12:00:00.000Z" } as never,
+      },
+    });
+    const { markdown } = buildCompletionReport({
+      session,
+      ledger: prLedgerWith("approved"),
+      prReadiness:
+        "# PR Readiness\n\n## PR Reference\n\n#42\n\n## CI Evidence\n\nchecks ran:\n\n```\n## inner heading is content\npass\n```\n\nall pass\n\n## Review Comments\n\nunresolved: 0\n",
+    });
+    expect(markdown).toContain("- CI: checks ran:");
+    expect(markdown).toContain("## inner heading is content");
+    expect(markdown).toContain("pass");
+    expect(markdown).toContain("all pass");
+    // The next real heading still terminates the section.
+    expect(markdown).toContain("- Unresolved review comments: unresolved: 0");
+  });
+
   it("states the PR stage status when not approved (REQ-005)", () => {
     const prLedger = {
       ...ledger,

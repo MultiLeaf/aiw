@@ -27,10 +27,27 @@ function prReadinessSection(input: CompletionReportInput): string[] {
       "",
       `PR stage ${record.status}: no merge-ready PR evidence recorded (skipped or unresolved).`,
     ];
-  const extract = (heading: string): string =>
-    input.prReadiness
-      ?.match(new RegExp(`^## ${heading}\\s*$([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, "im"))?.[1]
-      ?.trim() ?? "(not recorded)";
+  // AIW-002 REQ-003: fence-aware section extraction — a `## ` line inside a
+  // fenced code block is body content, not the next heading.
+  const extract = (heading: string): string => {
+    const content = input.prReadiness ?? "";
+    const startMatch = content.match(new RegExp(`^## ${heading}\\s*$`, "im"));
+    if (!startMatch || startMatch.index === undefined) return "(not recorded)";
+    const lines = content.slice(startMatch.index + startMatch[0].length).split("\n");
+    const body: string[] = [];
+    let fenced = false;
+    for (const line of lines) {
+      if (line.trim().startsWith("```")) {
+        fenced = !fenced;
+        body.push(line);
+        continue;
+      }
+      if (!fenced && /^##\s+\S/.test(line)) break;
+      body.push(line);
+    }
+    const text = body.join("\n").trim();
+    return text || "(not recorded)";
+  };
   return [
     "## PR readiness",
     "",

@@ -12,6 +12,10 @@ All notable changes to this project are documented in this file. The format foll
 - Post-PR automation patterns: gate observe mode (`aiw gate <stage> --observe` logs would-be decisions without state changes), bounded rejection budgets with escalation (`aiw reject` cycles block the gate after N consecutive rejections — default 3, `aiw workflow start --rejection-budget=` — until `aiw resolve --stage=` records a human decision), rejection-reason candidates (`aiw rules-candidates` clusters recurring rejection reasons into human-activated rule/skill candidates), finding triage (`triage: auto-fixable | judgment-required` guidance with a warn-level gate advisory), trust-boundary documentation (`docs/trust-boundaries.md`), and policy conflict semantics (strictest-rule-wins resolver where automated results never override `always-require-human`/`deny`).
 - `aiw doctor` diagnoses stage-list drift: workflows started with an older process stage list are reported with the drifted stages and unresolved prerequisites, and `aiw doctor --fix` repairs them by recording skips for the new optional prerequisites — decided stages are never modified and no approval is invented; required new prerequisites are refused with an actionable message.
 
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
+
 ### Changed
 
 - The feature process stage list now includes `product-requirements` (after brainstorming) and `pr` (after traceability). In-flight feature workflows may hit stage-list drift after upgrading: run `aiw doctor` for the diagnosis and `aiw doctor --fix` (or record the skips yourself) to continue. `aiw workflow complete` now requires the `pr` stage to resolve before completing.
@@ -145,6 +149,10 @@ All notable changes to this project are documented in this file. The format foll
 - Root context rendering: syncing a non-empty resource selection now writes the generated project context to the active target's root file (`AGENTS.md` for Codex/Cursor, `CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI), and `aiw target` migrates it between targets. The file is owned by AI Workflow, listed in the sync preview, and an existing hand-written root context is reported as a conflict instead of being overwritten.
 - Decision-model usage in `aiw recommend` is now recorded in `.aiw/usage.yml` (`recommend.decision`) alongside the scan stages.
 
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
+
 ### Changed
 
 - Release workflows require a single protected-environment approval: the `github-release` job no longer declares the `npm` environment it did not need.
@@ -180,6 +188,10 @@ All notable changes to this project are documented in this file. The format foll
 - Local telemetry buffer: when telemetry is enabled and no host client is present, events accumulate in a rotated `.aiw/telemetry-buffer.jsonl` (retention cap of 200 events); `aiw telemetry status --verbose` displays buffered events and `aiw telemetry disable` purges the buffer. No network transport was added.
 - Local model detection during interactive install: the installer probes the configured Ollama endpoint (`/api/tags`), lists the embedding and decision models actually available, and records the user's selection in `.aiw/settings.yml`; when no server or models are found it continues with defaults.
 
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
+
 ### Changed
 
 - GitHub Actions now use Node 24-native `actions/checkout@v5` and `actions/setup-node@v5`, and CI runs on Node 24.
@@ -192,6 +204,10 @@ All notable changes to this project are documented in this file. The format foll
 - `aiw semantic status` and `aiw decision status` now point to the `.aiw/settings.yml` sections instead of the legacy standalone files.
 
 ## [0.4.0] - 2026-10-08
+
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
 
 ### Changed
 
@@ -218,6 +234,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [0.2.1] - 2026-09-13
 
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
+
 ### Changed
 
 - Require host-native blocking question widgets for onboarding decisions and every SDD approval gate when available, with explicit unselected choices and a safe chat fallback.
@@ -230,6 +250,10 @@ All notable changes to this project are documented in this file. The format foll
 - Persisted human approval gates for every SDD stage, with explicit optional-stage skips and invalidation when reviewed evidence changes.
 - Reviewable, fingerprint-bound installation previews with conflict detection and rollback on failed syncs.
 - Reusable implementation evidence and code review templates, plus completeness checks for every workflow stage.
+
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
 
 ### Changed
 
@@ -252,6 +276,10 @@ All notable changes to this project are documented in this file. The format foll
 
 - Guided `/ai-init` onboarding with model-cost guidance, parallel project analysis, monorepo-aware profiles, selectable resource blocks, and project-specific resource personalization.
 - NestJS, Prisma, and Vite capability recommendations with matching skills, agents, and data-access guidance.
+
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
 
 ### Changed
 
@@ -289,6 +317,10 @@ All notable changes to this project are documented in this file. The format foll
 - Validate package manifests and resource paths, verify local package integrity, and redact credentials from scanned context.
 - Track installed-file ownership so uninstall and migration only remove unchanged AI Workflow files.
 - Require organization approval and explicit consent before loading remote package sources.
+
+### Fixed
+
+- Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
 
 ### Changed
 
