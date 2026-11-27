@@ -146,6 +146,10 @@ Findings from using AIW on this repository (post-0.15 dogfooding review).
 
 - [x] **RES-001** Ship the bounded `research` skill. _Acceptance:_ see `.aiw/generated/specs/f83c066d-0084-42fb-b501-02c78949f5bd/specification.md` (REQ-001…005): scope gate with human confirmation, step/turn budget with stop conditions and escalation, evidence-first citations (fact/hypothesis/unverified; uncited → open question), secret redaction and provenance for host-side external research, durable workflow-scoped `research.md` artifact with light-lane evidence recording, packaged and recommended advisory-only with eval contracts.
 
+## Resource update — P1
+
+- [x] **UPD-001** Bundled-resource update command. _Acceptance:_ see `.aiw/generated/specs/4962f74d-8508-41de-a0e6-4b54b190eb92/specification.md` (REQ-001…004): catalog-vs-installed diff (updated/new/unchanged), drift-safe replacement via the ownership-checksum oracle with typed `update_conflict` blocks, additive `--add=type/id` installation, dry-run, non-interactive and idempotent.
+
 ## Backlog rules
 
 - [x] **FND-009** Add self-validation workflow. _Acceptance:_ changes affecting AIW behavior execute against this repository and record generated-output evidence.

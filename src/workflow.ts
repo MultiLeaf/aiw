@@ -11,6 +11,7 @@ import {
   renderAiInitPath,
   renderResourcePath,
 } from "./adapter.js";
+import { computeUpdatePlan } from "./update.js";
 import { loadBundledResources } from "./bundled-resources.js";
 import {
   assertSafeProjectPath,
@@ -449,6 +450,134 @@ async function writeCompletionReport(
     // REQ-003: a failed artifact write never blocks completion.
   }
   return report.consoleSummary;
+}
+
+/** Monotonic ADR unix-time stamp (distinct ids within the same millisecond). */
+let adrLastStamp = 0;
+
+/** UPD-001: bundled-resource update — diff, drift-safe apply, additive --add. */
+async function runBundledUpdate(
+  args: string[],
+  root: string,
+  fs: FileSystem,
+  aiw: string,
+  services: WorkflowServices,
+): Promise<CommandResult> {
+  const dryRun = args.includes("--dry-run");
+  const addArg = args.find((argument) => argument.startsWith("--add="))?.slice(6);
+  const add = addArg
+    ? addArg
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    : [];
+  if (
+    args.some(
+      (argument) =>
+        argument.startsWith("--") &&
+        !["--dry-run", "--add", "--json"].some(
+          (allowed) => argument === allowed || argument.startsWith(`${allowed}=`),
+        ),
+    )
+  )
+    return {
+      exitCode: 1,
+      error:
+        "Usage: aiw update [--dry-run] [--add=type/id,...] | aiw update --package=path --target=target",
+    };
+  const target = parseManifest(fs.read(join(aiw, "manifest.yml"))).target.active;
+  const profilePath = join(aiw, "profile.yml");
+  const profile = /^status:\s*scanned$/m.test(fs.exists(profilePath) ? fs.read(profilePath) : "")
+    ? parseProjectProfile(fs.read(profilePath))
+    : await (services.profiler?.profile(root) ?? profileProject(root));
+  const personalize = (type: string, id: string, content: string): string =>
+    personalizeBundledResource(
+      type as "skills" | "rules" | "agents" | "hooks" | "templates",
+      id,
+      content,
+      profile,
+    );
+  let plan;
+  try {
+    plan = computeUpdatePlan({ fs, root, aiw, target, add, personalize });
+  } catch (error) {
+    return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+  }
+  const lines = [
+    `updated: ${plan.updated.length}${plan.updated.map((entry) => `\n  - ${entry.path}`).join("")}`,
+    `new available: ${plan.newIds.length}${plan.newIds.length ? ` (${plan.newIds.slice(0, 12).join(", ")}${plan.newIds.length > 12 ? ", …" : ""})` : ""}`,
+    `unchanged: ${plan.unchanged}`,
+    plan.conflicts.length ? `conflicts (preserved): ${plan.conflicts.join(", ")}` : "",
+    plan.install.length
+      ? `installing: ${plan.install.map((r) => `${r.type}/${r.id}`).join(", ")}`
+      : "",
+  ].filter(Boolean);
+  if (dryRun) return { exitCode: 0, output: lines.join("\n") };
+  if (plan.conflicts.length)
+    throw new BlockingError(
+      describeBlockingReason("update_conflict", {
+        detail: plan.conflicts.join(", "),
+      }),
+    );
+  // Drift-safe apply: replace unmodified files, refresh their checksums.
+  for (const entry of plan.updated) fs.write(join(root, entry.path), entry.content);
+  const ownershipPath = join(aiw, "ownership.yml");
+  const owned = parseOwnership(fs.read(ownershipPath));
+  const updatedPaths = new Set(plan.updated.map((entry) => entry.path));
+  const nextOwned = owned.map((file) =>
+    updatedPaths.has(file.path)
+      ? createOwnedFile(file.path, fs.read(join(root, file.path)), {
+          kind: file.kind,
+          target: file.target,
+          resourceType: file.resourceType,
+          resourceId: file.resourceId,
+        })
+      : file,
+  );
+  // Additive --add: render new resources and register ownership.
+  for (const resource of plan.install) {
+    const type = resource.type as "skills" | "rules" | "agents" | "hooks" | "templates";
+    const neutralPath = renderResourcePath("universal", type, resource.id);
+    const targetPath = renderResourcePath(target, type, resource.id);
+    fs.write(join(root, neutralPath), resource.content);
+    nextOwned.push(
+      createOwnedFile(neutralPath, resource.content, {
+        kind: "neutral-resource",
+        target: "universal",
+        resourceType: type,
+        resourceId: resource.id,
+      }),
+    );
+    if (targetPath !== neutralPath) {
+      fs.write(join(root, targetPath), resource.content);
+      nextOwned.push(
+        createOwnedFile(targetPath, resource.content, {
+          kind: "target-resource",
+          target,
+          resourceType: type,
+          resourceId: resource.id,
+        }),
+      );
+    }
+  }
+  fs.write(ownershipPath, serializeOwnership(nextOwned));
+  if (plan.install.length) {
+    // Record the additive selection so future syncs keep the added resources.
+    const recommendations =
+      services.recommender?.recommend(profile) ?? recommendCapabilities(profile);
+    const previousSelection = readSelectedRecommendations(fs, aiw);
+    const selection = [...new Set([...previousSelection, ...add])];
+    fs.write(
+      join(aiw, "recommendations.yml"),
+      serializeRecommendations(recommendations, selection),
+    );
+  }
+  return {
+    exitCode: 0,
+    output:
+      lines.join("\n") +
+      `\nUpdate applied${plan.install.length ? "" : " (no new resources installed; use --add=type/id to install)"}.`,
+  };
 }
 
 function beginWorkflowSession(
@@ -2997,11 +3126,14 @@ export async function runCommand(
       const explicitId = args.find((arg) => arg.startsWith("--id="))?.slice(5);
       const title = args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Decision";
       // Unix-time (ms) default: chronological sequence, collision-resistant.
-      // Same-millisecond creations bump until the path is free.
+      // A monotonic guard guarantees distinct ids even within the same
+      // millisecond; same-ms creations bump until the path is free.
       const slug = title.toLowerCase().replaceAll(" ", "-");
-      let stamp = Date.now();
+      adrLastStamp = Math.max(adrLastStamp + 1, Date.now());
+      let stamp = adrLastStamp;
       if (!explicitId)
         while (fs.exists(join(root, ".context/adrs", `ADR-${stamp}-${slug}.md`))) stamp += 1;
+      adrLastStamp = stamp;
       const id = explicitId ?? String(stamp);
       const path = join(root, ".context/adrs", `ADR-${id}-${slug}.md`);
       fs.write(
@@ -3543,8 +3675,7 @@ export async function runCommand(
     if (command === "update") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const packageArg = args.find((arg) => arg.startsWith("--package="));
-      if (!packageArg)
-        return { exitCode: 1, error: "Usage: aiw update --package=path --target=target" };
+      if (!packageArg) return await runBundledUpdate(args, root, fs, aiw, services);
       const manifestPath = resolve(root, packageArg.slice(10));
       const manifestBytes = fs.readBytes?.(manifestPath);
       const manifestContent = manifestBytes
@@ -4237,7 +4368,7 @@ export async function runCommand(
     return {
       exitCode: 0,
       output:
-        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | standards <extract|list|confirm|reject> | recommend [--select=id,id] | eval run --scenarios [--registry=dir] [--harness=id] [--filter=id] [--advisory] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update --package=path --target=target | validate [--package=path]",
+        "aiw install [--target target] | workflow <start|status|complete> [--id=id] | task <start|status> --ticket=TEAM-123 [--title=text] | approve <stage> | reject <stage> --reason=text | skip <optional-stage> --reason=text | ui [--port=number] | orchestrate --plan=path [--execute] [--max-parallel=number] | telemetry <status|show|enable|disable> [privacy options] | plugin <create|validate> [options] | scan | semantic <status|query> | decision <status|triage> | self-validate --ticket=TYPE-000 | organization-policy --file=path [--replace] | policy-check --package=path [--package=path] | preset --file=path [--replace] | context | context-summary | context-quality | capabilities [--target=target] | token-usage [--stage=name --budget=number --used=number] | registry [--search=query] [--private=name] | registry configure --file=path [--replace] | skills <search|inspect|install|check|update> [options] | audit-package --package=path | verify-package --package=path --checksum=sha256 | brainstorm [--title=title] | spec [--title=title] | adr [--id=id --title=title] | plan [--title=title] | verify | trace | gate <stage> | standards <extract|list|confirm|reject> | recommend [--select=id,id] | eval run --scenarios [--registry=dir] [--harness=id] [--filter=id] [--advisory] | status | doctor | repair | uninstall [--dry-run] | target <target> | rollback | confirm | resolve --package=path | update [--dry-run] [--add=type/id,...] | update --package=path --target=target | validate [--package=path]",
     };
   } catch (error) {
     if (error instanceof BlockingError && args.includes("--json")) {

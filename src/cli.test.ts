@@ -22,7 +22,7 @@ import type { AiProvider, Interpreter } from "./interpreter.js";
 import type { DecisionAnswer, DecisionProvider } from "./decision.js";
 import type { EmbeddingProvider } from "./semantic.js";
 import { checksumPackage } from "./package-integrity.js";
-import { parseOwnership } from "./ownership.js";
+import { parseOwnership, serializeOwnership } from "./ownership.js";
 import { parseProjectProfile } from "./profile.js";
 import type { DashboardHandle } from "./dashboard.js";
 import type { LoadedPackageSource } from "./providers.js";
@@ -3067,6 +3067,85 @@ resources:
     const result = await run(["generate", "--select=typescript-quality"], cwd);
     expect(result.exitCode).toBe(1);
     await expect(readFile(path, "utf8")).resolves.toBe("manual override");
+  });
+
+  it("updates bundled resources drift-safely and additively (UPD-001)", async () => {
+    const cwd = await project();
+    await run(["install"], cwd);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { typescript: "latest" } }),
+    );
+    await run(["recommend", "--select=typescript-quality,verification"], cwd);
+    await syncWithApproval(cwd);
+    const skillPath = join(cwd, ".agents/skills/verification/SKILL.md");
+    const catalogBytes = await readFile(skillPath, "utf8");
+    // Simulate an older installed version: different bytes, ownership checksum
+    // patched to match them (as if installed from an older catalog).
+    const older = `${catalogBytes}\n<!-- older version -->\n`;
+    await writeFile(skillPath, older);
+    const ownershipPath = join(cwd, ".aiw", "ownership.yml");
+    const owned = parseOwnership(await readFile(ownershipPath, "utf8"));
+    const patched = owned.map((file) =>
+      file.path === ".agents/skills/verification/SKILL.md"
+        ? { ...file, checksum: `sha256-${checksumPackage(older)}` }
+        : file,
+    );
+    await writeFile(ownershipPath, serializeOwnership(patched));
+
+    // Dry-run reports without writing.
+    const preview = await run(["update", "--dry-run"], cwd);
+    expect(preview.exitCode).toBe(0);
+    expect(preview.output).toContain("updated: 1");
+    expect(preview.output).toContain(".agents/skills/verification/SKILL.md");
+    expect(preview.output).toContain("new available:");
+    await expect(readFile(skillPath, "utf8")).resolves.toBe(older);
+
+    // Apply replaces the unmodified-from-ownership file with the catalog version.
+    const applied = await run(["update"], cwd);
+    expect(applied.exitCode).toBe(0);
+    await expect(readFile(skillPath, "utf8")).resolves.toBe(catalogBytes);
+
+    // Idempotent: everything current on the second run.
+    const again = await run(["update"], cwd);
+    expect(again.exitCode).toBe(0);
+    expect(again.output).toContain("updated: 0");
+
+    // Manual drift: preserved, typed reason, exit 1, file untouched.
+    await writeFile(skillPath, "manual edit");
+    const conflicted = await run(["update"], cwd);
+    expect(conflicted.exitCode).toBe(1);
+    expect(conflicted.error).toContain("update_conflict");
+    expect(conflicted.error).toContain(".agents/skills/verification/SKILL.md");
+    await expect(readFile(skillPath, "utf8")).resolves.toBe("manual edit");
+    // Restore for the next scenario.
+    await writeFile(skillPath, catalogBytes);
+    const ownershipNow = parseOwnership(await readFile(ownershipPath, "utf8"));
+    await writeFile(
+      ownershipPath,
+      serializeOwnership(
+        ownershipNow.map((file) =>
+          file.path === ".agents/skills/verification/SKILL.md"
+            ? { ...file, checksum: `sha256-${checksumPackage(catalogBytes)}` }
+            : file,
+        ),
+      ),
+    );
+
+    // --add installs a catalog resource additively.
+    const added = await run(["update", "--add=skills/research"], cwd);
+    expect(added.exitCode).toBe(0);
+    expect(added.output).toContain("installing: skills/research");
+    const research = await readFile(join(cwd, ".agents/skills/research/SKILL.md"), "utf8");
+    expect(research).toContain("Scope gate");
+    await expect(readFile(skillPath, "utf8")).resolves.toBe(catalogBytes);
+    const selections = await readFile(join(cwd, ".aiw", "recommendations.yml"), "utf8");
+    expect(selections).toContain("skills/research");
+    // Unknown id fails closed with available ids.
+    const unknown = await run(["update", "--add=skills/nope"], cwd);
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.error).toContain("Unknown resource id");
   });
 
   it("syncs resources selected in recommendations", async () => {

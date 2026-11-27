@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-8b708a19d949fdff3ca5b61ffcd9dd1effd9fa7a13b486afcf15fd430f935ad4
-generatedAt: 2026-11-19T18:02:33.768Z
-title: "Specification: Bounded Research Skill"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+fingerprint: sha256-cf0ef31d01d344c9439db540efa6d99f442c410f483fc094c9e2a0eb6f7dc982
+generatedAt: 2026-11-27T04:45:13.272Z
+title: "Specification: Resource Update Command"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004]
 taskIds: []
 decisionIds: []
-criteriaCount: 13
+criteriaCount: 11

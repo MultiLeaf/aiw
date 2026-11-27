@@ -1,9 +1,9 @@
 schema: 1
 stage: technical-design
-fingerprint: sha256-6b66b3c18b3009d9c9c38ad61d05b55e7100b48e817df7a551bf306b4e8a66e3
-generatedAt: 2026-11-19T01:23:06.498Z
-title: "Technical Design: Embedding Covering-Test Detection and Judge Context Scoping"
-requirementIds: [REQ-001, REQ-004, REQ-004, REQ-002, REQ-001, REQ-002]
+fingerprint: sha256-1ebdf99554afcef484c78efb8262c4e5bd6b2343c9559da209dab06bb85c1331
+generatedAt: 2026-11-27T04:47:19.041Z
+title: "Technical Design: Resource Update Command"
+requirementIds: [REQ-001, REQ-004, REQ-004]
 taskIds: []
 decisionIds: []
 criteriaCount: 0

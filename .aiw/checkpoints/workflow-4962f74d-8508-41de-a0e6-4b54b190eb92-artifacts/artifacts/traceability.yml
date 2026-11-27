@@ -1,0 +1,26 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001, TASK-003]
+    code: [src/update.ts, src/workflow.ts]
+    tests: [src/update.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/4962f74d-8508-41de-a0e6-4b54b190eb92/verification-report.md']
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-001, TASK-002, TASK-003]
+    code: [src/update.ts, src/blocking-reasons.ts, src/workflow.ts]
+    tests: [src/update.test.ts, src/blocking-reasons.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/4962f74d-8508-41de-a0e6-4b54b190eb92/verification-report.md']
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-001, TASK-003]
+    code: [src/update.ts, src/workflow.ts]
+    tests: [src/update.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/4962f74d-8508-41de-a0e6-4b54b190eb92/verification-report.md']
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-001, TASK-003]
+    code: [src/update.ts, src/workflow.ts]
+    tests: [src/update.test.ts, src/cli.test.ts]
+    evidence: ['.aiw/generated/reports/4962f74d-8508-41de-a0e6-4b54b190eb92/verification-report.md']

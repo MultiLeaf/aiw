@@ -30,6 +30,7 @@ export const BLOCKING_REASON_CODES = [
   "migration_required",
   "worktrees_leaked",
   "orchestration_not_executed",
+  "update_conflict",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -247,6 +248,15 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
     continuation: () =>
       action(
         "Run `aiw orchestrate --plan=<path> --execute` first; integration forecasts need the checkpoint evidence.",
+      ),
+  },
+  update_conflict: {
+    code: "update_conflict",
+    description:
+      "Manually edited installed resources conflict with a bundled update; they are preserved, never overwritten.",
+    continuation: (context) =>
+      action(
+        `Review the conflicted file(s)${context.detail ? ` (${context.detail})` : ""}, port your edits onto the new version manually or discard them, then rerun \`aiw update\`.`,
       ),
   },
 };

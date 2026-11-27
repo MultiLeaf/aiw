@@ -1,7 +1,7 @@
 schema: 1
 stage: review
-fingerprint: sha256-02a6717de78b889c69ac07a8e09057b61430586f9acd432fb8157b0f82af91dc
-generatedAt: 2026-11-19T19:22:28.212Z
+fingerprint: sha256-b7f7f72e3a5b9da1dd72413b89f6d8acd6848b709cfae627ee181b8fbe88fff3
+generatedAt: 2026-11-27T05:08:32.310Z
 title: "Code Review"
 requirementIds: []
 taskIds: []

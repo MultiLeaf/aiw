@@ -203,6 +203,13 @@ npx @multileaf/ai-workflow recommend
 # In CI, provide comma-separated recommendation IDs detected for that project.
 npx @multileaf/ai-workflow recommend --select=typescript-quality,verification
 
+# Bring installed bundled resources to the current CLI version, drift-safe
+# (manual edits are preserved as conflicts), and add catalog resources
+# additively without re-running the recommendation wizard.
+npx @multileaf/ai-workflow update --dry-run
+npx @multileaf/ai-workflow update
+npx @multileaf/ai-workflow update --add=skills/research
+
 # Track a feature from its first artifact through final human approval.
 npx @multileaf/ai-workflow workflow start
 

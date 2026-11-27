@@ -1,8 +1,8 @@
 schema: 1
 stage: brainstorming
-fingerprint: sha256-9f9af44307eed8c203958a6aa0f7b89ed8f5b607b5a8e7718744b972b124ee86
-generatedAt: 2026-11-19T18:00:18.524Z
-title: "Bounded Research Skill"
+fingerprint: sha256-0bc1b1ef2807ca0ebaa4e549e13fd9c33b680acf2688a8093d50848a069dde0c
+generatedAt: 2026-11-27T04:44:38.800Z
+title: "Resource Update Command"
 requirementIds: []
 taskIds: []
 decisionIds: []

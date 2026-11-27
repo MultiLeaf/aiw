@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-ffb78925652fce3c89a64968ff7bd7b0f344df9032815589f95fa8eb0228650c
-generatedAt: 2026-11-19T18:04:52.561Z
-title: "Implementation Plan: Bounded Research Skill"
-requirementIds: [REQ-001, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-005]
-taskIds: [TASK-001, TASK-002, TASK-003]
+fingerprint: sha256-6d7dca7ab9c8acb667faf135813cf3763c156d48a6404c4f415a6ad8b048f13e
+generatedAt: 2026-11-27T04:49:27.867Z
+title: "Implementation Plan: Resource Update Command"
+requirementIds: [REQ-001, REQ-004, REQ-001, REQ-002, REQ-002, REQ-001, REQ-002, REQ-003, REQ-004, REQ-001, REQ-003]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004]
 decisionIds: []
 criteriaCount: 0
