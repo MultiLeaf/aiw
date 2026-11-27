@@ -1,0 +1,53 @@
+schema: 1
+workflowId: 72b951e7-a75e-4eab-8edc-0859418470a9
+stages:
+  brainstorming:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:03:04.074Z
+    artifactHash: sha256-7190d61ac4c92d4a0f7061ceaee3e3bdf4e73e9291b80bca1582d47a45d2e06e
+  product-requirements:
+    status: skipped
+    qualityGate: not-applicable
+    updatedAt: 2026-11-27T18:20:00.000Z
+    reason: Stage introduced after this workflow's specification was approved; product intent is recorded in the approved specification.
+  specification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:04:58.164Z
+    artifactHash: sha256-ecbb6fbc7fad42261631765e716d895094f959da16ed22bd8ff7339e8cf31643
+  technical-design:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:08:07.537Z
+    artifactHash: sha256-091dec89d9231de46f1aa0895ea724f5d78a2acb8ab857dd635a649aa5ae6c28
+  plan:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:09:26.677Z
+    artifactHash: sha256-42d18175e4fc1e27cbb07b66944fa601ec519d147916274378e2e972cdb9abac
+  implementation:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:28:25.538Z
+    artifactHash: sha256-e660d2fca3646dbe82e7050eeaeab8db3a5ebd672c37675ac69f4534b3928d6f
+  verification:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:30:07.929Z
+    artifactHash: sha256-d52830a5d834f418e6aa2382a6d66317c8098dca5e6060e6c9e46a93099ac061
+  review:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:31:13.187Z
+    artifactHash: sha256-2038e8df76a89f18a276c509aadbb4e97d8516f24ca0904e82b7a046f40a8973
+  traceability:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T18:33:45.136Z
+    artifactHash: sha256-551e86765715c648b842d78662a5efc1a8221f31a5ea89ae72e7487bf4e163b6
+  pr:
+    status: approved
+    qualityGate: passed
+    updatedAt: 2026-11-27T19:49:39.270Z
+    artifactHash: sha256-9bf937ec50eea6deb436d3b7bc8378ed95e083c83971101b6ed291e61a95711e

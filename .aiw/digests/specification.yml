@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-ecbb6fbc7fad42261631765e716d895094f959da16ed22bd8ff7339e8cf31643
-generatedAt: 2026-11-27T18:04:58.167Z
-title: "Specification: End-to-end flow from idea to merge-ready PR"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+fingerprint: sha256-9d93f3e38c7343a0d953d0d9237bc915510ba55fdcd85f10ed93902a5598b8f5
+generatedAt: 2026-11-27T19:57:17.171Z
+title: "Specification: Doctor rule for stage-list drift and CHANGELOG entry"
+requirementIds: [REQ-001, REQ-002, REQ-001, REQ-003]
 taskIds: []
 decisionIds: []
-criteriaCount: 5
+criteriaCount: 3

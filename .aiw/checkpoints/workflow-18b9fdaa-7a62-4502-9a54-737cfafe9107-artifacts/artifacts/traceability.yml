@@ -1,0 +1,20 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001]
+    code: ["src/human-approval.ts (export `detectStageListDrift` + lenient stage reader), src/workflow.ts (doctor branch: workflow-state check, drift report with stage names and repair command, exit 1)"]
+    tests: ["src/doctor-drift.test.ts (doctor reports drift, exit 1; no false positives on clean ledgers; doctor without drift unchanged — NFR-002 regression)"]
+    evidence: ["Record test output and changed files", "`npx prettier --check CHANGELOG.md docs/trust-boundaries.md` → exit 0", "`npx vitest run src/doctor-drift.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-002]
+    code: ["src/workflow.ts (`doctor --fix`: lenient load, insert skip records for unresolved prerequisites of decided stages, re-check, serialize; refuse required prerequisites with actionable message), src/human-approval.ts (skip-record insertion helper reusing withStage semantics)"]
+    tests: ["src/doctor-drift.test.ts (fix inserts skips and doctor passes afterwards; decided stages untouched; existing prerequisite records never overwritten; required new prerequisite refuses)"]
+    evidence: ["Record test output and changed files", "`npx prettier --check CHANGELOG.md docs/trust-boundaries.md` → exit 0", "`npx vitest run src/doctor-drift.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-003]
+    code: ["CHANGELOG.md ([Unreleased] Added/Changed entries), docs/trust-boundaries.md (one line: doctor --fix never invents approvals)"]
+    tests: ["none (docs); prettier format check"]
+    evidence: ["Record changed files", "`npx prettier --check CHANGELOG.md docs/trust-boundaries.md` → exit 0", "`npx vitest run src/doctor-drift.test.ts` → exit 0", "npm run check"]

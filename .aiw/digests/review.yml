@@ -1,10 +1,10 @@
 schema: 1
 stage: review
-fingerprint: sha256-2038e8df76a89f18a276c509aadbb4e97d8516f24ca0904e82b7a046f40a8973
-generatedAt: 2026-11-27T18:31:13.190Z
-title: "Code Review: End-to-end idea to merge-ready PR"
+fingerprint: sha256-ab23071451c6dcddf3d57d74703d11ef89a5e230fe5f6f70a353b9d2ebf44d11
+generatedAt: 2026-11-27T20:08:56.584Z
+title: "Code Review: Doctor drift rule and CHANGELOG"
 requirementIds: []
-taskIds: [TASK-001, TASK-006]
+taskIds: [TASK-001, TASK-003]
 decisionIds: []
 criteriaCount: 0
-decision: "Accept — findings are minor/informational with bounded impact; F-1 and F-4 are advisory follow-ups (multi-plan forecast targeting, doctor rule for stage-list drift) that do not block this workflow."
+decision: "Accept — the safety-critical behaviors (no invented approvals, no overwrites, required-stage refusal, strict re-validation) are all test-covered; findings are cosmetic/informational."

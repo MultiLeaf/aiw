@@ -1,9 +1,9 @@
 schema: 1
 stage: implementation
-fingerprint: sha256-e660d2fca3646dbe82e7050eeaeab8db3a5ebd672c37675ac69f4534b3928d6f
-generatedAt: 2026-11-27T18:28:25.541Z
-title: "Implementation Report: End-to-end idea to merge-ready PR"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
-taskIds: [TASK-001, TASK-006, TASK-001, TASK-001, TASK-001, TASK-002, TASK-005, TASK-004, TASK-002, TASK-003, TASK-004, TASK-005, TASK-003, TASK-006, TASK-002, TASK-004, TASK-005, TASK-006, TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-006, TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-006]
+fingerprint: sha256-7146b3decd3edb1d1ae96a6c1fd9d98e88fc9aba36198cf93fea6e923b997e63
+generatedAt: 2026-11-27T20:05:36.588Z
+title: "Implementation Report: Doctor drift rule and CHANGELOG"
+requirementIds: [REQ-001, REQ-002, REQ-003]
+taskIds: [TASK-001, TASK-003, TASK-001, TASK-002, TASK-001, TASK-003, TASK-003, TASK-001, TASK-002, TASK-003, TASK-001, TASK-002, TASK-003]
 decisionIds: []
 criteriaCount: 0

@@ -1,9 +1,9 @@
 schema: 1
 stage: technical-design
-fingerprint: sha256-091dec89d9231de46f1aa0895ea724f5d78a2acb8ab857dd635a649aa5ae6c28
-generatedAt: 2026-11-27T18:08:07.539Z
-title: "Technical Design: End-to-end flow from idea to merge-ready PR"
-requirementIds: [REQ-001, REQ-002, REQ-001, REQ-002, REQ-001, REQ-004, REQ-001, REQ-003, REQ-003, REQ-004, REQ-003, REQ-005, REQ-004, REQ-001, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+fingerprint: sha256-f1fc9af51499b2c37aa642218dcbfcf97bbb4a8ef40508f0205485580f487661
+generatedAt: 2026-11-27T19:58:54.731Z
+title: "Technical Design: Doctor rule for stage-list drift and CHANGELOG entry"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-001, REQ-002, REQ-003, REQ-001, REQ-002, REQ-003]
 taskIds: []
 decisionIds: []
 criteriaCount: 0

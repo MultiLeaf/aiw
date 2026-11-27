@@ -1,5 +1,7 @@
 schema: 1
-workflowId: 72b951e7-a75e-4eab-8edc-0859418470a9
+workflowId: 18b9fdaa-7a62-4502-9a54-737cfafe9107
 status: complete
-startedAt: 2026-11-27T18:02:16.360Z
-updatedAt: 2026-11-27T19:49:39.340Z
+startedAt: 2026-11-27T19:56:16.967Z
+updatedAt: 2026-11-27T20:14:35.621Z
+ticket: AIW-001
+title: Doctor rule for stage-list drift and CHANGELOG entry
