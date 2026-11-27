@@ -2,6 +2,7 @@ export const TARGETS = ["codex", "claude", "cursor", "gemini", "copilot", "unive
 export type Target = (typeof TARGETS)[number];
 export const HUMAN_APPROVAL_STAGES = [
   "brainstorming",
+  "product-requirements",
   "specification",
   "technical-design",
   "plan",
@@ -9,6 +10,7 @@ export const HUMAN_APPROVAL_STAGES = [
   "verification",
   "review",
   "traceability",
+  "pr",
   "diagnosis",
   "assessment",
 ] as const;
@@ -19,6 +21,7 @@ export const PROCESSES = {
   feature: {
     stages: [
       "brainstorming",
+      "product-requirements",
       "specification",
       "technical-design",
       "plan",
@@ -26,6 +29,7 @@ export const PROCESSES = {
       "verification",
       "review",
       "traceability",
+      "pr",
     ],
   },
   bugfix: {

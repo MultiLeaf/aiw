@@ -48,6 +48,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=digest-1"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeFile(join(cwd, ".aiw/generated/specs/digest-1/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
@@ -67,6 +68,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=digest-2"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeFile(join(cwd, ".aiw/generated/specs/digest-2/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
@@ -85,6 +87,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=digest-3"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeFile(join(cwd, ".aiw/generated/specs/digest-3/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);
@@ -107,6 +110,7 @@ describe("OPP-013 digest layer (e2e)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=digest-4"], cwd);
     await run(["skip", "brainstorming", "--reason=ticket requirement"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeFile(join(cwd, ".aiw/generated/specs/digest-4/specification.md"), SPEC);
     await run(["gate", "specification"], cwd);

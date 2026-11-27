@@ -385,7 +385,7 @@ npx @multileaf/ai-workflow telemetry enable
 npx @multileaf/ai-workflow telemetry disable
 ```
 
-Package contracts, declared permissions, and organization policy are validated at documented workflow boundaries, but not every external subprocess is covered by one global preflight. In particular, Vercel Skills delegates to `npx skills`, and Git sources may be checked out before their package manifest can be inspected. Treat third-party sources as untrusted and review dry-runs and package audits. Published npm releases include registry signatures and SLSA provenance that consumers can verify with `npm audit signatures`. See [Security and Trust](docs/security.md) and [Telemetry and Privacy](docs/telemetry.md).
+Package contracts, declared permissions, and organization policy are validated at documented workflow boundaries, but not every external subprocess is covered by one global preflight. In particular, Vercel Skills delegates to `npx skills`, and Git sources may be checked out before their package manifest can be inspected. Treat third-party sources as untrusted and review dry-runs and package audits. Published npm releases include registry signatures and SLSA provenance that consumers can verify with `npm audit signatures`. See [Security and Trust](docs/security.md), [Trust Boundaries](docs/trust-boundaries.md), and [Telemetry and Privacy](docs/telemetry.md).
 
 ## Developing this repository
 

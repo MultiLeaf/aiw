@@ -12,6 +12,85 @@ describe("quality gates", () => {
     ]);
   });
 
+  it("gates the product-requirements artifact on its five sections", () => {
+    expect(evaluateQualityGate("product-requirements", "# PRD\n\n## Problem\n\n")).toEqual([
+      "PRD section Problem must contain content.",
+      "PRD section Users is missing.",
+      "PRD section Outcomes is missing.",
+      "PRD section Non-goals is missing.",
+      "PRD section Success Signals is missing.",
+    ]);
+    expect(
+      evaluateQualityGate(
+        "product-requirements",
+        "# PRD\n\n## Problem\nP\n## Users\nU\n## Outcomes\nO\n## Non-goals\nN\n## Success Signals\nS\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it("enforces the QA test matrix in plan and verification gates (REQ-003)", () => {
+    const base =
+      "TASK-001\nRequirement: REQ-001\nCode: src/a.ts\nTests: src/a.test.ts\nValidation: npm test\nEvidence: output\n";
+    // Ratchet: plans without a Test Plan section pass unchanged.
+    expect(evaluateQualityGate("plan", base)).toEqual([]);
+    expect(
+      evaluateQualityGate(
+        "plan",
+        `${base}\n## Test Plan\n\nTC-001: login flow (REQ-001)\nTC-002: logout flow (REQ-001)\n`,
+      ),
+    ).toEqual([]);
+    expect(evaluateQualityGate("plan", `${base}\n## Test Plan\n\nTC-001: login flow\n`)).toEqual([
+      "Test case TC-001 must link to at least one REQ-### requirement.",
+    ]);
+    expect(evaluateQualityGate("plan", `${base}\n## Test Plan\n\nNo cases yet\n`)).toEqual([
+      "Test Plan must define TC-### cases linked to REQ-### requirements.",
+    ]);
+
+    const verification =
+      "## Requirements Checked\nREQ-001\n## Checks Passed\nnpm test\n## Missing Evidence\nNone\n## Residual Risks\nNone\n## Decision\nComplete\n";
+    // Ratchet: reports without a Test Results section pass unchanged.
+    expect(evaluateQualityGate("verification", verification)).toEqual([]);
+    expect(
+      evaluateQualityGate(
+        "verification",
+        `${verification}\n## Test Results\n\nTC-001: pass (npm test)\nTC-002: pass (npm test)\n`,
+      ),
+    ).toEqual([]);
+    expect(
+      evaluateQualityGate("verification", `${verification}\n## Test Results\n\nTC-001: fail\n`),
+    ).toEqual([
+      "Test case TC-001 failed; resolve it before verification passes.",
+      "Test case TC-001 must record a result (pass/fail).",
+    ]);
+    expect(
+      evaluateQualityGate("verification", `${verification}\n## Test Results\n\nTC-001: unclear\n`),
+    ).toEqual(["Test case TC-001 must record a result (pass/fail)."]);
+  });
+
+  it("requires ADR links for declared consequential decisions (REQ-004)", () => {
+    const design =
+      "## Context\nNeed\n## Proposed Design\nModule\n## Alternatives\nA or B\n## Interfaces\nAPI\n## Risks\nMigration\n## Validation\nTests\n";
+    // Ratchet: designs without the section pass unchanged.
+    expect(evaluateQualityGate("technical-design", design)).toEqual([]);
+    expect(
+      evaluateQualityGate("technical-design", `${design}\n## Consequential Decisions\n\nNone\n`),
+    ).toEqual([]);
+    expect(
+      evaluateQualityGate(
+        "technical-design",
+        `${design}\n## Consequential Decisions\n\n- Strictness ordering — .context/adrs/ADR-101-policy-order.md\n`,
+      ),
+    ).toEqual([]);
+    expect(
+      evaluateQualityGate(
+        "technical-design",
+        `${design}\n## Consequential Decisions\n\n- Strictness ordering (no ADR yet)\n`,
+      ),
+    ).toEqual([
+      "Consequential decision must link an existing ADR path (.context/adrs/ADR-*.md): - Strictness ordering (no ADR yet)",
+    ]);
+  });
+
   it("accepts complete artifacts and rejects incomplete specifications and plans", () => {
     const brainstorm =
       "## Goal\nShip safely\n## Users\nDevelopers\n## Constraints\nEnglish\n## Risks\nDrift\n## Non-goals\nUI\n";

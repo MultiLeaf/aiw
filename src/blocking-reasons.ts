@@ -31,6 +31,7 @@ export const BLOCKING_REASON_CODES = [
   "worktrees_leaked",
   "orchestration_not_executed",
   "update_conflict",
+  "stage_escalated",
 ] as const;
 
 export type BlockingReasonCode = (typeof BLOCKING_REASON_CODES)[number];
@@ -99,6 +100,17 @@ export const BLOCKING_REASON_INVENTORY: Readonly<
             `Fix the gate findings in the stage artifact${context.artifactPath ? ` (${context.artifactPath})` : ""}, then run \`aiw gate ${context.stage}\` again.`,
           )
         : terminal("Fix the gate findings, then rerun the stage gate."),
+  },
+  stage_escalated: {
+    code: "stage_escalated",
+    description:
+      "The stage exhausted its consecutive-rejection budget; a human decision is required (REQ-002).",
+    continuation: (context) =>
+      context.stage
+        ? command(
+            `aiw resolve --stage=${context.stage} (authorize another attempt) or approve a revision`,
+          )
+        : terminal("A human must resolve the escalated stage."),
   },
   stage_prerequisite_pending: {
     code: "stage_prerequisite_pending",

@@ -82,6 +82,7 @@ describe("OPP-015 token and recovery governance", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=opp15-regression"], cwd);
     await run(["skip", "brainstorming", "--reason=requirement provided by ticket"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeFile(
       join(cwd, ".aiw", "generated", "specs", "opp15-regression", "specification.md"),

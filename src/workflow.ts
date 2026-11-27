@@ -124,6 +124,14 @@ import {
   serializeSemanticIndex,
 } from "./semantic.js";
 import {
+  clusterRejections,
+  formatRulesCandidates,
+  loadRulesCandidates,
+  saveRulesCandidates,
+  setCandidateStatus,
+  type RejectionOccurrence,
+} from "./rules-candidates.js";
+import {
   assertKnownPermissions,
   assertPermissions,
   assertPackagePermissions,
@@ -188,6 +196,8 @@ import {
   type WorkflowProcess,
   type WorkflowSession,
   effectiveLane,
+  rejectionBudgetFor,
+  authorizeRetry,
 } from "./human-approval.js";
 import { buildCompletionReport } from "./completion-report.js";
 import {
@@ -266,7 +276,7 @@ import {
 import { parseTraceabilityGraph } from "./traceability.js";
 import { serializeAdapterCapabilities } from "./adapter-contract.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "./traceability.js";
-import { evaluateQualityGate, type QualityGateStage } from "./quality-gates.js";
+import { evaluateQualityGate, triageAdvisories, type QualityGateStage } from "./quality-gates.js";
 import {
   BlockingError,
   blockingResultToJson,
@@ -441,7 +451,14 @@ async function writeCompletionReport(
   } catch {
     // REQ-003: unreadable usage data degrades to an advisory, never blocks completion.
   }
-  const report = buildCompletionReport({ session, ledger, usage, attribution });
+  let prReadiness: string | undefined;
+  try {
+    const prPath = resolveStageArtifact(fs, aiw, "pr", session.workflowId).path;
+    if (fs.exists(prPath)) prReadiness = fs.read(prPath);
+  } catch {
+    // REQ-003: unreadable PR evidence degrades the report section, never blocks completion.
+  }
+  const report = buildCompletionReport({ session, ledger, usage, attribution, prReadiness });
   try {
     const reportDir = join(aiw, "generated/reports");
     if (!fs.exists(reportDir)) fs.mkdir(reportDir);
@@ -590,6 +607,7 @@ function beginWorkflowSession(
     lane?: "light";
     laneReason?: string;
     process?: WorkflowProcess;
+    rejectionBudget?: number;
   },
 ): CommandResult {
   const sessionPath = join(aiw, "workflow.yml");
@@ -640,6 +658,7 @@ function beginWorkflowSession(
       ? { lane: "light" as const, laneReason: options.laneReason }
       : {}),
     ...(options.process && options.process !== "feature" ? { process: options.process } : {}),
+    ...(options.rejectionBudget !== undefined ? { rejectionBudget: options.rejectionBudget } : {}),
   });
   fs.write(ledgerPath, serializeApprovalLedger(ledger));
   fs.write(sessionPath, serializeWorkflowSession(session));
@@ -864,13 +883,13 @@ export async function runCommand(
       if (action === "start") {
         const options = parseNamedOptions(
           args.slice(2).filter((argument) => argument !== "--json"),
-          ["id", "process"],
+          ["id", "process", "rejection-budget"],
         );
         if (!options)
           return {
             exitCode: 1,
             error:
-              "Usage: aiw workflow start [--id=workflow-id] [--process=bugfix|idea-assessment]",
+              "Usage: aiw workflow start [--id=workflow-id] [--process=bugfix|idea-assessment] [--rejection-budget=number]",
           };
         const processName = options.process;
         if (processName !== undefined && !isWorkflowProcess(processName))
@@ -878,9 +897,20 @@ export async function runCommand(
             exitCode: 1,
             error: `Unknown process: ${processName}. Known processes: ${PROCESS_IDS.join(", ")}.`,
           };
+        const budgetRaw = options["rejection-budget"];
+        const rejectionBudget = budgetRaw === undefined ? undefined : Number(budgetRaw);
+        if (
+          rejectionBudget !== undefined &&
+          (!Number.isSafeInteger(rejectionBudget) || rejectionBudget < 1)
+        )
+          return {
+            exitCode: 1,
+            error: "--rejection-budget must be an integer of at least 1.",
+          };
         return beginWorkflowSession(fs, aiw, {
           id: options.id,
           ...(processName ? { process: processName } : {}),
+          ...(rejectionBudget !== undefined ? { rejectionBudget } : {}),
         });
       }
       if (action === "status") {
@@ -1141,9 +1171,14 @@ export async function runCommand(
         return { exitCode: 1, error: "Usage: aiw reject <stage> --reason=human-feedback" };
       const updated = rejectStage(ledger, workflowStage, options.reason, new Date().toISOString());
       fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
+      const updatedRecord = updated.stages[workflowStage];
+      const budget = rejectionBudgetFor(ledger);
+      const escalation = updatedRecord?.escalated
+        ? `\nEscalation: ${workflowStage} has now been rejected ${updatedRecord.rejectionCount} consecutive time(s) (budget ${budget}). Further gates for this stage are blocked until you either approve a revision or authorize a new attempt with aiw resolve --stage=${workflowStage}. Rejection reasons: ${(updatedRecord.rejectionReasons ?? []).join(" | ")}`
+        : `\nRejection ${updatedRecord?.rejectionCount ?? 1} of ${budget} for ${workflowStage} before escalation.`;
       return {
         exitCode: 0,
-        output: `Human rejection recorded for ${workflowStage}. Revise this stage.`,
+        output: `Human rejection recorded for ${workflowStage}. Revise this stage.${escalation}`,
       };
     }
     if (command === "ui") {
@@ -2409,6 +2444,67 @@ export async function runCommand(
       saveSettingOverrides(fs, aiw, overrides);
       return { exitCode: 0, output: "Fact overrides saved." };
     }
+    if (command === "rules-candidates") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      const acceptArg = args.find((argument) => argument.startsWith("--accept="));
+      const dismissArg = args.find((argument) => argument.startsWith("--dismiss="));
+      if (acceptArg && dismissArg)
+        return {
+          exitCode: 1,
+          error: "Usage: aiw rules-candidates [--accept=id | --dismiss=id]",
+        };
+      if (acceptArg || dismissArg) {
+        const candidates = loadRulesCandidates(fs, aiw);
+        try {
+          const updated = setCandidateStatus(
+            candidates,
+            (acceptArg ?? dismissArg)!.slice(acceptArg ? 9 : 10),
+            acceptArg ? "accepted" : "dismissed",
+          );
+          saveRulesCandidates(fs, aiw, updated);
+        } catch (error) {
+          return { exitCode: 1, error: (error as Error).message };
+        }
+        const id = (acceptArg ?? dismissArg)!.slice(acceptArg ? 9 : 10);
+        if (acceptArg)
+          return {
+            exitCode: 0,
+            output: `Candidate ${id} accepted. Create the rule or skill file it describes and commit it manually (agents never commit rule files), then share it with the team for review.`,
+          };
+        return {
+          exitCode: 0,
+          output: `Candidate ${id} dismissed; it will not be re-proposed. Rejection history is preserved in the ledger.`,
+        };
+      }
+      // Scan the active ledger plus archived workflow ledgers for rejection reasons.
+      const occurrences: RejectionOccurrence[] = [];
+      const considerLedger = (content: string): void => {
+        const ledger = parseApprovalLedger(content);
+        for (const [stage, record] of Object.entries(ledger.stages)) {
+          for (const reason of record.rejectionReasons ?? [])
+            occurrences.push({
+              workflowId: ledger.workflowId,
+              stage,
+              reason,
+              date: record.updatedAt,
+            });
+        }
+      };
+      if (fs.exists(join(aiw, "approvals.yml")))
+        considerLedger(fs.read(join(aiw, "approvals.yml")));
+      const checkpointsDir = join(aiw, "checkpoints");
+      if (fs.exists(checkpointsDir) && fs.list)
+        for (const name of fs.list(checkpointsDir) ?? [])
+          if (name.startsWith("workflow-") && name.endsWith("-approvals.yml"))
+            considerLedger(fs.read(join(checkpointsDir, name)));
+      const prior = loadRulesCandidates(fs, aiw);
+      const candidates = clusterRejections(occurrences, prior);
+      const path = saveRulesCandidates(fs, aiw, candidates);
+      return {
+        exitCode: 0,
+        output: `${formatRulesCandidates(candidates)}\nSaved to ${path}. Candidates never activate on their own: accept one with aiw rules-candidates --accept=<id>, then create and commit the rule/skill file manually.`,
+      };
+    }
     if (command === "recommend") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const profile = await (services.profiler?.profile(root) ?? profileProject(root));
@@ -3106,6 +3202,33 @@ export async function runCommand(
       );
       return { exitCode: 0, output: `Brainstorm artifact created: ${path}` };
     }
+    if (command === "prd") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      assertStageReady(aiw, fs, "product-requirements");
+      const title =
+        args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled PRD";
+      const path = stageArtifactWritePath(fs, aiw, "product-requirements");
+      fs.write(
+        path,
+        `# ${title}\n\n## Problem\n\n## Users\n\n## Outcomes\n\n## Non-goals\n\n## Success Signals\n\n`,
+      );
+      return { exitCode: 0, output: `Product requirements artifact created: ${path}` };
+    }
+    if (command === "pr") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      assertStageReady(aiw, fs, "pr");
+      const title =
+        args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Pull Request";
+      const path = stageArtifactWritePath(fs, aiw, "pr");
+      fs.write(
+        path,
+        `# ${title}\n\n## PR Reference\n\n<PR number or URL, e.g. #42 or https://github.com/org/repo/pull/42>\n\n## Branch\n\n<feature branch> → <base branch>\n\n## CI Evidence\n\n<command, result, link — e.g. gh pr checks --view compact: all pass>\n\n## Review Comments\n\n<total comments, resolved evidence, and a line: unresolved: 0>\n\n## Conflict Check\n\n<merge state — clean / no conflicts, or conflicts with a resolution plan>\n\n## Merge-Ready Checklist\n\n- [ ] CI green on the PR\n- [ ] All review comments resolved (unresolved: 0)\n- [ ] No merge conflicts with the base branch\n- [ ] Human-only: branch protection and required approvals satisfied\n\n`,
+      );
+      return {
+        exitCode: 0,
+        output: `PR readiness artifact created: ${path}. Host-side steps (the CLI never runs these): push the branch (git push -u origin <branch>), open the PR (gh pr create --base <base> --title <title>), watch CI (gh pr checks), resolve review comments (triage: auto-fixable may be automated; judgment-required surface to the human), re-check conflicts (aiw orchestrate integrate or the forge's update-branch), then fill the report and run aiw gate pr.`,
+      };
+    }
     if (command === "spec") {
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       assertStageReady(aiw, fs, "specification");
@@ -3460,7 +3583,17 @@ export async function runCommand(
           error: `Usage: aiw gate <${APPROVAL_STAGES.join("|")}>`,
         };
       const workflowStage = stage as HumanApprovalStage;
-      assertStageReady(aiw, fs, workflowStage);
+      const observe = args.slice(2).includes("--observe");
+      if (!observe) assertStageReady(aiw, fs, workflowStage);
+      const { ledger: gateLedger } = readActiveWorkflow(aiw, fs);
+      const stageRecord = gateLedger.stages[workflowStage];
+      if (stageRecord?.escalated && !observe)
+        throw new BlockingError(
+          describeBlockingReason("stage_escalated", {
+            stage,
+            detail: `Stage ${stage} is escalated after ${stageRecord.rejectionCount} consecutive rejection(s). The gate is blocked until a human records an explicit decision: approve a revision as-is, or authorize a new attempt with aiw resolve --stage=${stage}. Rejections so far: ${(stageRecord.rejectionReasons ?? []).join(" | ")}`,
+          }),
+        );
       const artifactPath = approvalArtifactPath(fs, aiw, workflowStage);
       if (!artifactPath || !fs.exists(artifactPath))
         throw new BlockingError(
@@ -3471,34 +3604,82 @@ export async function runCommand(
           }),
         );
       const hasQualityGate = stageDefinition(workflowStage).requiresQualityGate;
-      if (hasQualityGate) {
-        const issues = evaluateQualityGate(stage as QualityGateStage, fs.read(artifactPath));
-        if (issues.length)
-          throw new BlockingError(
-            describeBlockingReason("gate_incomplete", {
-              stage,
-              artifactPath,
-              gateIssues: issues,
-              detail: `Quality gate blocked: ${issues.join(" ")}`,
-            }),
-          );
+      const gateIssues = hasQualityGate
+        ? evaluateQualityGate(stage as QualityGateStage, fs.read(artifactPath))
+        : [];
+      // REQ-004: ADR links declared by the design must exist on disk.
+      if (workflowStage === "technical-design")
+        for (const match of fs.read(artifactPath).matchAll(/\.context\/adrs\/(ADR-[^\s)]+\.md)/g)) {
+          const adrPath = join(root, ".context/adrs", match[1]);
+          if (!fs.exists(adrPath))
+            gateIssues.push(`Consequential decision links a missing ADR file: ${match[1]}`);
+        }
+      // REQ-001: auto-consume the orchestration merge forecast for the PR stage
+      // when a checkpoint exists; recorded evidence remains the fallback.
+      if (workflowStage === "pr") {
+        const checkpointDir = join(aiw, "checkpoints");
+        const orchestrationFiles = (fs.list?.(checkpointDir) ?? []).filter(
+          (file) => file.startsWith("orchestration-") && file.endsWith(".yml"),
+        );
+        if (orchestrationFiles.length > 0 && fs.exists(join(root, "orchestration.yml"))) {
+          try {
+            const plan = parseOrchestrationPlan(fs.read(join(root, "orchestration.yml")));
+            const results = parseOrchestrationResults(
+              fs.read(join(checkpointDir, orchestrationFiles[0]!)),
+            );
+            const forecast = forecastIntegration(root, plan, results);
+            const conflicts = forecast.filter((line) => line.state === "conflict");
+            if (conflicts.length > 0)
+              gateIssues.push(
+                `Orchestration merge forecast reports conflicts: ${conflicts
+                  .map((line) => `${line.taskId} (${(line.conflicts ?? []).join(", ")})`)
+                  .join("; ")}`,
+              );
+          } catch {
+            // Not a git repository or the plan drifted: fall back to recorded evidence.
+          }
+        }
       }
-      if (
-        hasQualityGate &&
-        (workflowStage === "implementation" || workflowStage === "verification")
-      ) {
-        const pairIssues = compareVerificationPairs(aiw, fs, workflowStage);
-        if (pairIssues.length)
-          throw new BlockingError(
-            describeBlockingReason("gate_incomplete", {
-              stage,
-              artifactPath,
-              gateIssues: pairIssues,
-              detail: `Quality gate blocked: ${pairIssues.join(" ")}`,
-            }),
-          );
+      const pairIssues =
+        hasQualityGate && (workflowStage === "implementation" || workflowStage === "verification")
+          ? compareVerificationPairs(aiw, fs, workflowStage)
+          : [];
+      if (observe) {
+        const path = recordObserveDecision(
+          aiw,
+          fs,
+          workflowStage,
+          gateIssues.length + pairIssues.length === 0 ? "pass" : "fail",
+          [...gateIssues, ...pairIssues],
+        );
+        const findings = [...gateIssues, ...pairIssues];
+        return {
+          exitCode: 0,
+          output: `Observe mode: gate would ${findings.length ? `fail for ${stage} (${findings.length} issue(s))` : `pass for ${stage}`}. No workflow state was changed; run aiw gate ${stage} to record the real decision. Findings logged to ${path}.`,
+        };
       }
+      if (gateIssues.length)
+        throw new BlockingError(
+          describeBlockingReason("gate_incomplete", {
+            stage,
+            artifactPath,
+            gateIssues,
+            detail: `Quality gate blocked: ${gateIssues.join(" ")}`,
+          }),
+        );
+      if (pairIssues.length)
+        throw new BlockingError(
+          describeBlockingReason("gate_incomplete", {
+            stage,
+            artifactPath,
+            gateIssues: pairIssues,
+            detail: `Quality gate blocked: ${pairIssues.join(" ")}`,
+          }),
+        );
       const { ledger } = readActiveWorkflow(aiw, fs);
+      const advisories = hasQualityGate
+        ? triageAdvisories(stage as QualityGateStage, fs.read(artifactPath))
+        : [];
       const updated = beginStageApproval(ledger, workflowStage, {
         artifactHash: stageFingerprint(fs.read(artifactPath)),
         qualityGate: hasQualityGate ? "passed" : "not-applicable",
@@ -3507,7 +3688,7 @@ export async function runCommand(
       fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(updated));
       return {
         exitCode: 0,
-        output: `${hasQualityGate ? `Quality gate passed for ${stage}.` : `Evidence recorded for ${stage}; no automated quality gate applies.`} Human approval is still required: run aiw approve ${stage}.${resolveStageArtifact(fs, aiw, workflowStage, activeWorkflowId(fs, aiw)).legacyFallback ? ` Advisory: ${stage} artifact read from the legacy fixed path; new writes go to the workflow-scoped path.` : ""}`,
+        output: `${hasQualityGate ? `Quality gate passed for ${stage}.` : `Evidence recorded for ${stage}; no automated quality gate applies.`} Human approval is still required: run aiw approve ${stage}.${resolveStageArtifact(fs, aiw, workflowStage, activeWorkflowId(fs, aiw)).legacyFallback ? ` Advisory: ${stage} artifact read from the legacy fixed path; new writes go to the workflow-scoped path.` : ""}${advisories.length ? ` ${advisories.join(" ")}` : ""}`,
       };
     }
     if (command === "validate") {
@@ -3532,8 +3713,33 @@ export async function runCommand(
       if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
       const packageArg = args.find((arg) => arg.startsWith("--package="));
       const sourceArg = args.find((arg) => arg.startsWith("--source="));
+      const stageArg = args.find((arg) => arg.startsWith("--stage="));
+      if (stageArg) {
+        const stage = stageArg.slice(8);
+        if (!APPROVAL_STAGES.includes(stage as HumanApprovalStage))
+          return {
+            exitCode: 1,
+            error: `Usage: aiw resolve --stage=<${APPROVAL_STAGES.join("|")}>`,
+          };
+        const workflowStage = stage as HumanApprovalStage;
+        const { ledger: resolveLedger } = readActiveWorkflow(aiw, fs);
+        if (!resolveLedger.stages[workflowStage]?.escalated)
+          return {
+            exitCode: 1,
+            error: `Stage ${workflowStage} is not escalated; nothing to resolve.`,
+          };
+        const resolved = authorizeRetry(resolveLedger, workflowStage, new Date().toISOString());
+        fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(resolved));
+        return {
+          exitCode: 0,
+          output: `Human retry authorization recorded for ${workflowStage}: escalation cleared and the rejection count reset. Revise the artifact, then run aiw gate ${workflowStage}.`,
+        };
+      }
       if (!packageArg && !sourceArg)
-        return { exitCode: 1, error: "Usage: aiw resolve --package=path | --source=source" };
+        return {
+          exitCode: 1,
+          error: "Usage: aiw resolve --package=path | --source=source | --stage=workflow-stage",
+        };
       const approvedPermissions = parseApprovedPermissions(args);
       if (sourceArg) {
         const source = resolveProvider(sourceArg.slice(9), root);
@@ -4548,6 +4754,45 @@ function parseLightEvidence(content: string): LightEvidence {
       recordedAt: String((entry as Record<string, unknown>).recordedAt ?? ""),
     })),
   };
+}
+
+const OBSERVE_DECISIONS_PER_STAGE_CAP = 20;
+interface ObserveDecisionEntry {
+  stage: string;
+  decision: "pass" | "fail";
+  issues: string[];
+  recordedAt: string;
+}
+/** REQ-001: log the decision a gate would make, without mutating stage state. */
+function recordObserveDecision(
+  aiw: string,
+  fs: FileSystem,
+  stage: HumanApprovalStage,
+  decision: "pass" | "fail",
+  issues: string[],
+): string {
+  const workflowId = activeWorkflowId(fs, aiw) ?? "none";
+  const path = join(aiw, `checkpoints/workflow-${workflowId}-observe.json`);
+  let entries: ObserveDecisionEntry[] = [];
+  if (fs.exists(path)) {
+    try {
+      entries = JSON.parse(fs.read(path)) as ObserveDecisionEntry[];
+    } catch {
+      entries = [];
+    }
+  }
+  const others = entries.filter((entry) => entry.stage !== stage);
+  const stageEntries = entries.filter((entry) => entry.stage === stage);
+  const entry: ObserveDecisionEntry = {
+    stage,
+    decision,
+    issues,
+    recordedAt: new Date().toISOString(),
+  };
+  const trimmed = [...stageEntries, entry].slice(-OBSERVE_DECISIONS_PER_STAGE_CAP);
+  if (!fs.exists(join(aiw, "checkpoints"))) fs.mkdir(join(aiw, "checkpoints"));
+  fs.write(path, JSON.stringify([...others, ...trimmed], null, 2));
+  return path;
 }
 
 function assertStageReady(aiw: string, fs: FileSystem, stage: HumanApprovalStage): void {
