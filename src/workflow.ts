@@ -2502,7 +2502,13 @@ export async function runCommand(
           if (name.startsWith("workflow-") && name.endsWith("-approvals.yml"))
             considerLedger(fs.read(join(checkpointsDir, name)));
       const prior = loadRulesCandidates(fs, aiw);
-      const candidates = clusterRejections(occurrences, prior);
+      const clustered = clusterRejections(occurrences, prior);
+      // AIW-002 REQ-005: manual entries (ids not derived from the current
+      // clusters) survive the rescan unchanged.
+      const candidates = [
+        ...clustered,
+        ...prior.filter((entry) => !clustered.some((candidate) => candidate.id === entry.id)),
+      ];
       const path = saveRulesCandidates(fs, aiw, candidates);
       return {
         exitCode: 0,
@@ -3691,29 +3697,58 @@ export async function runCommand(
           if (!fs.exists(adrPath))
             gateIssues.push(`Consequential decision links a missing ADR file: ${match[1]}`);
         }
-      // REQ-001: auto-consume the orchestration merge forecast for the PR stage
-      // when a checkpoint exists; recorded evidence remains the fallback.
+      // REQ-001 (AIW-002): auto-consume the orchestration merge forecast for
+      // the PR stage — but only from a plan whose task branches match the PR
+      // report's declared branch; recorded evidence remains the fallback.
       if (workflowStage === "pr") {
         const checkpointDir = join(aiw, "checkpoints");
         const orchestrationFiles = (fs.list?.(checkpointDir) ?? []).filter(
           (file) => file.startsWith("orchestration-") && file.endsWith(".yml"),
         );
-        if (orchestrationFiles.length > 0 && fs.exists(join(root, "orchestration.yml"))) {
-          try {
-            const plan = parseOrchestrationPlan(fs.read(join(root, "orchestration.yml")));
-            const results = parseOrchestrationResults(
-              fs.read(join(checkpointDir, orchestrationFiles[0]!)),
+        if (orchestrationFiles.length > 0) {
+          // The declared feature branch, e.g. "feature/x → main" or "aiw/plan1/TASK-001".
+          const branchSection = fs
+            .read(artifactPath)
+            .match(/^## Branch\s*$([\s\S]*?)(?=^## |(?![\s\S]))/im)?.[1]
+            ?.trim();
+          const declaredBranch = branchSection?.split(/[\n\u2192]/)[0]?.trim() ?? "";
+          const planIds = orchestrationFiles
+            .map((file) => /^orchestration-([a-z0-9-]+)\.yml$/.exec(file)?.[1])
+            .filter((id): id is string => Boolean(id));
+          const planCandidates = [
+            ...(fs.exists(join(root, "orchestration.yml"))
+              ? [parseOrchestrationPlan(fs.read(join(root, "orchestration.yml")))]
+              : []),
+            ...planIds.flatMap((id) => {
+              const planPath = join(root, `orchestration-${id}.yml`);
+              if (!fs.exists(planPath)) return [];
+              try {
+                return [parseOrchestrationPlan(fs.read(planPath))];
+              } catch {
+                return [];
+              }
+            }),
+          ];
+          for (const plan of planCandidates) {
+            // Only consume the plan whose task branches relate to the PR's branch.
+            if (declaredBranch && !declaredBranch.startsWith(`aiw/${plan.id}/`)) continue;
+            const checkpoint = orchestrationFiles.find(
+              (file) => file === `orchestration-${plan.id}.yml`,
             );
-            const forecast = forecastIntegration(root, plan, results);
-            const conflicts = forecast.filter((line) => line.state === "conflict");
-            if (conflicts.length > 0)
-              gateIssues.push(
-                `Orchestration merge forecast reports conflicts: ${conflicts
-                  .map((line) => `${line.taskId} (${(line.conflicts ?? []).join(", ")})`)
-                  .join("; ")}`,
-              );
-          } catch {
-            // Not a git repository or the plan drifted: fall back to recorded evidence.
+            if (!checkpoint) continue;
+            try {
+              const results = parseOrchestrationResults(fs.read(join(checkpointDir, checkpoint)));
+              const forecast = forecastIntegration(root, plan, results);
+              const conflicts = forecast.filter((line) => line.state === "conflict");
+              if (conflicts.length > 0)
+                gateIssues.push(
+                  `Orchestration merge forecast reports conflicts: ${conflicts
+                    .map((line) => `${line.taskId} (${(line.conflicts ?? []).join(", ")})`)
+                    .join("; ")}`,
+                );
+            } catch {
+              // Not a git repository or the checkpoint drifted: fall back to recorded evidence.
+            }
           }
         }
       }
@@ -4849,11 +4884,20 @@ function recordObserveDecision(
   issues: string[],
 ): string {
   const workflowId = activeWorkflowId(fs, aiw) ?? "none";
-  const path = join(aiw, `checkpoints/workflow-${workflowId}-observe.json`);
+  const path = join(aiw, `checkpoints/workflow-${workflowId}-observe.yml`);
+  const legacyJsonPath = join(aiw, `checkpoints/workflow-${workflowId}-observe.json`);
   let entries: ObserveDecisionEntry[] = [];
+  // AIW-002 REQ-004: YAML is the checkpoint format; a legacy JSON file is
+  // migrated losslessly (parsed once, then superseded).
   if (fs.exists(path)) {
     try {
-      entries = JSON.parse(fs.read(path)) as ObserveDecisionEntry[];
+      entries = (parseYaml(fs.read(path)) ?? []) as ObserveDecisionEntry[];
+    } catch {
+      entries = [];
+    }
+  } else if (fs.exists(legacyJsonPath)) {
+    try {
+      entries = JSON.parse(fs.read(legacyJsonPath)) as ObserveDecisionEntry[];
     } catch {
       entries = [];
     }
@@ -4868,7 +4912,8 @@ function recordObserveDecision(
   };
   const trimmed = [...stageEntries, entry].slice(-OBSERVE_DECISIONS_PER_STAGE_CAP);
   if (!fs.exists(join(aiw, "checkpoints"))) fs.mkdir(join(aiw, "checkpoints"));
-  fs.write(path, JSON.stringify([...others, ...trimmed], null, 2));
+  fs.write(path, stringify([...others, ...trimmed], { lineWidth: 0 }));
+  if (fs.exists(legacyJsonPath)) fs.remove?.(legacyJsonPath);
   return path;
 }
 

@@ -39,6 +39,13 @@ describe("quality gates", () => {
         `${base}\n## Test Plan\n\nTC-001: login flow (REQ-001)\nTC-002: logout flow (REQ-001)\n`,
       ),
     ).toEqual([]);
+    // AIW-002 REQ-002: a REQ reference wrapped to the next (indented) line links.
+    expect(
+      evaluateQualityGate(
+        "plan",
+        `${base}\n## Test Plan\n\nTC-001: login flow\n  covers REQ-001\nTC-002: logout flow (REQ-001)\n`,
+      ),
+    ).toEqual([]);
     expect(evaluateQualityGate("plan", `${base}\n## Test Plan\n\nTC-001: login flow\n`)).toEqual([
       "Test case TC-001 must link to at least one REQ-### requirement.",
     ]);

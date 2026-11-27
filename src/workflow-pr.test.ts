@@ -181,7 +181,11 @@ describe("pr stage command and gate (REQ-001)", () => {
     execFileSync("git", ["add", "."], { cwd, stdio: "ignore" });
     execFileSync("git", ["commit", "-m", "main"], { cwd, stdio: "ignore" });
 
-    await advanceToPr(cwd, READY_REPORT);
+    // The PR report must declare a branch matching the orchestration plan.
+    await advanceToPr(
+      cwd,
+      READY_REPORT.replace("feature/end-to-end → main", "aiw/plan1/TASK-001 → main"),
+    );
     // Orchestration plan + checkpoint: the gate must re-run the forecast.
     await writeFile(
       join(cwd, "orchestration.yml"),
@@ -197,5 +201,19 @@ describe("pr stage command and gate (REQ-001)", () => {
     const blocked = await run(["gate", "pr"], cwd);
     expect(blocked.exitCode).toBe(1);
     expect(blocked.error).toContain("Orchestration merge forecast reports conflicts");
+
+    // AIW-002 REQ-001: a PR branch that matches none of the plans falls back
+    // to recorded evidence — no false conflict block from an unrelated plan.
+    const unrelated = await mkdtemp(join(tmpdir(), "aiw-pr-unrelated-"));
+    execFileSync("git", ["clone", cwd, unrelated], { stdio: "ignore" });
+    await advanceToPr(unrelated, READY_REPORT);
+    const { writeFile: writeUnrelated } = await import("node:fs/promises");
+    await writeUnrelated(
+      join(unrelated, ".aiw/checkpoints/orchestration-plan1.yml"),
+      `schema: 1\nplan: plan1\nresults:\n  - id: TASK-001\n    status: passed\n    detail: done\n    finalCommit: ${tip}\n`,
+    );
+    const unrelatedGate = await run(["gate", "pr"], unrelated);
+    expect(unrelatedGate.exitCode).toBe(0);
+    expect(unrelatedGate.output).toContain("Quality gate passed for pr");
   });
 });
