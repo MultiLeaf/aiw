@@ -5,6 +5,7 @@ import {
   describeResource,
   detectTarget,
   isTarget,
+  normalizeTarget,
   renderAiInit,
   renderAiInitPath,
   renderResourcePath,
@@ -72,7 +73,9 @@ import { readWorkflowState, workflowNextAction } from "./workflow-state.js";
 
 async function handleInstall({ args, root, aiw, fs }: CommandContext): Promise<CommandResult> {
   const flag = args.indexOf("--target");
-  const requestedTarget = flag >= 0 ? args[flag + 1] : undefined;
+  const positionalTarget = flag < 0 && args[1] && !args[1].startsWith("-") ? args[1] : undefined;
+  const rawRequestedTarget = flag >= 0 ? args[flag + 1] : positionalTarget;
+  const requestedTarget = rawRequestedTarget ? normalizeTarget(rawRequestedTarget) : undefined;
   const target = requestedTarget || detectTarget(root, fs) || "codex";
   if (!isTarget(target)) throw new Error(`Unsupported target: ${target}`);
   const manifestPath = join(aiw, "manifest.yml");
@@ -83,9 +86,35 @@ async function handleInstall({ args, root, aiw, fs }: CommandContext): Promise<C
     const legacyHint = detectLegacyState(aiw, fs)
       ? "\nLegacy pre-ownership state detected. Run `aiw migrate --dry-run` to review, then `aiw migrate` to upgrade to the current state layout."
       : "";
+    let optionalModels: string[] = [];
+    let telemetryEnabled: boolean | undefined;
+    const shouldConfigureModels =
+      args.includes("--configure-models") || !fs.exists(join(aiw, "settings.yml"));
+    if (stdin.isTTY && shouldConfigureModels) {
+      const terminal = createInterface({ input: stdin, output: stdout });
+      try {
+        optionalModels = await configureOptionalModels(fs, aiw, (question) =>
+          terminal.question(question),
+        );
+        telemetryEnabled = await offerTelemetryConsent(fs, aiw, (question) =>
+          terminal.question(question),
+        );
+      } finally {
+        terminal.close();
+      }
+    }
     return {
       exitCode: 0,
-      output: `AI Workflow is already installed for target: ${active}. Existing state preserved.${legacyHint}`,
+      output:
+        `AI Workflow is already installed for target: ${active}. Existing state preserved.${legacyHint}` +
+        (optionalModels.length
+          ? ` Optional models enabled: ${optionalModels.join(", ")}. They activate once the models are available.`
+          : "") +
+        (telemetryEnabled !== undefined
+          ? telemetryEnabled
+            ? " Telemetry enabled (command name and outcome only); disable anytime with `aiw telemetry disable`."
+            : " Telemetry disabled; enable anytime with `aiw telemetry enable`."
+          : ""),
     };
   }
   const aiInitPath = join(root, renderAiInitPath(target));
@@ -198,8 +227,9 @@ async function handleInstall({ args, root, aiw, fs }: CommandContext): Promise<C
 }
 
 function handleTarget({ args, root, aiw, fs }: CommandContext): CommandResult {
-  const target = args[1];
-  if (!target) return { exitCode: 1, error: "Usage: aiw target <target>" };
+  const rawTarget = args[1];
+  if (!rawTarget) return { exitCode: 1, error: "Usage: aiw target <target>" };
+  const target = normalizeTarget(rawTarget);
   if (!isTarget(target)) return { exitCode: 1, error: `Unsupported target: ${target}` };
   const manifestPath = join(aiw, "manifest.yml");
   if (!fs.exists(manifestPath)) return installationRequired();

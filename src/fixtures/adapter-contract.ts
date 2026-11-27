@@ -52,6 +52,17 @@ export const ADAPTER_CONTRACT_FIXTURES: AdapterContractFixture[] = [
     },
   },
   {
+    target: "antigravity",
+    resources: {
+      skills: { path: ".agents/skills/example/SKILL.md", support: "native" },
+      rules: { path: ".agents/rules/example.md", support: "native" },
+      agents: { path: ".agents/agents/example.md", support: "compatibility" },
+      hooks: { path: ".agents/hooks/example.md", support: "compatibility" },
+      templates: { path: ".agents/templates/example.md", support: "compatibility" },
+      context: { path: "GEMINI.md", support: "native" },
+    },
+  },
+  {
     target: "copilot",
     resources: {
       skills: { path: ".github/skills/example/SKILL.md", support: "native" },

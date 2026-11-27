@@ -2,7 +2,7 @@
 
 AI Workflow is a portable, spec-driven development system for AI coding agents. It gives a repository a repeatable path from discovery and brainstorming to requirements, implementation plans, code, and verification evidence without coupling the project to one AI provider.
 
-It can configure Codex, Claude Code, Cursor, Gemini CLI, GitHub Copilot, or a provider-neutral layout from the same canonical project state.
+It can configure Codex, Claude Code, Cursor, Gemini CLI, Antigravity (`agy`), GitHub Copilot, or a provider-neutral layout from the same canonical project state.
 
 ## Why AI Workflow
 
@@ -30,7 +30,7 @@ Then run `/ai-init` in Codex. The bootstrap scans the repository, explains proje
 
 During an interactive install, AI Workflow also offers optional local capabilities after the base installation: it probes the configured Ollama endpoint, offers Ollama or an external OpenAI-compatible provider (endpoint URL plus an optional token environment variable), lists the embedding and decision models actually available, can run `ollama pull` for a default embedding model when none exist, and validates the chosen setup with a live request before recording it in `.aiw/settings.yml`. It then asks for telemetry consent with an explicit default of No (see [Privacy and security](#privacy-and-security)). Non-interactive installs skip every prompt.
 
-Supported targets are `codex`, `claude`, `cursor`, `gemini`, `copilot`, and `universal`. Every command uses the same entry point:
+Supported targets are `codex`, `claude`, `cursor`, `gemini`, `antigravity` (alias `agy`), `copilot`, and `universal`. Every command uses the same entry point:
 
 ```bash
 npx @multileaf/ai-workflow <command> <options>
@@ -64,7 +64,7 @@ For a Codex installation, the base layout is:
 
 `.aiw/` stores the provider-neutral manifest, profile, lockfile, checkpoints, bootstrap skill, selected resources, and generated working artifacts. ADRs are stored under `.context/adrs/`. The installer intentionally adds only `ai-init` and the base project state.
 
-Run `/ai-init` in the selected coding agent to scan the project and review evidence-based recommendations for skills, rules, agents, hooks, and templates. AI Workflow installs only the resources the user selects, then generates project-specific quality guidance from the detected stack and tools. Among the packaged skills, `research` runs a bounded, evidence-first investigation from a single question (logs, errors, code, or host-side external sources) and records a durable workflow-scoped artifact for later stages. Syncing a non-empty selection also renders a root context file for the active target — `AGENTS.md` (Codex/Cursor), `CLAUDE.md` (Claude Code), `GEMINI.md` (Gemini CLI) — with the confirmed profile, quality commands, and pointers to `.aiw/` state; `aiw target` migrates it between targets. An existing hand-written root context file is reported as a conflict and never overwritten. Existing user files are preserved; conflicts are reported instead of overwritten. Hook resources are rendered according to each adapter's native or compatibility support.
+Run `/ai-init` in the selected coding agent to scan the project and review evidence-based recommendations for skills, rules, agents, hooks, and templates. AI Workflow installs only the resources the user selects, then generates project-specific quality guidance from the detected stack and tools. Among the packaged skills, `research` runs a bounded, evidence-first investigation from a single question (logs, errors, code, or host-side external sources) and records a durable workflow-scoped artifact for later stages. Syncing a non-empty selection also renders a root context file for the active target — `AGENTS.md` (Codex/Cursor), `CLAUDE.md` (Claude Code), `GEMINI.md` (Gemini CLI / Antigravity) — with the confirmed profile, quality commands, and pointers to `.aiw/` state; `aiw target` migrates it between targets. An existing hand-written root context file is reported as a conflict and never overwritten. Existing user files are preserved; conflicts are reported instead of overwritten. Hook resources are rendered according to each adapter's native or compatibility support.
 
 The installer does not modify `.gitignore`. Add `.aiw/generated/` yourself if generated specifications, plans, and artifacts should remain local. Versioned files under `.aiw/checkpoints/` are designed to remain reviewable project history.
 

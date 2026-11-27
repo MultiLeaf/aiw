@@ -195,6 +195,7 @@ tasks:
     ["claude", ".claude/skills/brainstorming/SKILL.md"],
     ["cursor", ".cursor/skills/brainstorming/SKILL.md"],
     ["gemini", ".gemini/skills/brainstorming/SKILL.md"],
+    ["antigravity", ".agents/skills/brainstorming/SKILL.md"],
     ["copilot", ".github/skills/brainstorming/SKILL.md"],
     ["universal", ".aiw/resources/skills/brainstorming/SKILL.md"],
   ] as const)("syncs selected bundled resources through the %s adapter", async (target, path) => {
@@ -280,6 +281,7 @@ tasks:
     ["claude", ".claude/skills/ai-init/SKILL.md"],
     ["cursor", ".cursor/skills/ai-init/SKILL.md"],
     ["gemini", ".gemini/skills/ai-init/SKILL.md"],
+    ["antigravity", ".agents/skills/ai-init/SKILL.md"],
     ["copilot", ".github/copilot-instructions.md"],
     ["universal", ".aiw/resources/skills/ai-init.md"],
   ])("installs the base ai-init skill for %s", async (target, path) => {
@@ -305,6 +307,35 @@ tasks:
     expect((await run(["uninstall"], cwd)).exitCode).toBe(0);
     await expect(stat(join(cwd, path))).rejects.toThrow();
     await expect(stat(join(cwd, ".aiw/manifest.yml"))).rejects.toThrow();
+  });
+
+  it("accepts positional install targets and normalizes the agy alias to antigravity", async () => {
+    const geminiDir = await project();
+    const geminiResult = await run(["install", "gemini"], geminiDir);
+    expect(geminiResult.exitCode).toBe(0);
+    expect(await readFile(join(geminiDir, ".aiw/manifest.yml"), "utf8")).toContain(
+      "active: gemini",
+    );
+    await expect(stat(join(geminiDir, ".gemini/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
+
+    const agyDir = await project();
+    const agyResult = await run(["install", "agy"], agyDir);
+    expect(agyResult.exitCode).toBe(0);
+    expect(await readFile(join(agyDir, ".aiw/manifest.yml"), "utf8")).toContain(
+      "active: antigravity",
+    );
+    await expect(stat(join(agyDir, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
+
+    const caps = await run(["capabilities", "--target=agy"], agyDir);
+    expect(caps.exitCode).toBe(0);
+    expect(caps.output).toContain("target: antigravity");
+
+    const migrate = await run(["target", "agy"], geminiDir);
+    expect(migrate.exitCode).toBe(0);
+    expect(await readFile(join(geminiDir, ".aiw/manifest.yml"), "utf8")).toContain(
+      "active: antigravity",
+    );
+    await expect(stat(join(geminiDir, ".agents/skills/ai-init/SKILL.md"))).resolves.toBeTruthy();
   });
 
   it("makes repeated installation idempotent and preserves existing state", async () => {

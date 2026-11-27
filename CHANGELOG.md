@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `antigravity` target (with `agy` alias) rendering skills to `.agents/skills/<id>/SKILL.md`, rules to `.agents/rules/<id>.md`, compatibility resources under `.agents/`, and root context to `GEMINI.md`, while preserving the `gemini` target in `.gemini/` for Gemini CLI (#15).
+- Positional target support in `aiw install <target>` (e.g., `aiw install gemini` or `aiw install agy`).
+
+### Fixed
+
+- Ollama model onboarding checks the installed Ollama server version (`/api/version`) before pulling `embeddinggemma*`, surfaces HTTP `412` / pull `stderr` details with upgrade instructions instead of a generic failure, and allows interactive reinstalls (`aiw install` / `aiw install --configure-models`) to finish model setup without deleting `.aiw/` (#15).
+
 ## [0.18.0] - 2026-11-27
 
 ### Added
