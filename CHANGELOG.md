@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-27
+
+### Added
+
+- Bounded `research` skill (RES-001): evidence-first, budget-capped investigations from a single question — scope gate with human confirmation, stop conditions and escalation, verifiable citations (`file:line` / log line / URL + consultation date) with fact/hypothesis/unverified states, secret redaction before host-side external queries, and a durable workflow-scoped `research.md` artifact recorded through light-lane evidence. Offered as the advisory `bounded-research` recommendation; covered by the packaged-skill eval contracts.
+- Bundled-resource update command (UPD-001): `aiw update [--dry-run] [--add=type/id,...]` diffs installed resources against the CLI's catalog (updated/new/unchanged), replaces only files whose ownership checksum proves they are unmodified (manual edits are preserved as typed `update_conflict` blocks with continuations), installs catalog resources additively via `--add` without re-running the recommendation wizard, and is non-interactive, deterministic, and idempotent.
+- `aiw adr` now defaults to monotonic unix-time (millisecond) ids — chronological, collision-resistant numbering for parallel or rapid ADR creation; explicit `--id=` is unchanged.
+
+### Fixed
+
+- Blocking errors from the new update flow are returned as typed results like every other blocking path (latent `return` vs `return await` in the update branch).
+
 ## [0.16.0] - 2026-11-18
 
 ### Added

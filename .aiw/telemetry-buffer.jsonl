@@ -177,3 +177,5 @@
 {"schema":1,"command":"gate","outcome":"success"}
 {"schema":1,"command":"unknown","outcome":"success"}
 {"schema":1,"command":"unknown","outcome":"success"}
+{"schema":1,"command":"update","outcome":"success"}
+{"schema":1,"command":"policy-check","outcome":"success"}
