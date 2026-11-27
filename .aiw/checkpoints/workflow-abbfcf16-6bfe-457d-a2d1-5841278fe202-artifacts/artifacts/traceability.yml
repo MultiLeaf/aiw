@@ -1,0 +1,26 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001]
+    code: ["src/organization-policy.ts (PolicyRuleRecord type, rules block parse via yaml slice, validation, serialization round-trip)"]
+    tests: ["src/organization-policy.test.ts extended (valid round-trip; invalid decision; duplicate id; >64 rules; empty paths; flat policy unchanged)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/organization-policy.test.ts` → exit 0", "`npx vitest run src/policy-approvals.test.ts src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-paths.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-002, TASK-003]
+    code: ["src/policy-gate.ts (changedPaths with git fallback chain; shared pathPatternMatches extracted from ruleMatchesPath)", "src/workflow.ts (policy-check branch: rules evaluation, deny block, require-approval/always-require-human approval gating, advisory summary counts, no-rules/no-paths regressions)"]
+    tests: ["src/policy-check-rules.test.ts (deny blocks with actionable output; strict passes after approval; no-rules byte-identical; non-git fallback via package lists; no-paths advisory)", "src/policy-gate.test.ts / new src/policy-paths.test.ts (git fixture: committed + uncommitted + untracked; non-git undefined; pattern matcher prefix/*)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/organization-policy.test.ts` → exit 0", "`npx vitest run src/policy-approvals.test.ts src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-paths.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-004]
+    code: ["src/policy-approvals.ts (new: record parse/serialize, fingerprint, coverage), src/workflow.ts (`aiw policy approve --paths=`)"]
+    tests: ["src/policy-approvals.test.ts + CLI coverage in src/policy-check-rules.test.ts (scoped approval does not leak across patterns; fingerprint invalidation on tree change; deny never satisfiable; cap 50)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/organization-policy.test.ts` → exit 0", "`npx vitest run src/policy-approvals.test.ts src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-paths.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-005]
+    code: ["src/workflow.ts (`policy-check --advisory=<decision>`: applyAutomatedResult per path, delta report, verdict unchanged), CHANGELOG.md, docs/trust-boundaries.md"]
+    tests: ["advisory delta report in src/policy-check-rules.test.ts (allow lowers require-approval; never-override of always-require-human/deny; verdict unchanged)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/organization-policy.test.ts` → exit 0", "`npx vitest run src/policy-approvals.test.ts src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-check-rules.test.ts` → exit 0", "`npx vitest run src/policy-paths.test.ts` → exit 0", "npm run check"]

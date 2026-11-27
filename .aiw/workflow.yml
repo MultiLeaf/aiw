@@ -1,7 +1,5 @@
 schema: 1
-workflowId: a5748466-09dc-40fd-8014-5b8158298375
+workflowId: abbfcf16-6bfe-457d-a2d1-5841278fe202
 status: complete
-startedAt: 2026-11-27T20:19:25.340Z
-updatedAt: 2026-11-27T20:46:34.894Z
-ticket: AIW-002
-title: "Hardening follow-ups: forecast targeting, gate parsing, observe log format, rules-candidates persistence"
+startedAt: 2026-11-27T21:47:16.358Z
+updatedAt: 2026-11-27T22:13:53.511Z

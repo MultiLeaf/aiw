@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-24e34fc507f05eed563963d112bd98e1cfdd96fcbf7de24c0d36e1a4bd31952e
-generatedAt: 2026-11-27T20:20:18.581Z
-title: "Specification: Hardening follow-ups"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+fingerprint: sha256-2a4183f854926fadc88bcbe9239f097febf76935a0c9094da8097af3f659c79f
+generatedAt: 2026-11-27T21:52:44.255Z
+title: "Specification: Policy path rules with strictest-wins enforcement"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-003, REQ-004]
 taskIds: []
 decisionIds: []
-criteriaCount: 5
+criteriaCount: 4

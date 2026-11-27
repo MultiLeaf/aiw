@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-964b4e7ea7fd2a3aba6997ee7f98c06e4656320b3de4ac4c7d84ea5958917a81
-generatedAt: 2026-11-27T20:28:57.968Z
-title: "Hardening follow-ups implementation"
-requirementIds: [REQ-001, REQ-001, REQ-002, REQ-002, REQ-003, REQ-003, REQ-004, REQ-004, REQ-005, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
-taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-001]
+fingerprint: sha256-2f1c00fe04f29791177ed088a6fd66803440ee9216d7e1a48a7ccf2b256e2999
+generatedAt: 2026-11-27T21:55:02.500Z
+title: "Policy path rules implementation"
+requirementIds: [REQ-001, REQ-001, REQ-002, REQ-002, REQ-003, REQ-003, REQ-004, REQ-004, REQ-001, REQ-002, REQ-002, REQ-003, REQ-004]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-005, TASK-001]
 decisionIds: []
 criteriaCount: 0

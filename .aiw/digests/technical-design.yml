@@ -1,9 +1,9 @@
 schema: 1
 stage: technical-design
-fingerprint: sha256-d7d4fed6f7fe74bcbfe28c8c9ea8c0608a02fd613c32b820e946948edd6ce107
-generatedAt: 2026-11-27T20:24:25.234Z
-title: "Technical Design: Hardening follow-ups"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+fingerprint: sha256-0f16694fa0caa66358ae45cb3790c50ef8398f5c961c48d5dd4c44ed14095480
+generatedAt: 2026-11-27T21:53:47.841Z
+title: "Technical Design: Policy path rules with strictest-wins enforcement"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004, REQ-001, REQ-002, REQ-003, REQ-004]
 taskIds: []
 decisionIds: []
 criteriaCount: 0

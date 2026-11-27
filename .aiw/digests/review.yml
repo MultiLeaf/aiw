@@ -1,10 +1,10 @@
 schema: 1
 stage: review
-fingerprint: sha256-c4b1d9c61b40fdeb5d472d0c2ac8c9afaf7f1ae869b8998df54aa8cf01d4bf2d
-generatedAt: 2026-11-27T20:39:50.668Z
-title: "Code Review: Hardening follow-ups"
-requirementIds: [REQ-002]
+fingerprint: sha256-0092d268287abbdf7a44cbcdf3e50e9fad028dc29866821a3405f0e6ccdc8c14
+generatedAt: 2026-11-27T22:09:53.213Z
+title: "Code Review: Policy path rules with strictest-wins enforcement"
+requirementIds: []
 taskIds: [TASK-001, TASK-005]
 decisionIds: []
 criteriaCount: 0
-decision: "Accept — every fix is local, test-covered, and conservative in its failure direction; findings are informational."
+decision: "Accept — the safety-critical properties (deny unsatisfiable, approvals scoped and fingerprinted, advisory verdict-invariant, resolver reused) are all test-covered; findings are informational."

@@ -1,9 +1,9 @@
 schema: 1
 stage: brainstorming
-fingerprint: sha256-7190d61ac4c92d4a0f7061ceaee3e3bdf4e73e9291b80bca1582d47a45d2e06e
-generatedAt: 2026-11-27T18:03:04.077Z
-title: "Brainstorm: End-to-end flow — from idea to a merge-ready PR"
-requirementIds: []
+fingerprint: sha256-777b84859747c43724edf5f29b73323af8720335b86325f32f4afe07c9d7787a
+generatedAt: 2026-11-27T21:51:12.266Z
+title: "Brainstorm: Policy path rules with strictest-wins enforcement"
+requirementIds: [REQ-006]
 taskIds: []
 decisionIds: []
 criteriaCount: 0
