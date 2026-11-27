@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-27
+
 ### Added
 
 - End-to-end flow from idea to merge-ready PR: two new optional feature-process stages — `product-requirements` (PRD; `aiw prd` with a five-section gate) and `pr` (`aiw pr` scaffolds the PR-readiness report and prints host-side `gh`/git instructions the CLI never executes; the gate requires CI evidence, unresolved review comments = 0, a clean conflict check, and a fully-checked merge-ready checklist, auto-consuming the orchestration merge forecast when a checkpoint exists). `workflow complete` is blocked until the `pr` stage is approved or explicitly skipped, and the completion report gains a PR readiness section. New `pr-submission` skill.
@@ -11,12 +13,12 @@ All notable changes to this project are documented in this file. The format foll
 - ADR enforcement: the technical-design gate requires a Consequential Decisions section; every declared decision must link an existing `.context/adrs/ADR-*.md` file (verified on disk); an explicit `None` passes.
 - Post-PR automation patterns: gate observe mode (`aiw gate <stage> --observe` logs would-be decisions without state changes), bounded rejection budgets with escalation (`aiw reject` cycles block the gate after N consecutive rejections — default 3, `aiw workflow start --rejection-budget=` — until `aiw resolve --stage=` records a human decision), rejection-reason candidates (`aiw rules-candidates` clusters recurring rejection reasons into human-activated rule/skill candidates), finding triage (`triage: auto-fixable | judgment-required` guidance with a warn-level gate advisory), trust-boundary documentation (`docs/trust-boundaries.md`), and policy conflict semantics (strictest-rule-wins resolver where automated results never override `always-require-human`/`deny`).
 - `aiw doctor` diagnoses stage-list drift: workflows started with an older process stage list are reported with the drifted stages and unresolved prerequisites, and `aiw doctor --fix` repairs them by recording skips for the new optional prerequisites — decided stages are never modified and no approval is invented; required new prerequisites are refused with an actionable message.
-
 - Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
 - Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
+- Synchronized `resources/package.yaml` (`pr-submission`, `product-requirements`, `pr-readiness`, and `provides:` parity), aligned `README.md`/`docs/architecture.md` with the `product-requirements` and `pr` stages, removed duplicate historical changelog entries, and untracked `node_modules/` via `.gitignore`.
 
 ### Changed
 
