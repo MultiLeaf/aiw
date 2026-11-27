@@ -54,10 +54,13 @@ export type ResolvedPolicy = {
   matchedRules: string[];
 };
 
+/** Shared path-pattern semantics: a trailing `*` matches descendants. */
+export function pathPatternMatches(pattern: string, path: string): boolean {
+  return pattern.endsWith("*") ? path.startsWith(pattern.slice(0, -1)) : pattern === path;
+}
+
 function ruleMatchesPath(rule: PolicyRule, path: string): boolean {
-  return rule.paths.some((pattern) =>
-    pattern.endsWith("*") ? path.startsWith(pattern.slice(0, -1)) : pattern === path,
-  );
+  return rule.paths.some((pattern) => pathPatternMatches(pattern, path));
 }
 
 /**
@@ -97,6 +100,53 @@ export function applyAutomatedResult(
   )
     return resolved;
   return { ...resolved, decision: automated };
+}
+
+function git(root: string, args: string[]): string {
+  return execFileSync("git", args, { cwd: root, encoding: "utf8" });
+}
+
+/**
+ * REQ-002: the change's path set for policy evaluation. Git repositories →
+ * committed diff vs the best available base plus uncommitted and untracked
+ * files; non-git repositories → undefined (the caller falls back to package
+ * manifest file lists).
+ */
+export function changedPaths(root: string): string[] | undefined {
+  const baseCandidates = [
+    ["merge-base", "HEAD", "origin/HEAD"],
+    ["merge-base", "HEAD", "origin/main"],
+    ["merge-base", "HEAD", "origin/master"],
+    ["rev-parse", "--verify", "HEAD~1"],
+  ];
+  let base: string | undefined;
+  for (const candidate of baseCandidates) {
+    try {
+      base =
+        candidate[0] === "merge-base"
+          ? git(root, ["merge-base", "HEAD", candidate[2]!]).trim()
+          : git(root, candidate).trim();
+      if (base) break;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  const paths = new Set<string>();
+  const add = (output: string | undefined): void => {
+    // `.aiw/` state files are workflow bookkeeping, not policy-relevant project paths —
+    // and including them would invalidate approval fingerprints on every record.
+    if (output)
+      for (const line of output.split("\n"))
+        if (line.trim() && !line.trim().startsWith(".aiw/")) paths.add(line.trim());
+  };
+  try {
+    if (base) add(git(root, ["diff", "--name-only", `${base}...HEAD`]));
+    add(git(root, ["diff", "--name-only"]));
+    add(git(root, ["ls-files", "--others", "--exclude-standard"]));
+  } catch {
+    return undefined;
+  }
+  return paths.size > 0 ? [...paths].sort() : [];
 }
 
 export function enforcePolicyGate(
