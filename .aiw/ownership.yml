@@ -90,6 +90,12 @@ files:
     target: codex
     resourceType: rules
     resourceId: tdd-project-policy
+  - path: .agents/skills/adapter-development/SKILL.md
+    checksum: sha256-84f558594f403e5b69c9fe165ba5112200f796d589c8aa54396cc9fedbb517cf
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: adapter-development
   - path: .agents/skills/ai-init/SKILL.md
     checksum: sha256-3be0027ca7e0667edd458bf64eee0add8cfef4f7b98842c94839f0a6f2a9520c
     kind: ai-init
@@ -108,24 +114,72 @@ files:
     target: codex
     resourceType: skills
     resourceId: code-review
+  - path: .agents/skills/documentation-maintenance/SKILL.md
+    checksum: sha256-d0c77b968c6c78cb4dc1e77baf6e48658a9e2149789560da6a5ff06871ab160b
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: documentation-maintenance
   - path: .agents/skills/implementation-planning/SKILL.md
     checksum: sha256-cf4b8f02bf17bba6af5347902a7d56274eaac73adc1789d3b09bb83cd5661287
     kind: target-resource
     target: codex
     resourceType: skills
     resourceId: implementation-planning
+  - path: .agents/skills/project-init/SKILL.md
+    checksum: sha256-1c06cefd93e5343e388933bbb07ef1c662decce4b3f56404a31ac08d3c57850c
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: project-init
   - path: .agents/skills/requirements-specification/SKILL.md
     checksum: sha256-0840f669dc0c176646bbd4d49ce9c4c5907601be5946dc776ef2ffa5a29329e8
     kind: target-resource
     target: codex
     resourceType: skills
     resourceId: requirements-specification
+  - path: .agents/skills/research/SKILL.md
+    checksum: sha256-c4293f3fe0f78aa6ac4edc9d35c88e5268a2699993b41edf0a68784882834cb9
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: research
+  - path: .agents/skills/resource-evaluator/SKILL.md
+    checksum: sha256-f53dced1f5ab55fb37a304ac726784d52c1ea44469df5a4695628805396bc9ff
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: resource-evaluator
+  - path: .agents/skills/review-judge-a/SKILL.md
+    checksum: sha256-cb475580d9ccc78923d2dfcef2b16cadc8611e1ee318e029bbeb3cc779ea45cc
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: review-judge-a
+  - path: .agents/skills/review-judge-b/SKILL.md
+    checksum: sha256-dddf8652250635eece507850674d7601206a483986d3213d5238a26dc3807623
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: review-judge-b
+  - path: .agents/skills/review-refuter/SKILL.md
+    checksum: sha256-454d48bc0f47d58f4ca8c3f626cedbb52a679634c27af3040dff3bf3e3689ee6
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: review-refuter
   - path: .agents/skills/security-review/SKILL.md
     checksum: sha256-2c8fb5f5c26f03c40786de9b581d01f19c38a87132255764fb1a407effe5bf38
     kind: target-resource
     target: codex
     resourceType: skills
     resourceId: security-review
+  - path: .agents/skills/skill-authoring/SKILL.md
+    checksum: sha256-3c4724b0fb203f39f4faf09359444118476a3cea8e5c9e9e66afc95b8d2bb830
+    kind: target-resource
+    target: codex
+    resourceType: skills
+    resourceId: skill-authoring
   - path: .agents/skills/tdd-development/SKILL.md
     checksum: sha256-a4066ebad2d36f3baab005ba1cd9ce01e044869b2300cb61d607a8c23a378438
     kind: target-resource
@@ -139,7 +193,7 @@ files:
     resourceType: skills
     resourceId: technical-design
   - path: .agents/skills/ticket/SKILL.md
-    checksum: sha256-16aa4196141c5b016184420fd1498f97ceb22668e4333e8fda6f4163eb6e87a9
+    checksum: sha256-0fc6de694d24116d90cb1193222fb89139a72b039039907259c45f924248e9ae
     kind: target-resource
     target: codex
     resourceType: skills
@@ -300,6 +354,12 @@ files:
     target: universal
     resourceType: rules
     resourceId: tdd-project-policy
+  - path: .aiw/resources/skills/adapter-development/SKILL.md
+    checksum: sha256-84f558594f403e5b69c9fe165ba5112200f796d589c8aa54396cc9fedbb517cf
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: adapter-development
   - path: .aiw/resources/skills/ai-init.md
     checksum: sha256-3be0027ca7e0667edd458bf64eee0add8cfef4f7b98842c94839f0a6f2a9520c
     kind: neutral-resource
@@ -318,24 +378,72 @@ files:
     target: universal
     resourceType: skills
     resourceId: code-review
+  - path: .aiw/resources/skills/documentation-maintenance/SKILL.md
+    checksum: sha256-d0c77b968c6c78cb4dc1e77baf6e48658a9e2149789560da6a5ff06871ab160b
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: documentation-maintenance
   - path: .aiw/resources/skills/implementation-planning/SKILL.md
     checksum: sha256-cf4b8f02bf17bba6af5347902a7d56274eaac73adc1789d3b09bb83cd5661287
     kind: neutral-resource
     target: universal
     resourceType: skills
     resourceId: implementation-planning
+  - path: .aiw/resources/skills/project-init/SKILL.md
+    checksum: sha256-1c06cefd93e5343e388933bbb07ef1c662decce4b3f56404a31ac08d3c57850c
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: project-init
   - path: .aiw/resources/skills/requirements-specification/SKILL.md
     checksum: sha256-0840f669dc0c176646bbd4d49ce9c4c5907601be5946dc776ef2ffa5a29329e8
     kind: neutral-resource
     target: universal
     resourceType: skills
     resourceId: requirements-specification
+  - path: .aiw/resources/skills/research/SKILL.md
+    checksum: sha256-c4293f3fe0f78aa6ac4edc9d35c88e5268a2699993b41edf0a68784882834cb9
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: research
+  - path: .aiw/resources/skills/resource-evaluator/SKILL.md
+    checksum: sha256-f53dced1f5ab55fb37a304ac726784d52c1ea44469df5a4695628805396bc9ff
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: resource-evaluator
+  - path: .aiw/resources/skills/review-judge-a/SKILL.md
+    checksum: sha256-cb475580d9ccc78923d2dfcef2b16cadc8611e1ee318e029bbeb3cc779ea45cc
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: review-judge-a
+  - path: .aiw/resources/skills/review-judge-b/SKILL.md
+    checksum: sha256-dddf8652250635eece507850674d7601206a483986d3213d5238a26dc3807623
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: review-judge-b
+  - path: .aiw/resources/skills/review-refuter/SKILL.md
+    checksum: sha256-454d48bc0f47d58f4ca8c3f626cedbb52a679634c27af3040dff3bf3e3689ee6
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: review-refuter
   - path: .aiw/resources/skills/security-review/SKILL.md
     checksum: sha256-2c8fb5f5c26f03c40786de9b581d01f19c38a87132255764fb1a407effe5bf38
     kind: neutral-resource
     target: universal
     resourceType: skills
     resourceId: security-review
+  - path: .aiw/resources/skills/skill-authoring/SKILL.md
+    checksum: sha256-3c4724b0fb203f39f4faf09359444118476a3cea8e5c9e9e66afc95b8d2bb830
+    kind: neutral-resource
+    target: universal
+    resourceType: skills
+    resourceId: skill-authoring
   - path: .aiw/resources/skills/tdd-development/SKILL.md
     checksum: sha256-a4066ebad2d36f3baab005ba1cd9ce01e044869b2300cb61d607a8c23a378438
     kind: neutral-resource
@@ -349,7 +457,7 @@ files:
     resourceType: skills
     resourceId: technical-design
   - path: .aiw/resources/skills/ticket/SKILL.md
-    checksum: sha256-16aa4196141c5b016184420fd1498f97ceb22668e4333e8fda6f4163eb6e87a9
+    checksum: sha256-0fc6de694d24116d90cb1193222fb89139a72b039039907259c45f924248e9ae
     kind: neutral-resource
     target: universal
     resourceType: skills

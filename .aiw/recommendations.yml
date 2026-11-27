@@ -18,6 +18,15 @@ recommendations:
     selected_resources: []
     evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
     rationale: Work often arrives as a ticket or an already-clear requirement; this entry point starts the SDD flow from the ticket without a brainstorming phase.
+  - id: bounded-research
+    provider: multileaf
+    confidence: 0.85
+    selected: false
+    requires: []
+    resources: [skills/research]
+    selected_resources: [skills/research]
+    evidence: ["language:javascript", "language:typescript", "package-manager:npm", "testing:vitest", "linter:eslint", "ci:github-actions"]
+    rationale: Investigations that start from a single question (an error, a log signature, a migration implication) benefit from an evidence-first, budget-capped research contract with a durable artifact for later stages.
   - id: requirements-specification
     provider: multileaf
     confidence: 0.9
