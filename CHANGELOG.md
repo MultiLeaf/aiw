@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- End-to-end flow from idea to merge-ready PR: two new optional feature-process stages — `product-requirements` (PRD; `aiw prd` with a five-section gate) and `pr` (`aiw pr` scaffolds the PR-readiness report and prints host-side `gh`/git instructions the CLI never executes; the gate requires CI evidence, unresolved review comments = 0, a clean conflict check, and a fully-checked merge-ready checklist, auto-consuming the orchestration merge forecast when a checkpoint exists). `workflow complete` is blocked until the `pr` stage is approved or explicitly skipped, and the completion report gains a PR readiness section. New `pr-submission` skill.
+- QA test matrix: the plan gate requires `TC-###` cases linked to `REQ-###` requirements, the verification gate requires executed-case evidence (result + command per case), and TC links flow into the traceability graph. Legacy plans/reports without the new sections pass unchanged (ratchet).
+- ADR enforcement: the technical-design gate requires a Consequential Decisions section; every declared decision must link an existing `.context/adrs/ADR-*.md` file (verified on disk); an explicit `None` passes.
+- Post-PR automation patterns: gate observe mode (`aiw gate <stage> --observe` logs would-be decisions without state changes), bounded rejection budgets with escalation (`aiw reject` cycles block the gate after N consecutive rejections — default 3, `aiw workflow start --rejection-budget=` — until `aiw resolve --stage=` records a human decision), rejection-reason candidates (`aiw rules-candidates` clusters recurring rejection reasons into human-activated rule/skill candidates), finding triage (`triage: auto-fixable | judgment-required` guidance with a warn-level gate advisory), trust-boundary documentation (`docs/trust-boundaries.md`), and policy conflict semantics (strictest-rule-wins resolver where automated results never override `always-require-human`/`deny`).
+- `aiw doctor` diagnoses stage-list drift: workflows started with an older process stage list are reported with the drifted stages and unresolved prerequisites, and `aiw doctor --fix` repairs them by recording skips for the new optional prerequisites — decided stages are never modified and no approval is invented; required new prerequisites are refused with an actionable message.
+
+### Changed
+
+- The feature process stage list now includes `product-requirements` (after brainstorming) and `pr` (after traceability). In-flight feature workflows may hit stage-list drift after upgrading: run `aiw doctor` for the diagnosis and `aiw doctor --fix` (or record the skips yourself) to continue. `aiw workflow complete` now requires the `pr` stage to resolve before completing.
+
 ## [0.17.0] - 2026-11-27
 
 ### Added

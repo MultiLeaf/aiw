@@ -41,6 +41,8 @@ teams adopting agents can reason about what is trusted, what is not, and who is 
 - Rule, policy, and skill files — the files that govern agent and workflow behavior — must be
   committed by a human, not by an agent. Files that look like secrets are never written or
   committed by workflow tooling.
+- `aiw doctor --fix` (stage-list drift repair) only inserts recorded skip entries for new
+  optional prerequisites; it never modifies a decided stage and never invents an approval.
 - Rule/skill candidates surfaced by `aiw rules-candidates` are drafts: they never activate
   without an explicit human `--accept`, and even then the human creates and commits the rule
   file manually.

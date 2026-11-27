@@ -239,6 +239,31 @@ export function getUnresolvedPrerequisites(
   });
 }
 
+export type StageListDrift = {
+  stage: HumanApprovalStage;
+  unresolvedPrerequisites: HumanApprovalStage[];
+};
+
+/**
+ * AIW-001 / REQ-001: stages that carry a decision while their prerequisites
+ * (per the current process list) are unresolved — the signature of a ledger
+ * written before the stage list changed. Generic over any PROCESSES change.
+ */
+export function detectStageListDrift(ledger: ApprovalLedger): StageListDrift[] {
+  return processStages(ledger).flatMap((stage) => {
+    const status = ledger.stages[stage]?.status;
+    if (
+      status !== "pending-human" &&
+      status !== "approved" &&
+      status !== "rejected" &&
+      status !== "skipped"
+    )
+      return [];
+    const unresolved = getUnresolvedPrerequisites(ledger, stage);
+    return unresolved.length ? [{ stage, unresolvedPrerequisites: unresolved }] : [];
+  });
+}
+
 export function beginStageApproval(
   ledger: ApprovalLedger,
   stage: HumanApprovalStage,
@@ -353,6 +378,28 @@ export function rejectStage(
   });
 }
 
+/**
+ * AIW-001 (REQ-002): insert a drift-skip record for a stage with no record of
+ * its own. Never overwrites an existing record and never invents approvals.
+ */
+export function recordDriftSkip(
+  ledger: ApprovalLedger,
+  stage: HumanApprovalStage,
+  reason: string,
+  updatedAt: string,
+): ApprovalLedger {
+  assertTimestamp(updatedAt);
+  if (ledger.stages[stage])
+    throw new Error(`The ${stage} stage already has a record; refusing to overwrite it.`);
+  if (!reason.trim()) throw new Error("A reason is required to record a drift skip.");
+  return withStage(ledger, stage, {
+    status: "skipped",
+    qualityGate: "not-applicable",
+    reason: reason.trim(),
+    updatedAt,
+  });
+}
+
 export function skipOptionalStage(
   ledger: ApprovalLedger,
   stage: HumanApprovalStage,
@@ -422,7 +469,19 @@ export function serializeApprovalLedger(ledger: ApprovalLedger): string {
   );
 }
 
-export function parseApprovalLedger(content: string): ApprovalLedger {
+/**
+ * AIW-001: lenient ledger load — identical to parseApprovalLedger except the
+ * cross-stage order check is deferred, so drifted ledgers can be inspected
+ * (detectStageListDrift) and repaired (aiw doctor --fix) instead of throwing.
+ */
+export function parseApprovalLedgerLenient(content: string): ApprovalLedger {
+  return parseApprovalLedger(content, { lenientOrder: true });
+}
+
+export function parseApprovalLedger(
+  content: string,
+  options: { lenientOrder?: boolean } = {},
+): ApprovalLedger {
   const document = parseDocument(content, { uniqueKeys: true, strict: true });
   if (document.errors.length) throw new Error("Approval ledger contains invalid YAML.");
   const value: unknown = document.toJS();
@@ -461,7 +520,7 @@ export function parseApprovalLedger(content: string): ApprovalLedger {
       ? { lane: "light" as const, laneReason: value.laneReason }
       : {}),
   };
-  validateLedger(ledger);
+  validateLedger(ledger, { lenientOrder: options.lenientOrder });
   return ledger;
 }
 
@@ -614,7 +673,7 @@ function parseStageRecord(stage: HumanApprovalStage, value: unknown): StageAppro
   return record;
 }
 
-function validateLedger(ledger: ApprovalLedger): void {
+function validateLedger(ledger: ApprovalLedger, options: { lenientOrder?: boolean } = {}): void {
   if (ledger.schema !== 1 || !isRecord(ledger.stages))
     throw new Error("Approval ledger schema must be version 1 with a stages mapping.");
   assertWorkflowId(ledger.workflowId);
@@ -627,6 +686,9 @@ function validateLedger(ledger: ApprovalLedger): void {
       throw new Error(`Approval ledger has unknown workflow stage: ${stage}.`);
     parseStageRecord(stage, record);
   }
+  // AIW-001: lenient mode skips the cross-stage order check so drift can be
+  // diagnosed and repaired instead of throwing during load.
+  if (options.lenientOrder) return;
   for (const stage of processStages(ledger)) {
     const status = ledger.stages[stage]?.status;
     if (

@@ -198,6 +198,10 @@ import {
   effectiveLane,
   rejectionBudgetFor,
   authorizeRetry,
+  detectStageListDrift,
+  parseApprovalLedgerLenient,
+  recordDriftSkip,
+  type StageListDrift,
 } from "./human-approval.js";
 import { buildCompletionReport } from "./completion-report.js";
 import {
@@ -3042,6 +3046,9 @@ export async function runCommand(
       return { exitCode: 1, error: usage };
     }
     if (command === "doctor") {
+      const fixRequested = args.includes("--fix");
+      if (fixRequested && args.length > 2)
+        return { exitCode: 1, error: "Usage: aiw doctor [--fix]" };
       const required = ["manifest.yml", "profile.yml", "lock.yml", "ownership.yml"];
       const missing = required.filter((file) => !fs.exists(join(aiw, file)));
       if (missing.length) {
@@ -3079,6 +3086,76 @@ export async function runCommand(
         loadTelemetryConfig(fs, aiw);
       } catch (error) {
         return { exitCode: 1, error: error instanceof Error ? error.message : String(error) };
+      }
+      // AIW-001 (REQ-001): diagnose stage-list drift in the active workflow.
+      if (fs.exists(join(aiw, "workflow.yml"))) {
+        const session = parseWorkflowSession(fs.read(join(aiw, "workflow.yml")));
+        if (session.status === "active" && fs.exists(join(aiw, "approvals.yml"))) {
+          let drift: StageListDrift[] = [];
+          try {
+            drift = detectStageListDrift(
+              parseApprovalLedgerLenient(fs.read(join(aiw, "approvals.yml"))),
+            );
+          } catch (error) {
+            return {
+              exitCode: 1,
+              error: `Approval ledger is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
+          if (drift.length > 0) {
+            const lines = drift.map(
+              (entry) =>
+                `- ${entry.stage} is decided but its prerequisites are unresolved: ${entry.unresolvedPrerequisites.join(", ")}`,
+            );
+            // AIW-001 (REQ-002): the fix records skips for optional prerequisites only.
+            const blockedRequired = [
+              ...new Set(
+                drift.flatMap((entry) =>
+                  entry.unresolvedPrerequisites.filter(
+                    (prerequisite) => !stageDefinition(prerequisite).optional,
+                  ),
+                ),
+              ),
+            ];
+            if (fixRequested) {
+              if (blockedRequired.length > 0)
+                return {
+                  exitCode: 1,
+                  error: `aiw doctor --fix cannot skip required stage(s): ${blockedRequired.join(", ")}. Run them with the normal stage commands; only optional prerequisites can be repaired with a recorded skip.`,
+                };
+              let ledger = parseApprovalLedgerLenient(fs.read(join(aiw, "approvals.yml")));
+              const repaired: string[] = [];
+              for (const entry of drift)
+                for (const prerequisite of entry.unresolvedPrerequisites) {
+                  if (ledger.stages[prerequisite]) continue; // never overwrite an existing record
+                  ledger = recordDriftSkip(
+                    ledger,
+                    prerequisite,
+                    `Stage introduced after ${entry.stage} was decided (process list drift); recorded by aiw doctor --fix`,
+                    new Date().toISOString(),
+                  );
+                  repaired.push(prerequisite);
+                }
+              fs.write(join(aiw, "approvals.yml"), serializeApprovalLedger(ledger));
+              const remaining = detectStageListDrift(ledger);
+              if (remaining.length > 0)
+                return {
+                  exitCode: 1,
+                  error: `Repair left drift unresolved: ${remaining
+                    .map((entry) => `${entry.stage} (${entry.unresolvedPrerequisites.join(", ")})`)
+                    .join("; ")}`,
+                };
+              return {
+                exitCode: 0,
+                output: `Stage-list drift repaired: recorded skips for ${repaired.join(", ")}. No decided stage was modified and no approval was invented.`,
+              };
+            }
+            return {
+              exitCode: 1,
+              error: `Stage-list drift detected (the workflow was started with an older process stage list):\n${lines.join("\n")}\nNext: ${blockedRequired.length === 0 ? "run `aiw doctor --fix` to record the missing prerequisite skips, or record them yourself with `aiw skip <stage> --reason=...`" : `at least one unresolved prerequisite is a required stage (${blockedRequired.join(", ")}); run it with the normal stage commands (it cannot be auto-skipped)`}`,
+            };
+          }
+        }
       }
       // FRIC-004: interactive doctor offers telemetry consent once when unset.
       let telemetryNote = "";
