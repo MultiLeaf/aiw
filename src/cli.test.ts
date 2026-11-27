@@ -57,6 +57,7 @@ async function syncWithApproval(
 async function advanceWorkflowTo(cwd: string, target: string): Promise<void> {
   const stages = [
     "brainstorming",
+    "product-requirements",
     "specification",
     "technical-design",
     "plan",
@@ -64,12 +65,18 @@ async function advanceWorkflowTo(cwd: string, target: string): Promise<void> {
     "verification",
     "review",
     "traceability",
+    "pr",
   ];
   const targetIndex = stages.indexOf(target);
   if (targetIndex < 0) throw new Error(`Unknown test workflow stage: ${target}`);
   await run(["workflow", "start", "--id=test-workflow"], cwd);
   for (const stage of stages.slice(0, targetIndex)) {
-    if (stage === "brainstorming" || stage === "technical-design") {
+    if (
+      stage === "brainstorming" ||
+      stage === "product-requirements" ||
+      stage === "technical-design" ||
+      stage === "pr"
+    ) {
       await run(["skip", stage, "--reason=Not needed by this test"], cwd);
       continue;
     }
@@ -1648,6 +1655,9 @@ tasks:
 
     expect((await run(["spec"], cwd)).error).toContain("brainstorming");
     expect((await run(["skip", "brainstorming", "--reason=Not needed"], cwd)).exitCode).toBe(0);
+    expect((await run(["skip", "product-requirements", "--reason=Not needed"], cwd)).exitCode).toBe(
+      0,
+    );
     await run(["spec"], cwd);
     await writeArtifact(
       cwd,
@@ -1679,6 +1689,7 @@ tasks:
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=stale-test"], cwd);
     await run(["skip", "brainstorming", "--reason=Not needed"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeArtifact(
       cwd,
@@ -1709,6 +1720,14 @@ tasks:
     expect((await run(["gate", "brainstorming"], cwd)).exitCode).toBe(0);
     expect((await run(["spec"], cwd)).error).toContain("awaiting human approval");
     expect((await run(["approve", "brainstorming"], cwd)).exitCode).toBe(0);
+    await run(["prd"], cwd);
+    await writeArtifact(
+      cwd,
+      ".aiw/generated/specs/full-stage-run/product-requirements.md",
+      "## Problem\nNeed\n## Users\nUsers\n## Outcomes\nOutcome\n## Non-goals\nNone\n## Success Signals\nSignal\n",
+    );
+    expect((await run(["gate", "product-requirements"], cwd)).exitCode).toBe(0);
+    expect((await run(["approve", "product-requirements"], cwd)).exitCode).toBe(0);
 
     await run(["spec"], cwd);
     await writeArtifact(
@@ -1758,6 +1777,8 @@ tasks:
     expect((await run(["gate", "traceability"], cwd)).exitCode).toBe(0);
     expect((await run(["workflow", "complete"], cwd)).error).toContain("traceability");
     expect((await run(["approve", "traceability"], cwd)).exitCode).toBe(0);
+    // The PR stage is optional: local-only runs skip it with human acceptance.
+    await run(["skip", "pr", "--reason=Local-only test run"], cwd);
     const completion = await run(["workflow", "complete"], cwd);
     expect(completion.exitCode).toBe(0);
     // REQ-005: completion archives the workflow's scoped artifacts.
@@ -1821,6 +1842,7 @@ tasks:
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=rejection-run"], cwd);
     await run(["skip", "brainstorming", "--reason=Scope is already clear"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeArtifact(
       cwd,
@@ -3253,6 +3275,7 @@ describe("workflow-scoped artifacts (FRIC-005)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=first-run"], cwd);
     await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     const firstPath = join(cwd, ".aiw/generated/specs/first-run/specification.md");
     await writeArtifact(cwd, ".aiw/generated/specs/first-run/specification.md", "REQ-001 first\n");
@@ -3261,6 +3284,7 @@ describe("workflow-scoped artifacts (FRIC-005)", () => {
     await run(["workflow", "abandon", "--reason=done with first"], cwd);
     await run(["workflow", "start", "--id=second-run"], cwd);
     await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeArtifact(
       cwd,
@@ -3278,6 +3302,7 @@ describe("workflow-scoped artifacts (FRIC-005)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=legacy-adv"], cwd);
     await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     // Simulate a pre-namespacing installation: only the legacy fixed path exists.
     await rm(join(cwd, ".aiw/generated/specs/legacy-adv"), { recursive: true, force: true });
@@ -3301,6 +3326,7 @@ describe("workflow-scoped artifacts (FRIC-005)", () => {
     await run(["install"], cwd);
     await run(["workflow", "start", "--id=archive-run"], cwd);
     await run(["skip", "brainstorming", "--reason=clear"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec"], cwd);
     await writeArtifact(
       cwd,
@@ -3509,6 +3535,7 @@ describe("ticket-driven task", () => {
     await run(["install"], cwd);
     await run(["task", "start", "--ticket=PROJ-142"], cwd);
     await run(["skip", "brainstorming", "--reason=provided by ticket"], cwd);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     await run(["spec", "--ticket=PROJ-142", "--title=Export endpoint"], cwd);
     const sessionText = await readFile(join(cwd, ".aiw", "workflow.yml"), "utf8");
     const workflowId = /workflowId: ([0-9a-f-]+)/.exec(sessionText)?.[1];
@@ -3974,6 +4001,7 @@ describe("blocking reason codes and exact continuations", () => {
     expect(continuation).toBe("approve brainstorming");
     const cleared = await run(continuation!.split(" "), cwd);
     expect(cleared.exitCode).toBe(0);
+    await run(["skip", "product-requirements", "--reason=Not needed"], cwd);
     expect((await run(["spec"], cwd)).exitCode).toBe(0);
   });
 

@@ -85,6 +85,53 @@ describe("completion report", () => {
     expect(markdown).toContain("Cost attribution skipped");
   });
 
+  it("includes the PR readiness section from the approved pr report (REQ-005)", () => {
+    const prLedger = {
+      ...ledger,
+      stages: {
+        ...ledger.stages,
+        pr: {
+          status: "approved",
+          qualityGate: "passed",
+          updatedAt: "2026-01-01T12:00:00.000Z",
+        } as never,
+      },
+    };
+    const { markdown } = buildCompletionReport({
+      session,
+      ledger: prLedger,
+      prReadiness:
+        "# PR Readiness\n\n## PR Reference\n\n#42\n\n## Branch\n\nfeat → main\n\n## CI Evidence\n\nall pass\n\n## Review Comments\n\nresolved; unresolved: 0\n\n## Conflict Check\n\nclean\n\n## Merge-Ready Checklist\n\n- [x] all\n",
+    });
+    expect(markdown).toContain("## PR readiness");
+    expect(markdown).toContain("- PR reference: #42");
+    expect(markdown).toContain("- Branch: feat → main");
+    expect(markdown).toContain("- CI: all pass");
+    expect(markdown).toContain("- Unresolved review comments: resolved; unresolved: 0");
+    expect(markdown).toContain("- Conflicts: clean");
+  });
+
+  it("states the PR stage status when not approved (REQ-005)", () => {
+    const prLedger = {
+      ...ledger,
+      stages: {
+        ...ledger.stages,
+        pr: {
+          status: "skipped",
+          qualityGate: "not-applicable",
+          updatedAt: "2026-01-01T12:00:00.000Z",
+        } as never,
+      },
+    };
+    const { markdown } = buildCompletionReport({ session, ledger: prLedger });
+    expect(markdown).toContain("PR stage skipped: no merge-ready PR evidence recorded");
+  });
+
+  it("omits the PR section when the workflow has no pr stage (backwards compatible)", () => {
+    const { markdown } = buildCompletionReport({ session, ledger, usage, attribution });
+    expect(markdown).not.toContain("## PR readiness");
+  });
+
   it("is deterministic for identical input (REQ-002)", () => {
     const first = buildCompletionReport({ session, ledger, usage, attribution });
     const second = buildCompletionReport({ session, ledger, usage, attribution });

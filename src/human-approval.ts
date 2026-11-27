@@ -22,11 +22,19 @@ export type StageApprovalRecord = {
   artifactHash?: string;
   reason?: string;
   updatedAt: string;
+  /** REQ-002: consecutive rejections since the last approval; reset on approval. */
+  rejectionCount?: number;
+  /** REQ-002: reasons for the consecutive rejections (capped). */
+  rejectionReasons?: string[];
+  /** REQ-002: set once the rejection budget is exhausted; requires explicit human action. */
+  escalated?: boolean;
 };
 export type ApprovalLedger = {
   schema: 1;
   workflowId: string;
   stages: Partial<Record<HumanApprovalStage, StageApprovalRecord>>;
+  /** REQ-002: consecutive-rejection budget per stage; default 3 when absent. */
+  rejectionBudget?: number;
   /** Light-lane provenance so audits see the rationale instead of missing approvals. */
   lane?: "light";
   laneReason?: string;
@@ -68,6 +76,7 @@ export type ApprovalStageDefinition = {
 
 const STAGE_DEFINITIONS: Record<HumanApprovalStage, ApprovalStageDefinition> = {
   brainstorming: { optional: true, requiresQualityGate: true },
+  "product-requirements": { optional: true, requiresQualityGate: true },
   specification: { optional: false, requiresQualityGate: true },
   "technical-design": { optional: true, requiresQualityGate: true },
   plan: { optional: false, requiresQualityGate: true },
@@ -75,6 +84,7 @@ const STAGE_DEFINITIONS: Record<HumanApprovalStage, ApprovalStageDefinition> = {
   verification: { optional: false, requiresQualityGate: true },
   review: { optional: false, requiresQualityGate: true },
   traceability: { optional: false, requiresQualityGate: true },
+  pr: { optional: true, requiresQualityGate: true },
   diagnosis: { optional: false, requiresQualityGate: true },
   assessment: { optional: false, requiresQualityGate: true },
 };
@@ -87,8 +97,19 @@ const APPROVAL_RECORD_KEYS = new Set([
   "artifactHash",
   "reason",
   "updatedAt",
+  "rejectionCount",
+  "rejectionReasons",
+  "escalated",
 ]);
-const LEDGER_KEYS = new Set(["schema", "workflowId", "stages", "lane", "laneReason", "process"]);
+const LEDGER_KEYS = new Set([
+  "schema",
+  "workflowId",
+  "stages",
+  "lane",
+  "laneReason",
+  "process",
+  "rejectionBudget",
+]);
 const SESSION_KEYS = new Set([
   "schema",
   "workflowId",
@@ -110,6 +131,7 @@ export function createApprovalLedger(
     lane?: "light";
     laneReason?: string;
     process?: WorkflowProcess;
+    rejectionBudget?: number;
   } = {},
 ): ApprovalLedger {
   assertWorkflowId(workflowId);
@@ -123,6 +145,7 @@ export function createApprovalLedger(
       ? { lane: "light" as const, laneReason: options.laneReason }
       : {}),
     ...(options.process && options.process !== "feature" ? { process: options.process } : {}),
+    ...(options.rejectionBudget !== undefined ? { rejectionBudget: options.rejectionBudget } : {}),
   };
 }
 
@@ -242,6 +265,11 @@ export function beginStageApproval(
     qualityGate: input.qualityGate,
     artifactHash: input.artifactHash,
     updatedAt: input.updatedAt,
+    ...(existing?.rejectionCount === undefined ? {} : { rejectionCount: existing.rejectionCount }),
+    ...(existing?.rejectionReasons === undefined
+      ? {}
+      : { rejectionReasons: existing.rejectionReasons }),
+    ...(existing?.escalated === undefined ? {} : { escalated: existing.escalated }),
   });
 }
 
@@ -259,7 +287,42 @@ export function approveStage(
   if (current.artifactHash !== input.artifactHash)
     throw new Error(`The ${stage} artifact changed after review; request approval again.`);
 
-  return withStage(ledger, stage, { ...current, status: "approved", updatedAt: input.updatedAt });
+  const { rejectionCount, rejectionReasons, escalated, ...currentWithoutRejections } = current;
+  void rejectionCount;
+  void rejectionReasons;
+  void escalated;
+  return withStage(ledger, stage, {
+    ...currentWithoutRejections,
+    status: "approved",
+    updatedAt: input.updatedAt,
+  });
+}
+
+/** REQ-002: consecutive-rejection budget for a stage; ledger override or default 3. */
+export function rejectionBudgetFor(ledger: ApprovalLedger): number {
+  return ledger.rejectionBudget ?? 3;
+}
+
+/** REQ-002: clear escalation and reset the rejection budget counters for a stage. */
+export function authorizeRetry(
+  ledger: ApprovalLedger,
+  stage: HumanApprovalStage,
+  updatedAt: string,
+): ApprovalLedger {
+  assertTimestamp(updatedAt);
+  const current = ledger.stages[stage];
+  if (!current)
+    throw new Error(`The ${stage} stage has no recorded state to authorize a retry for.`);
+  const {
+    rejectionCount: _count,
+    rejectionReasons: _reasons,
+    escalated: _escalated,
+    ...rest
+  } = current;
+  void _count;
+  void _reasons;
+  void _escalated;
+  return withStage(ledger, stage, { ...rest, updatedAt });
 }
 
 export function rejectStage(
@@ -272,12 +335,21 @@ export function rejectStage(
   if (!ledger.stages[stage] || ledger.stages[stage].status !== "pending-human")
     throw new Error(`The ${stage} stage is not pending human approval.`);
   if (!reason.trim()) throw new Error("A reason is required when rejecting a stage.");
+  const existing = ledger.stages[stage]!;
+  const rejectionCount = (existing.rejectionCount ?? 0) + 1;
+  const rejectionReasons = [...(existing.rejectionReasons ?? []), reason.trim()].slice(-10);
+  const budget = rejectionBudgetFor(ledger);
+  const escalated = rejectionCount >= budget;
   const invalidated = invalidateStageAndDescendants(ledger, stage, updatedAt);
+  const prior = invalidated.stages[stage] ?? existing;
   return withStage(invalidated, stage, {
-    ...ledger.stages[stage]!,
+    ...prior,
     status: "rejected",
     reason: reason.trim(),
     updatedAt,
+    rejectionCount,
+    rejectionReasons,
+    ...(escalated ? { escalated: true } : {}),
   });
 }
 
@@ -320,6 +392,7 @@ export function invalidateStageAndDescendants(
     schema: 1,
     workflowId: ledger.workflowId,
     stages,
+    ...(ledger.rejectionBudget !== undefined ? { rejectionBudget: ledger.rejectionBudget } : {}),
     ...(ledger.lane === "light" && ledger.laneReason
       ? { lane: ledger.lane, laneReason: ledger.laneReason }
       : {}),
@@ -343,6 +416,7 @@ export function serializeApprovalLedger(ledger: ApprovalLedger): string {
         ? { lane: ledger.lane, laneReason: ledger.laneReason }
         : {}),
       ...(ledger.process && ledger.process !== "feature" ? { process: ledger.process } : {}),
+      ...(ledger.rejectionBudget !== undefined ? { rejectionBudget: ledger.rejectionBudget } : {}),
     },
     { lineWidth: 0 },
   );
@@ -370,11 +444,19 @@ export function parseApprovalLedger(content: string): ApprovalLedger {
   const process = value.process === undefined ? undefined : String(value.process);
   if (process !== undefined && !isWorkflowProcess(process))
     throw new Error("Approval ledger process must be a known workflow process.");
+  const rejectionBudget =
+    value.rejectionBudget === undefined ? undefined : Number(value.rejectionBudget);
+  if (
+    rejectionBudget !== undefined &&
+    (!Number.isSafeInteger(rejectionBudget) || rejectionBudget < 1)
+  )
+    throw new Error("Approval ledger rejectionBudget must be an integer of at least 1.");
   const ledger: ApprovalLedger = {
     schema: 1,
     workflowId: value.workflowId,
     stages,
     ...(process && process !== "feature" ? { process: process as WorkflowProcess } : {}),
+    ...(rejectionBudget !== undefined ? { rejectionBudget } : {}),
     ...(value.lane === "light" && typeof value.laneReason === "string"
       ? { lane: "light" as const, laneReason: value.laneReason }
       : {}),
@@ -445,6 +527,7 @@ function withStage(
     schema: 1,
     workflowId: ledger.workflowId,
     stages: { ...ledger.stages, [stage]: record },
+    ...(ledger.rejectionBudget !== undefined ? { rejectionBudget: ledger.rejectionBudget } : {}),
     // Preserve lane/process provenance: dropping them here silently stripped
     // the process from the ledger on every stage transition (found by the
     // OPP-009 sweep — the bug made bugfix workflows gate like feature ones).
@@ -469,6 +552,7 @@ function parseStageRecord(stage: HumanApprovalStage, value: unknown): StageAppro
     if (!APPROVAL_RECORD_KEYS.has(key))
       throw new Error(`Approval record for ${stage} has unknown field: ${key}.`);
   const { status, qualityGate, artifactHash, reason, updatedAt } = value;
+  const { rejectionCount, rejectionReasons, escalated } = value;
   if (typeof status !== "string" || !APPROVAL_STATUSES.includes(status))
     throw new Error(`Approval record for ${stage} has an invalid status.`);
   if (typeof qualityGate !== "string" || !QUALITY_GATE_RESULTS.includes(qualityGate))
@@ -483,6 +567,20 @@ function parseStageRecord(stage: HumanApprovalStage, value: unknown): StageAppro
   }
   if (reason !== undefined && typeof reason !== "string")
     throw new Error(`Approval record for ${stage} has an invalid reason.`);
+  if (
+    rejectionCount !== undefined &&
+    (typeof rejectionCount !== "number" ||
+      !Number.isSafeInteger(rejectionCount) ||
+      rejectionCount < 0)
+  )
+    throw new Error(`Approval record for ${stage} has an invalid rejectionCount.`);
+  if (
+    rejectionReasons !== undefined &&
+    (!Array.isArray(rejectionReasons) || rejectionReasons.some((item) => typeof item !== "string"))
+  )
+    throw new Error(`Approval record for ${stage} has invalid rejectionReasons.`);
+  if (escalated !== undefined && typeof escalated !== "boolean")
+    throw new Error(`Approval record for ${stage} has an invalid escalated flag.`);
 
   const record: StageApprovalRecord = {
     status: status as ApprovalStatus,
@@ -490,6 +588,9 @@ function parseStageRecord(stage: HumanApprovalStage, value: unknown): StageAppro
     updatedAt,
     ...(artifactHash === undefined ? {} : { artifactHash }),
     ...(reason === undefined ? {} : { reason }),
+    ...(rejectionCount === undefined ? {} : { rejectionCount }),
+    ...(rejectionReasons === undefined ? {} : { rejectionReasons }),
+    ...(escalated === undefined ? {} : { escalated }),
   };
   if (record.status === "pending-human" && !record.artifactHash)
     throw new Error(`Pending approval for ${stage} requires an artifact fingerprint.`);

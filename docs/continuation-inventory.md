@@ -30,3 +30,4 @@ Every blocking `aiw` exit carries a stable reason code plus either an exact runn
 | `worktrees_leaked`              | Managed orchestration worktrees remain on disk after their plan finished; clean them up.                   | explicit action  |
 | `orchestration_not_executed`    | The plan has not been executed yet; there is no checkpoint to integrate.                                   | explicit action  |
 | `update_conflict`               | Manually edited installed resources conflict with a bundled update; they are preserved, never overwritten. | explicit action  |
+| `stage_escalated`               | The stage exhausted its consecutive-rejection budget; a human decision is required (REQ-002).              | runnable command |

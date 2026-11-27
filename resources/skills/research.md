@@ -41,18 +41,23 @@ Write the result to `.aiw/generated/reports/<workflowId>/research.md` with exact
 # Research: <question>
 
 ## Question
+
 <the single confirmed question>
 
 ## Sources
+
 - <file:line / log location / reproduction command / URL + consultation date>
 
 ## Findings
+
 - <finding> — state: fact|hypothesis — source: <citation> — confidence: high|medium|low
 
 ## Budget
+
 steps used: <n> / cap · stop reason: <confirmed|budget>
 
 ## Open questions
+
 - <unresolved items, next most-likely source>
 ```
 

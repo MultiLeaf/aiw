@@ -57,6 +57,15 @@ function valuesForField(block: string, field: string): string[] {
   return [...block.matchAll(expression)].map((match) => match[1].trim());
 }
 
+/** REQ-003: TC-### cases from the plan's Test Plan section, mapped to REQ-### ids. */
+function testCasesForRequirement(plan: string, requirement: string): string[] {
+  const testPlan = plan.match(/^## Test Plan\s*$([\s\S]*?)(?=^## |(?![\s\S]))/im)?.[1] ?? "";
+  const caseIds = [...new Set(testPlan.match(/TC-\d+/g) ?? [])];
+  return caseIds.filter((caseId) =>
+    new RegExp(`^.*${caseId}.*${requirement}.*$|${requirement}.*${caseId}`, "im").test(testPlan),
+  );
+}
+
 export function buildTraceabilityGraph(input: TraceabilityInput): TraceabilityGraph {
   const requirements = uniqueSorted(input.specification.match(/REQ-\d+/g) ?? []);
   const taskStarts = [...input.plan.matchAll(/(?:^|\n)\s*-?\s*(?:\[[ x]\]\s*)?(TASK-\d+)/gi)];
@@ -82,7 +91,10 @@ export function buildTraceabilityGraph(input: TraceabilityInput): TraceabilityGr
         ),
         tasks: uniqueSorted(linkedTasks.map(({ id }) => id)),
         code: uniqueSorted(linkedTasks.flatMap(({ block }) => valuesForField(block, "Code"))),
-        tests: uniqueSorted(linkedTasks.flatMap(({ block }) => valuesForField(block, "Tests"))),
+        tests: uniqueSorted([
+          ...linkedTasks.flatMap(({ block }) => valuesForField(block, "Tests")),
+          ...testCasesForRequirement(input.plan, requirement),
+        ]),
         evidence: uniqueSorted([
           ...linkedTasks.flatMap(({ block }) => valuesForField(block, "Evidence")),
           ...(linkedTasks.length > 0 ? globalValidation : []),

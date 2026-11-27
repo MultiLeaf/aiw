@@ -7,6 +7,7 @@ import {
   getUnresolvedPrerequisites,
   invalidateStageAndDescendants,
   parseApprovalLedger,
+  type ApprovalLedger,
   rejectStage,
   serializeApprovalLedger,
   skipOptionalStage,
@@ -17,10 +18,24 @@ import {
 const timestamp = "2026-09-13T12:00:00.000Z";
 const fingerprint = (content: string): string => stageFingerprint(content);
 
+/** Feature-process ledger with the optional pre-specification stages skipped. */
+function featureLedgerPastBrainstorm(id = "feature-001"): ApprovalLedger {
+  let ledger = createApprovalLedger(id);
+  for (const stage of ["brainstorming", "product-requirements"] as const) {
+    ledger = skipOptionalStage(ledger, stage, {
+      reason: "Scope is already clear.",
+      humanAccepted: true,
+      updatedAt: timestamp,
+    });
+  }
+  return ledger;
+}
+
 describe("human approval contract", () => {
-  it("defines an ordered stage graph with only brainstorming and design optional", () => {
+  it("defines an ordered stage graph with brainstorming, PRD, design, and PR optional", () => {
     expect(APPROVAL_STAGES).toEqual([
       "brainstorming",
+      "product-requirements",
       "specification",
       "technical-design",
       "plan",
@@ -28,10 +43,13 @@ describe("human approval contract", () => {
       "verification",
       "review",
       "traceability",
+      "pr",
       "diagnosis",
       "assessment",
     ]);
     expect(stageDefinition("brainstorming").optional).toBe(true);
+    expect(stageDefinition("product-requirements").optional).toBe(true);
+    expect(stageDefinition("pr").optional).toBe(true);
     expect(stageDefinition("diagnosis").optional).toBe(false);
     expect(stageDefinition("assessment").optional).toBe(false);
     expect(stageDefinition("technical-design").optional).toBe(true);
@@ -62,7 +80,10 @@ describe("human approval contract", () => {
 
   it("blocks later stages until every prior stage is approved or explicitly skipped", () => {
     const ledger = createApprovalLedger("feature-001");
-    expect(getUnresolvedPrerequisites(ledger, "specification")).toEqual(["brainstorming"]);
+    expect(getUnresolvedPrerequisites(ledger, "specification")).toEqual([
+      "brainstorming",
+      "product-requirements",
+    ]);
     expect(() =>
       beginStageApproval(ledger, "specification", {
         artifactHash: fingerprint("spec"),
@@ -71,20 +92,24 @@ describe("human approval contract", () => {
       }),
     ).toThrow("brainstorming");
 
-    const skipped = skipOptionalStage(ledger, "brainstorming", {
-      reason: "The request has clear scope and constraints.",
-      humanAccepted: true,
-      updatedAt: timestamp,
-    });
+    const skipped = skipOptionalStage(
+      skipOptionalStage(ledger, "brainstorming", {
+        reason: "The request has clear scope and constraints.",
+        humanAccepted: true,
+        updatedAt: timestamp,
+      }),
+      "product-requirements",
+      {
+        reason: "The request has clear scope and constraints.",
+        humanAccepted: true,
+        updatedAt: timestamp,
+      },
+    );
     expect(getUnresolvedPrerequisites(skipped, "specification")).toEqual([]);
   });
 
   it("requires automated quality gates to pass before human review where a gate exists", () => {
-    const ledger = skipOptionalStage(createApprovalLedger("feature-001"), "brainstorming", {
-      reason: "Scope is already clear.",
-      humanAccepted: true,
-      updatedAt: timestamp,
-    });
+    const ledger = featureLedgerPastBrainstorm();
     expect(() =>
       beginStageApproval(ledger, "specification", {
         artifactHash: fingerprint("spec"),
@@ -102,11 +127,7 @@ describe("human approval contract", () => {
   });
 
   it("records human approval only for the pending exact artifact", () => {
-    const ledger = skipOptionalStage(createApprovalLedger("feature-001"), "brainstorming", {
-      reason: "Scope is already clear.",
-      humanAccepted: true,
-      updatedAt: timestamp,
-    });
+    const ledger = featureLedgerPastBrainstorm();
     const pending = beginStageApproval(ledger, "specification", {
       artifactHash: fingerprint("spec v1"),
       qualityGate: "passed",
@@ -161,7 +182,12 @@ describe("human approval contract", () => {
       artifactHash: fingerprint("brainstorm v1"),
       updatedAt: timestamp,
     });
-    const specification = beginStageApproval(approvedBrainstorm, "specification", {
+    const prd = skipOptionalStage(approvedBrainstorm, "product-requirements", {
+      reason: "Scope is already clear.",
+      humanAccepted: true,
+      updatedAt: timestamp,
+    });
+    const specification = beginStageApproval(prd, "specification", {
       artifactHash: fingerprint("spec v1"),
       qualityGate: "passed",
       updatedAt: timestamp,
@@ -185,6 +211,11 @@ describe("human approval contract", () => {
     });
     ledger = approveStage(ledger, "brainstorming", {
       artifactHash: fingerprint("brainstorm v1"),
+      updatedAt: timestamp,
+    });
+    ledger = skipOptionalStage(ledger, "product-requirements", {
+      reason: "Scope is already clear.",
+      humanAccepted: true,
       updatedAt: timestamp,
     });
     ledger = beginStageApproval(ledger, "specification", {
@@ -223,11 +254,7 @@ describe("human approval contract", () => {
   });
 
   it("round-trips the versioned ledger and rejects unsupported schemas or stages", () => {
-    const ledger = skipOptionalStage(createApprovalLedger("feature-001"), "brainstorming", {
-      reason: "Scope is already clear.",
-      humanAccepted: true,
-      updatedAt: timestamp,
-    });
+    const ledger = featureLedgerPastBrainstorm();
     expect(parseApprovalLedger(serializeApprovalLedger(ledger))).toEqual(ledger);
     expect(() => parseApprovalLedger("schema: 2\nstages: {}\n")).toThrow(
       "schema must be version 1",

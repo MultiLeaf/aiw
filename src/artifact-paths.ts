@@ -5,6 +5,7 @@ import type { HumanApprovalStage } from "./types.js";
 /** FRIC-005: legacy fixed artifact path per stage (pre-namespacing layout). */
 const LEGACY_STAGE_PATHS: Record<HumanApprovalStage, string> = {
   brainstorming: "generated/specs/brainstorm.md",
+  "product-requirements": "generated/specs/product-requirements.md",
   specification: "generated/specs/specification.md",
   "technical-design": "generated/reports/technical-design.md",
   plan: "generated/plans/implementation-plan.md",
@@ -12,6 +13,7 @@ const LEGACY_STAGE_PATHS: Record<HumanApprovalStage, string> = {
   verification: "generated/reports/verification-report.md",
   review: "generated/reports/code-review.md",
   traceability: "generated/artifacts/traceability.yml",
+  pr: "generated/reports/pr-readiness.md",
   diagnosis: "generated/reports/diagnosis.md",
   assessment: "generated/reports/assessment.md",
 };
