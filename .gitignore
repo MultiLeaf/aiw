@@ -6,3 +6,4 @@
 .aiw/telemetry.yml
 .aiw/overrides.yml
 dist
+node_modules/

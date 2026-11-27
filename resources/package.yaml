@@ -37,6 +37,7 @@ resources:
     - { id: review-judge-a, version: 0.1.0, path: skills/review-judge-a.md }
     - { id: review-judge-b, version: 0.1.0, path: skills/review-judge-b.md }
     - { id: review-refuter, version: 0.1.0, path: skills/review-refuter.md }
+    - { id: pr-submission, version: 0.1.0, path: skills/pr-submission.md }
   rules:
     - { id: language-policy, version: 0.1.0, path: rules/language-policy.md }
     - { id: tdd-policy, version: 0.1.0, path: rules/tdd-policy.md }
@@ -79,6 +80,8 @@ resources:
     - { id: code-review, version: 0.1.0, path: templates/code-review.md }
     - { id: security-review, version: 0.1.0, path: templates/security-review.md }
     - { id: migration-report, version: 0.1.0, path: templates/migration-report.md }
+    - { id: product-requirements, version: 0.1.0, path: templates/product-requirements.md }
+    - { id: pr-readiness, version: 0.1.0, path: templates/pr-readiness.md }
 provides:
   skills:
     [
@@ -94,9 +97,16 @@ provides:
       documentation-maintenance,
       adapter-development,
       skill-authoring,
+      resource-evaluator,
       nestjs-development,
       prisma-data-access,
       vite-frontend,
+      ticket,
+      research,
+      review-judge-a,
+      review-judge-b,
+      review-refuter,
+      pr-submission,
     ]
   rules:
     [
@@ -136,6 +146,10 @@ provides:
       task,
       test-plan,
       verification-report,
+      implementation-evidence,
+      code-review,
       security-review,
       migration-report,
+      product-requirements,
+      pr-readiness,
     ]
