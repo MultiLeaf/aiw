@@ -1,9 +1,9 @@
 schema: 1
 stage: plan
-fingerprint: sha256-b004cee0f1e6164a53ee1ff87abd11a2d8945f3a11056376e9cc8e445368a09a
-generatedAt: 2026-11-27T19:59:28.867Z
-title: "Doctor drift rule and CHANGELOG implementation"
-requirementIds: [REQ-001, REQ-001, REQ-002, REQ-002, REQ-003, REQ-003, REQ-001, REQ-002, REQ-003]
-taskIds: [TASK-001, TASK-002, TASK-003, TASK-001, TASK-002, TASK-003, TASK-001]
+fingerprint: sha256-964b4e7ea7fd2a3aba6997ee7f98c06e4656320b3de4ac4c7d84ea5958917a81
+generatedAt: 2026-11-27T20:28:57.968Z
+title: "Hardening follow-ups implementation"
+requirementIds: [REQ-001, REQ-001, REQ-002, REQ-002, REQ-003, REQ-003, REQ-004, REQ-004, REQ-005, REQ-005, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+taskIds: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005, TASK-001]
 decisionIds: []
 criteriaCount: 0

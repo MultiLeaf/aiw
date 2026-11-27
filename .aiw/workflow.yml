@@ -1,7 +1,7 @@
 schema: 1
-workflowId: 18b9fdaa-7a62-4502-9a54-737cfafe9107
+workflowId: a5748466-09dc-40fd-8014-5b8158298375
 status: complete
-startedAt: 2026-11-27T19:56:16.967Z
-updatedAt: 2026-11-27T20:14:35.621Z
-ticket: AIW-001
-title: Doctor rule for stage-list drift and CHANGELOG entry
+startedAt: 2026-11-27T20:19:25.340Z
+updatedAt: 2026-11-27T20:46:34.894Z
+ticket: AIW-002
+title: "Hardening follow-ups: forecast targeting, gate parsing, observe log format, rules-candidates persistence"

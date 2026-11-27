@@ -1,9 +1,9 @@
 schema: 1
 stage: specification
-fingerprint: sha256-9d93f3e38c7343a0d953d0d9237bc915510ba55fdcd85f10ed93902a5598b8f5
-generatedAt: 2026-11-27T19:57:17.171Z
-title: "Specification: Doctor rule for stage-list drift and CHANGELOG entry"
-requirementIds: [REQ-001, REQ-002, REQ-001, REQ-003]
+fingerprint: sha256-24e34fc507f05eed563963d112bd98e1cfdd96fcbf7de24c0d36e1a4bd31952e
+generatedAt: 2026-11-27T20:20:18.581Z
+title: "Specification: Hardening follow-ups"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
 taskIds: []
 decisionIds: []
-criteriaCount: 3
+criteriaCount: 5

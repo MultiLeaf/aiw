@@ -1,10 +1,10 @@
 schema: 1
 stage: review
-fingerprint: sha256-ab23071451c6dcddf3d57d74703d11ef89a5e230fe5f6f70a353b9d2ebf44d11
-generatedAt: 2026-11-27T20:08:56.584Z
-title: "Code Review: Doctor drift rule and CHANGELOG"
-requirementIds: []
-taskIds: [TASK-001, TASK-003]
+fingerprint: sha256-c4b1d9c61b40fdeb5d472d0c2ac8c9afaf7f1ae869b8998df54aa8cf01d4bf2d
+generatedAt: 2026-11-27T20:39:50.668Z
+title: "Code Review: Hardening follow-ups"
+requirementIds: [REQ-002]
+taskIds: [TASK-001, TASK-005]
 decisionIds: []
 criteriaCount: 0
-decision: "Accept — the safety-critical behaviors (no invented approvals, no overwrites, required-stage refusal, strict re-validation) are all test-covered; findings are cosmetic/informational."
+decision: "Accept — every fix is local, test-covered, and conservative in its failure direction; findings are informational."

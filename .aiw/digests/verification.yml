@@ -1,10 +1,10 @@
 schema: 1
 stage: verification
-fingerprint: sha256-86423efc324d91f7fba0f37441d1a40790828e6d8449cc196c9e439d594d3f01
-generatedAt: 2026-11-27T20:06:54.031Z
-title: "Verification Report: Doctor drift rule and CHANGELOG"
-requirementIds: [REQ-001, REQ-002, REQ-003, REQ-001, REQ-002, REQ-003, REQ-001, REQ-002, REQ-002, REQ-003]
-taskIds: [TASK-001, TASK-002, TASK-003]
+fingerprint: sha256-ed13ca62c3ffa5e0a08731d3d24d3e9692507d775f95ea5c705459382d978a4d
+generatedAt: 2026-11-27T20:35:56.758Z
+title: "Verification Report: Hardening follow-ups"
+requirementIds: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-001, REQ-002, REQ-001, REQ-003, REQ-004, REQ-005, REQ-001, REQ-001, REQ-002, REQ-003, REQ-004, REQ-005]
+taskIds: [TASK-001, TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
 decisionIds: []
 criteriaCount: 0
 decision: "Complete."

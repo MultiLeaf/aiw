@@ -1,0 +1,32 @@
+schema: 1
+links:
+  - requirement: REQ-001
+    decisions: []
+    tasks: [TASK-001]
+    code: ["src/workflow.ts (pr-gate branch: read the report's Branch section, match plan id from checkpoint filename against the declared branch prefix, iterate checkpoints/plans, skip on no match)"]
+    tests: ["src/workflow-pr.test.ts extended (multi-plan: matching consumed, non-matching skipped; single-plan regression; no-match fallback)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/completion-report.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-002
+    decisions: []
+    tasks: [TASK-002]
+    code: ["src/quality-gates.ts (plan branch: case entry = TC line + indented following lines; regex over the entry)"]
+    tests: ["src/quality-gates.test.ts extended (wrapped REQ passes; unlinked still fails; same-line unchanged)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/completion-report.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-003
+    decisions: []
+    tasks: [TASK-003]
+    code: ["src/completion-report.ts (fence-aware line scanner in prReadinessSection's extract)"]
+    tests: ["src/completion-report.test.ts extended (fenced ## included; fence-free identical)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/completion-report.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-004
+    decisions: []
+    tasks: [TASK-004]
+    code: ["src/workflow.ts (recordObserveDecision: YAML write to .yml, legacy .json migration, cap unchanged)"]
+    tests: ["src/workflow-observe.test.ts updated (YAML path asserted; legacy JSON migrated losslessly and removed; cap)"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/completion-report.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts` → exit 0", "npm run check"]
+  - requirement: REQ-005
+    decisions: []
+    tasks: [TASK-005]
+    code: ["src/workflow.ts (scan branch merges prior non-clustered entries), src/rules-candidates.test.ts extended"]
+    tests: ["manual entry survives rescan; dismissed status survives cluster reappearance"]
+    evidence: ["Record test output and changed files", "`npx vitest run src/completion-report.test.ts` → exit 0", "`npx vitest run src/quality-gates.test.ts` → exit 0", "`npx vitest run src/rules-candidates.test.ts` → exit 0", "`npx vitest run src/workflow-observe.test.ts` → exit 0", "`npx vitest run src/workflow-pr.test.ts` → exit 0", "npm run check"]

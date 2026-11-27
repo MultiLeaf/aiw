@@ -1,53 +1,53 @@
 schema: 1
-workflowId: 18b9fdaa-7a62-4502-9a54-737cfafe9107
+workflowId: a5748466-09dc-40fd-8014-5b8158298375
 stages:
   brainstorming:
     status: skipped
     qualityGate: not-applicable
-    updatedAt: 2026-11-27T19:56:21.818Z
-    reason: "Requirement provided by ticket AIW-001: doctor rule for stage-list drift plus CHANGELOG entry; scope is clear"
+    updatedAt: 2026-11-27T20:19:30.166Z
+    reason: "Requirement provided by ticket AIW-002: five well-scoped hardening fixes from prior code reviews"
   product-requirements:
     status: skipped
     qualityGate: not-applicable
-    updatedAt: 2026-11-27T19:56:26.817Z
-    reason: Requirement provided by ticket AIW-001; no product intent beyond the ticket
+    updatedAt: 2026-11-27T20:19:30.234Z
+    reason: Requirement provided by ticket AIW-002; no product intent beyond the ticket
   specification:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T19:57:17.168Z
-    artifactHash: sha256-9d93f3e38c7343a0d953d0d9237bc915510ba55fdcd85f10ed93902a5598b8f5
+    updatedAt: 2026-11-27T20:20:18.578Z
+    artifactHash: sha256-24e34fc507f05eed563963d112bd98e1cfdd96fcbf7de24c0d36e1a4bd31952e
   technical-design:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T19:58:54.729Z
-    artifactHash: sha256-f1fc9af51499b2c37aa642218dcbfcf97bbb4a8ef40508f0205485580f487661
+    updatedAt: 2026-11-27T20:24:25.231Z
+    artifactHash: sha256-d7d4fed6f7fe74bcbfe28c8c9ea8c0608a02fd613c32b820e946948edd6ce107
   plan:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T19:59:28.865Z
-    artifactHash: sha256-b004cee0f1e6164a53ee1ff87abd11a2d8945f3a11056376e9cc8e445368a09a
+    updatedAt: 2026-11-27T20:28:57.966Z
+    artifactHash: sha256-964b4e7ea7fd2a3aba6997ee7f98c06e4656320b3de4ac4c7d84ea5958917a81
   implementation:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T20:05:36.585Z
-    artifactHash: sha256-7146b3decd3edb1d1ae96a6c1fd9d98e88fc9aba36198cf93fea6e923b997e63
+    updatedAt: 2026-11-27T20:35:18.467Z
+    artifactHash: sha256-b0044449370fe9d0310ed0bdd5e45d7649b516b9a71b6e8a05287618dbdccc7f
   verification:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T20:06:54.028Z
-    artifactHash: sha256-86423efc324d91f7fba0f37441d1a40790828e6d8449cc196c9e439d594d3f01
+    updatedAt: 2026-11-27T20:35:56.756Z
+    artifactHash: sha256-ed13ca62c3ffa5e0a08731d3d24d3e9692507d775f95ea5c705459382d978a4d
   review:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T20:08:56.581Z
-    artifactHash: sha256-ab23071451c6dcddf3d57d74703d11ef89a5e230fe5f6f70a353b9d2ebf44d11
+    updatedAt: 2026-11-27T20:39:50.665Z
+    artifactHash: sha256-c4b1d9c61b40fdeb5d472d0c2ac8c9afaf7f1ae869b8998df54aa8cf01d4bf2d
   traceability:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T20:10:12.832Z
-    artifactHash: sha256-75f727a85ded54b0d3ff7acada56373c94ff09ea97bdd62c667143ec2a1d49b4
+    updatedAt: 2026-11-27T20:40:18.402Z
+    artifactHash: sha256-fb15300218c4c563318436f34b8aa2822488e25f84405ffd73bbcb80a61f4cfa
   pr:
     status: approved
     qualityGate: passed
-    updatedAt: 2026-11-27T20:14:35.552Z
-    artifactHash: sha256-f4e25cd7275f56b4cbe709d2b942598df77a3f727c1dbdf460dce2f497a3b5a9
+    updatedAt: 2026-11-27T20:46:34.823Z
+    artifactHash: sha256-555203db8f2eed5bac711117541b751cc14673f6579902a4b160680bbdb726bc
