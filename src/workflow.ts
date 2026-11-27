@@ -149,6 +149,7 @@ import { serializeSelfValidationEvidence, validateTicketId } from "./self-valida
 import {
   enforceOrganizationPolicy,
   parseOrganizationPolicy,
+  POLICY_DECISIONS,
   serializeOrganizationPolicy,
   type PackagePolicySubject,
 } from "./organization-policy.js";
@@ -345,7 +346,22 @@ import {
   serializeTeamPreset,
   fetchPrivateRegistryClient,
 } from "./team-configuration.js";
-import { enforcePolicyGate, gitPolicyTracking } from "./policy-gate.js";
+import {
+  applyAutomatedResult,
+  changedPaths,
+  enforcePolicyGate,
+  gitPolicyTracking,
+  resolvePolicy,
+  type PolicyDecision,
+  type PolicyRule,
+} from "./policy-gate.js";
+import {
+  changeFingerprint,
+  isPathApproved,
+  parsePolicyApprovals,
+  policyApprovalsPath,
+  recordPolicyApproval,
+} from "./policy-approvals.js";
 import {
   DEFAULT_TELEMETRY_CONFIG,
   loadTelemetryConfig,
@@ -3971,9 +3987,131 @@ export async function runCommand(
       const policy = parseOrganizationPolicy(fs.read(policyPath));
       subjects.forEach((subject) => assertKnownPermissions(subject.permissions));
       enforcePolicyGate(policy, subjects);
+      // REQ-002/004 (workflow abbfcf16): path-rule enforcement and advisory.
+      if (policy.rules?.length) {
+        const advisoryArg = args.find((arg) => arg.startsWith("--advisory="))?.slice(11);
+        if (advisoryArg !== undefined && !POLICY_DECISIONS.includes(advisoryArg as PolicyDecision))
+          return {
+            exitCode: 1,
+            error: `--advisory must be one of: ${POLICY_DECISIONS.join(", ")}`,
+          };
+        let paths = changedPaths(root);
+        if (paths === undefined) {
+          // D1 fallback: non-git repositories evaluate the package manifests' declared paths.
+          paths = [
+            ...new Set(
+              packages.flatMap((pkg) =>
+                Object.values(pkg.resources).flatMap((resources) =>
+                  resources.map((resource) => resource.path),
+                ),
+              ),
+            ),
+          ].sort();
+        }
+        if (paths.length === 0) {
+          return {
+            exitCode: 0,
+            output: `Organization policy gate passed: ${policy.name} (${subjects.length} subjects). Advisory: no changed paths were evaluated (no git change and no package file lists).`,
+          };
+        }
+        const fingerprint = changeFingerprint(paths);
+        const approvals = fs.exists(policyApprovalsPath(aiw))
+          ? parsePolicyApprovals(fs.read(policyApprovalsPath(aiw)))
+          : [];
+        const rules: PolicyRule[] = policy.rules.map((rule) => ({
+          id: rule.id,
+          paths: rule.paths,
+          decision: rule.decision,
+          ...(rule.alwaysRequireHuman ? { alwaysRequireHuman: true } : {}),
+        }));
+        const denied: string[] = [];
+        const unapproved: string[] = [];
+        const counts = { allow: 0, "require-approval": 0, "always-require-human": 0, deny: 0 };
+        const advisoryDelta: string[] = [];
+        for (const path of paths) {
+          const resolved = resolvePolicy(rules, path);
+          if (!resolved) {
+            counts.allow += 1;
+            continue;
+          }
+          counts[resolved.decision] += 1;
+          if (resolved.decision === "deny") {
+            denied.push(`${path} (rules: ${resolved.matchedRules.join(", ")})`);
+          } else if (
+            (resolved.decision === "require-approval" ||
+              resolved.decision === "always-require-human") &&
+            !isPathApproved(approvals, fingerprint, path)
+          ) {
+            unapproved.push(
+              `${path} (${resolved.decision}; rules: ${resolved.matchedRules.join(", ")}; approve with: aiw policy approve --paths=${path})`,
+            );
+          }
+          if (advisoryArg !== undefined) {
+            const after = applyAutomatedResult(resolved, advisoryArg as PolicyDecision);
+            if (after.decision !== resolved.decision)
+              advisoryDelta.push(
+                `${path}: ${resolved.decision} → ${after.decision} (advisory only; verdict unchanged)`,
+              );
+          }
+        }
+        const summary = `paths: ${paths.length} changed · allow ${counts.allow} · require-approval ${counts["require-approval"]} · always-require-human ${counts["always-require-human"]} · deny ${counts.deny}`;
+        if (denied.length || unapproved.length) {
+          const lines = [
+            ...(denied.length
+              ? [
+                  `Denied paths (deny is not satisfiable by approval):\n${denied.map((p) => `- ${p}`).join("\n")}`,
+                ]
+              : []),
+            ...(unapproved.length
+              ? [
+                  `Paths requiring recorded human approval:\n${unapproved.map((p) => `- ${p}`).join("\n")}`,
+                ]
+              : []),
+          ];
+          return {
+            exitCode: 1,
+            error: `Organization policy gate blocked by path rules (${policy.name}):\n${lines.join("\n")}\n${summary}`,
+          };
+        }
+        return {
+          exitCode: 0,
+          output: `Organization policy gate passed: ${policy.name} (${subjects.length} subjects). ${summary}.${advisoryDelta.length ? `\nAdvisory (${advisoryArg}):\n${advisoryDelta.map((line) => `- ${line}`).join("\n")}\nDeny and always-require-human decisions are never changed by advisory results.` : ""}`,
+        };
+      }
       return {
         exitCode: 0,
         output: `Organization policy gate passed: ${policy.name} (${subjects.length} subjects).`,
+      };
+    }
+    if (command === "policy") {
+      if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
+      if (args[1] !== "approve")
+        return { exitCode: 1, error: "Usage: aiw policy approve --paths=<pattern>[,<pattern>...]" };
+      const pathsArg = args.find((arg) => arg.startsWith("--paths="))?.slice(8);
+      if (!pathsArg)
+        return { exitCode: 1, error: "Usage: aiw policy approve --paths=<pattern>[,<pattern>...]" };
+      const patterns = pathsArg
+        .split(",")
+        .map((pattern) => pattern.trim())
+        .filter(Boolean);
+      if (!patterns.length)
+        return { exitCode: 1, error: "--paths requires at least one non-empty pattern." };
+      const paths = changedPaths(root);
+      if (paths === undefined || paths.length === 0)
+        return {
+          exitCode: 1,
+          error:
+            "No changed paths to approve: run this in the repository whose change needs approval.",
+        };
+      const fingerprint = changeFingerprint(paths);
+      const path = recordPolicyApproval(fs, aiw, {
+        paths: patterns,
+        fingerprint,
+        approvedAt: new Date().toISOString(),
+      });
+      return {
+        exitCode: 0,
+        output: `Human approval recorded for ${patterns.join(", ")} scoped to the current change (${paths.length} path(s), fingerprint ${fingerprint.slice(0, 16)}…). Recorded in ${path}; rerun aiw policy-check to verify.`,
       };
     }
     if (command === "preset") {

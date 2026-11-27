@@ -12,6 +12,8 @@ All notable changes to this project are documented in this file. The format foll
 - Post-PR automation patterns: gate observe mode (`aiw gate <stage> --observe` logs would-be decisions without state changes), bounded rejection budgets with escalation (`aiw reject` cycles block the gate after N consecutive rejections — default 3, `aiw workflow start --rejection-budget=` — until `aiw resolve --stage=` records a human decision), rejection-reason candidates (`aiw rules-candidates` clusters recurring rejection reasons into human-activated rule/skill candidates), finding triage (`triage: auto-fixable | judgment-required` guidance with a warn-level gate advisory), trust-boundary documentation (`docs/trust-boundaries.md`), and policy conflict semantics (strictest-rule-wins resolver where automated results never override `always-require-human`/`deny`).
 - `aiw doctor` diagnoses stage-list drift: workflows started with an older process stage list are reported with the drifted stages and unresolved prerequisites, and `aiw doctor --fix` repairs them by recording skips for the new optional prerequisites — decided stages are never modified and no approval is invented; required new prerequisites are refused with an actionable message.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
@@ -27,6 +29,8 @@ All notable changes to this project are documented in this file. The format foll
 - Bounded `research` skill (RES-001): evidence-first, budget-capped investigations from a single question — scope gate with human confirmation, stop conditions and escalation, verifiable citations (`file:line` / log line / URL + consultation date) with fact/hypothesis/unverified states, secret redaction before host-side external queries, and a durable workflow-scoped `research.md` artifact recorded through light-lane evidence. Offered as the advisory `bounded-research` recommendation; covered by the packaged-skill eval contracts.
 - Bundled-resource update command (UPD-001): `aiw update [--dry-run] [--add=type/id,...]` diffs installed resources against the CLI's catalog (updated/new/unchanged), replaces only files whose ownership checksum proves they are unmodified (manual edits are preserved as typed `update_conflict` blocks with continuations), installs catalog resources additively via `--add` without re-running the recommendation wizard, and is non-interactive, deterministic, and idempotent.
 - `aiw adr` now defaults to monotonic unix-time (millisecond) ids — chronological, collision-resistant numbering for parallel or rapid ADR creation; explicit `--id=` is unchanged.
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -56,6 +60,8 @@ All notable changes to this project are documented in this file. The format foll
 - Orchestration depth (OPP-017): `aiw orchestrate integrate --plan=<path>` prints the wave-ordered integration forecast — a deterministic `git merge-tree` dry run per isolated task branch against the current branch, reporting conflicts before any human merge. Isolated executions now record per-task duration, diff stat, and plan wall-clock time in the checkpoint, and `aiw doctor` reports leaked managed worktrees with the cleanup continuation (`worktrees_leaked` typed reason).
 - `docs/orchestration.md` gains the per-harness worktree honor matrix and the minimal adapter contract for `task.worktree`.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - `orchestrate integrate` works before option parsing (previously subcommand form collided with `--plan` validation).
@@ -79,6 +85,8 @@ All notable changes to this project are documented in this file. The format foll
 - **Evals + red-team layer (OPP-011)**: deterministic invariant and injection suites over shipped skills — approval-waiting invariants per stage skill, permission-gating and honest no-execution markers for the refuter, and a payload corpus proving bypass endorsements are detected.
 - **Standards discovery, deterministic floor (OPP-012)**: `aiw standards extract|list|confirm|reject` — offline extraction of test-layout, error-class, and naming conventions into evidence-cited standards under `.aiw/standards/`; every standard is inferred until a human confirms or rejects it.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Two latent ledger bugs the sweep exposed: `withStage` and `invalidateStageAndDescendants` rebuilt ledger objects without lane/process provenance, silently stripping them on every stage transition (found because bugfix workflows gated like feature ones).
@@ -91,6 +99,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - `aiw workflow abandon --reason=<why>` archives an obsolete active workflow: the session (with `status: abandoned` and the recorded reason) and the approval ledger move under `.aiw/checkpoints/`, the active slot is freed, and a new workflow can start immediately. Reason is required and audited.
 - Typed blocking reasons for workflow lifecycle: `workflow_still_active` (starting over an active workflow now names `aiw workflow complete` **or** `aiw workflow abandon --reason=...` as the way out — previously a prose-only dead end found during field testing), `workflow_not_active`, and `workflow_complete`.
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -108,12 +118,16 @@ All notable changes to this project are documented in this file. The format foll
 - Adversarial review skills (OPP-003): `review-judge-a`, `review-judge-b`, and `review-refuter` ship in the self-hosting package. Two blind judges review independently; severe findings require a reproducing command or self-proving `file:line` citations and otherwise degrade to advisory; only corroborated severe findings block. Refuter command execution is permission-gated (default: evidence reading with an explicit no-command-executed marker, isolated directory, no network). Human acceptance of the review outcome is unchanged.
 - Workflow proportionality documentation: [ADR-001](.context/adrs/ADR-001-odd-rdd-proportionality-scope.md) records the ODD/RDD analysis — six implemented opportunities plus advisory-only model-integration opportunities (OPP-007/008) deliberately deferred until field exposure.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - `aiw risk assess` no longer truncates paths of tracked-modified files (the porcelain fixed-width column was destroyed by line trimming) and no longer flags `.aiw/` managed state (for example `lock.yml`) as concurrency risk.
 - `aiw risk` without a subcommand now prints its own typed usage instead of the general command dump.
 
 ## [0.9.1] - 2026-10-24
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -149,6 +163,8 @@ All notable changes to this project are documented in this file. The format foll
 - Root context rendering: syncing a non-empty resource selection now writes the generated project context to the active target's root file (`AGENTS.md` for Codex/Cursor, `CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI), and `aiw target` migrates it between targets. The file is owned by AI Workflow, listed in the sync preview, and an existing hand-written root context is reported as a conflict instead of being overwritten.
 - Decision-model usage in `aiw recommend` is now recorded in `.aiw/usage.yml` (`recommend.decision`) alongside the scan stages.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
@@ -170,6 +186,8 @@ All notable changes to this project are documented in this file. The format foll
 - Model usage reporting: every `aiw scan` states which models were actually used — embedding (chunks indexed or retrieval queries, batch request count, estimated tokens) and interpreter (model, facts inferred, scoped files, estimated tokens) — or reports `Models used: none (deterministic scan).`
 - Per-stage token estimates recorded in `.aiw/usage.yml` (`scan.embedding`, `scan.interpreter`) and inspectable with `aiw token-usage`. Token counts are local project state; telemetry never carries them.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Interactive onboarding messages shortened to single-line prompts.
@@ -188,6 +206,8 @@ All notable changes to this project are documented in this file. The format foll
 - Local telemetry buffer: when telemetry is enabled and no host client is present, events accumulate in a rotated `.aiw/telemetry-buffer.jsonl` (retention cap of 200 events); `aiw telemetry status --verbose` displays buffered events and `aiw telemetry disable` purges the buffer. No network transport was added.
 - Local model detection during interactive install: the installer probes the configured Ollama endpoint (`/api/tags`), lists the embedding and decision models actually available, and records the user's selection in `.aiw/settings.yml`; when no server or models are found it continues with defaults.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
@@ -198,12 +218,16 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [0.4.1] - 2026-10-08
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Approving an SDD stage that never passed its quality gate now reports an actionable `Run aiw gate <stage> before approving` error instead of a misleading stale-approval message.
 - `aiw semantic status` and `aiw decision status` now point to the `.aiw/settings.yml` sections instead of the legacy standalone files.
 
 ## [0.4.0] - 2026-10-08
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -228,11 +252,15 @@ All notable changes to this project are documented in this file. The format foll
 - Advisory decision triage via a local decision model (`jev/clef-flash` through Ollama `/v1/systemone`): flag-gated by `.aiw/decision.yml`, `aiw decision status` and `aiw decision triage --artifact=<path>` return advisory evidence-completeness and gate decisions with confidence, never replacing human approval.
 - Documentation for semantic mapping and an evaluation of the `jev/clef` decision model for advisory flow decisions.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Removed high-severity transitive vulnerabilities (`brace-expansion`, `source-map-js`) reported by `npm audit`.
 
 ## [0.2.1] - 2026-09-13
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -251,6 +279,8 @@ All notable changes to this project are documented in this file. The format foll
 - Reviewable, fingerprint-bound installation previews with conflict detection and rollback on failed syncs.
 - Reusable implementation evidence and code review templates, plus completeness checks for every workflow stage.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
@@ -261,6 +291,8 @@ All notable changes to this project are documented in this file. The format foll
 - Align generated bootstrap and stage skills with the enforced approval and installation flows.
 
 ## [0.1.5] - 2026-09-12
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -277,6 +309,8 @@ All notable changes to this project are documented in this file. The format foll
 - Guided `/ai-init` onboarding with model-cost guidance, parallel project analysis, monorepo-aware profiles, selectable resource blocks, and project-specific resource personalization.
 - NestJS, Prisma, and Vite capability recommendations with matching skills, agents, and data-access guidance.
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Hardening follow-ups (AIW-002): the `pr`-stage gate consumes the orchestration merge forecast only from the plan whose task branches match the PR's declared branch (no-match falls back to recorded evidence — no false conflict blocks); the plan gate accepts REQ links on wrapped (indented) TC lines; PR-readiness section extraction tolerates `##` lines inside fenced code blocks; the observe-decision checkpoint is YAML like its siblings, migrating legacy JSON logs losslessly; `aiw rules-candidates` rescans preserve manually added entries and dismissed statuses.
@@ -292,11 +326,15 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [0.1.3] - 2026-09-12
 
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
+
 ### Fixed
 
 - Invoke AI Workflow through `npx` in the generated `ai-init` instructions so fresh projects do not need a globally installed `aiw` binary.
 
 ## [0.1.2] - 2026-09-12
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -305,6 +343,8 @@ All notable changes to this project are documented in this file. The format foll
 - Allow non-interactive recommendation previews without silently selecting or installing capabilities.
 
 ## [0.1.1] - 2026-09-12
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 
@@ -317,6 +357,8 @@ All notable changes to this project are documented in this file. The format foll
 - Validate package manifests and resource paths, verify local package integrity, and redact credentials from scanned context.
 - Track installed-file ownership so uninstall and migration only remove unchanged AI Workflow files.
 - Require organization approval and explicit consent before loading remote package sources.
+
+- Organization policy path rules with strictest-wins enforcement: `organization.yml` accepts an optional `rules:` list (id, paths, decision, always-require-human; validated, ≤64 rules); `aiw policy-check` resolves the change's paths through the strictest-match resolver — `deny` blocks unconditionally, `require-approval`/`always-require-human` pass only with a scoped recorded approval (`aiw policy approve --paths=…`, fingerprinted to the exact change), non-git repositories fall back to package manifest paths, and `--advisory=<decision>` reports what an automated signal would change without ever altering the verdict or overriding deny/always-require-human. Flat policies behave exactly as before.
 
 ### Fixed
 

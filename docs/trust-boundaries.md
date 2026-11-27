@@ -43,6 +43,10 @@ teams adopting agents can reason about what is trusted, what is not, and who is 
   committed by workflow tooling.
 - `aiw doctor --fix` (stage-list drift repair) only inserts recorded skip entries for new
   optional prerequisites; it never modifies a decided stage and never invents an approval.
+- `aiw policy approve --paths=…` is a deliberate human command scoped to one change
+  (fingerprinted to its exact path set); `deny` rules are never satisfiable by approval, and
+  advisory (`--advisory`) results can never raise a decision above require-approval or touch
+  always-require-human/deny.
 - Rule/skill candidates surfaced by `aiw rules-candidates` are drafts: they never activate
   without an explicit human `--accept`, and even then the human creates and commits the rule
   file manually.

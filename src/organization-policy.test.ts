@@ -14,6 +14,59 @@ describe("organization policy", () => {
     expect(serializeOrganizationPolicy(policy)).toBe(content);
   });
 
+  it("parses, validates, and round-trips optional path rules (REQ-001)", () => {
+    const withRules = `${content}rules:
+  - id: auth-human
+    paths: [src/auth/*]
+    decision: require-approval
+    always-require-human: true
+  - id: docs-allow
+    paths: [docs/*]
+    decision: allow
+`;
+    const policy = parseOrganizationPolicy(withRules);
+    expect(policy.rules).toHaveLength(2);
+    expect(policy.rules?.[0]).toMatchObject({
+      id: "auth-human",
+      paths: ["src/auth/*"],
+      decision: "always-require-human",
+      alwaysRequireHuman: true,
+    });
+    // Round-trip.
+    const roundTripped = parseOrganizationPolicy(serializeOrganizationPolicy(policy));
+    expect(roundTripped.rules).toEqual(policy.rules);
+    // Flat behavior unchanged without rules.
+    const flat = parseOrganizationPolicy(content);
+    expect(flat.rules).toBeUndefined();
+    expect(serializeOrganizationPolicy(flat)).toBe(
+      serializeOrganizationPolicy(parseOrganizationPolicy(content)),
+    );
+  });
+
+  it("rejects invalid rules with actionable errors (REQ-001)", () => {
+    expect(() =>
+      parseOrganizationPolicy(
+        `${content}rules:\n  - id: bad\n    paths: [src/*]\n    decision: maybe\n`,
+      ),
+    ).toThrow("invalid decision: maybe");
+    expect(() =>
+      parseOrganizationPolicy(
+        `${content}rules:\n  - id: dup\n    paths: [a/*]\n    decision: allow\n  - id: dup\n    paths: [b/*]\n    decision: deny\n`,
+      ),
+    ).toThrow("duplicated: dup");
+    expect(() =>
+      parseOrganizationPolicy(`${content}rules:\n  - id: no-paths\n    decision: allow\n`),
+    ).toThrow("non-empty paths list");
+    expect(() =>
+      parseOrganizationPolicy(
+        `${content}rules:\n${Array.from({ length: 65 }, (_, i) => `  - id: r${i}\n    paths: [p${i}]\n    decision: allow\n`).join("")}`,
+      ),
+    ).toThrow("cannot exceed 64 rules");
+    expect(() => parseOrganizationPolicy(`${content}rules: [not, a, block]\n`)).toThrow(
+      "rules must be a block list",
+    );
+  });
+
   it("allows approved sources and rejects sources or permissions outside policy", () => {
     const policy = parseOrganizationPolicy(content);
     expect(() =>
