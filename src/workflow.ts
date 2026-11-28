@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { BlockingError, blockingResultToJson } from "./blocking-reasons.js";
 import { contextUsageCommands } from "./commands/context-usage.js";
 import { evalProposalsCommands } from "./commands/eval-proposals.js";
+import { generationCommands } from "./commands/generation.js";
 import { intelligenceCommands } from "./commands/intelligence.js";
+import { migrationCommands } from "./commands/migration.js";
 import { packagesPolicyCommands } from "./commands/packages-policy.js";
 import { runtimeToolsCommands } from "./commands/runtime-tools.js";
 import { sddArtifactsCommands } from "./commands/sdd-artifacts.js";
 import { sddLifecycleCommands } from "./commands/sdd-lifecycle.js";
-import { setupMigrationCommands } from "./commands/setup-migration.js";
+import { setupCommands } from "./commands/setup.js";
 import type { CommandHandler, WorkflowServices } from "./commands/types.js";
 import { WORKFLOW_DIRECTORY } from "./constants.js";
 import { withSafeProjectWrites } from "./files.js";
@@ -20,8 +22,10 @@ export { compareVerificationPairs } from "./commands/workflow-state.js";
 const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   ...sddLifecycleCommands,
   ...sddArtifactsCommands,
-  ...setupMigrationCommands,
+  ...setupCommands,
+  ...migrationCommands,
   ...intelligenceCommands,
+  ...generationCommands,
   ...packagesPolicyCommands,
   ...evalProposalsCommands,
   ...contextUsageCommands,
