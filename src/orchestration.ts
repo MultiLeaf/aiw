@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
+import { debugLog } from "./debug.js";
 
 export {
   createCliOrchestrator,
@@ -78,7 +79,8 @@ export function worktreeFinalCommit(worktree: string): string | undefined {
     return execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], {
       encoding: "utf8",
     }).trim();
-  } catch {
+  } catch (error) {
+    debugLog("orchestration", `failed to resolve HEAD in worktree ${worktree}`, error);
     return undefined;
   }
 }
@@ -89,7 +91,8 @@ function gitDiffStat(root: string, worktree: string, base: string, final: string
       cwd: root,
       encoding: "utf8",
     }).trim();
-  } catch {
+  } catch (error) {
+    debugLog("orchestration", `failed to compute diff stat for ${worktree}`, error);
     return "";
   }
 }
@@ -134,7 +137,8 @@ export function forecastIntegration(
       let branchTip: string;
       try {
         branchTip = git(root, ["rev-parse", "--verify", branch]);
-      } catch {
+      } catch (error) {
+        debugLog("orchestration", `branch ${branch} missing during integration forecast`, error);
         lines.push({ wave: index + 1, taskId, branch, state: "missing" });
         continue;
       }
@@ -219,10 +223,11 @@ export function removeWorktrees(
   for (const path of paths) {
     try {
       git(root, ["worktree", "remove", path, options.force ? "--force" : "--force"]);
-    } catch {
+    } catch (error) {
       // A worktree whose branch has unmerged changes refuses plain removal;
       // callers decide whether to force. Removal failures are non-fatal:
       // `aiw orchestrate --cleanup` can always retry.
+      debugLog("orchestration", `failed to remove worktree ${path}`, error);
     }
   }
 }
@@ -238,7 +243,8 @@ export function listManagedWorktrees(root: string, aiw: string): string[] {
       .filter((line) => line.startsWith("worktree "))
       .map((line) => line.slice("worktree ".length))
       .filter((path) => path.startsWith(prefix));
-  } catch {
+  } catch (error) {
+    debugLog("orchestration", `failed to list managed worktrees under ${aiw}`, error);
     return [];
   }
 }

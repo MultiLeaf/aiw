@@ -3,6 +3,7 @@ import type { FileSystem } from "./types.js";
 import { loadSettings, saveSettingsSection } from "./settings.js";
 import { DEFAULT_SEMANTIC_CONFIG, createOllamaEmbeddingProvider } from "./semantic.js";
 import { DEFAULT_DECISION_CONFIG, createOllamaDecisionProvider } from "./decision.js";
+import { debugLog } from "./debug.js";
 
 export type ConfirmQuestion = (question: string) => Promise<string>;
 
@@ -90,7 +91,8 @@ export const defaultOnboardingRuntime: OnboardingRuntime = {
       return typeof body?.version === "string" && body.version.trim().length > 0
         ? body.version.trim()
         : undefined;
-    } catch {
+    } catch (error) {
+      debugLog("onboarding", `failed to query Ollama version at ${baseUrl}`, error);
       return undefined;
     }
   },
@@ -112,7 +114,8 @@ export const defaultOnboardingRuntime: OnboardingRuntime = {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       return models;
-    } catch {
+    } catch (error) {
+      debugLog("onboarding", `failed to list Ollama models at ${baseUrl}`, error);
       return undefined;
     }
   },
@@ -146,7 +149,8 @@ export const defaultOnboardingRuntime: OnboardingRuntime = {
       if (!(await provider.available())) return false;
       const vectors = await provider.embed(["aiw onboarding validation"]);
       return vectors.length === 1 && vectors[0].length > 0;
-    } catch {
+    } catch (error) {
+      debugLog("onboarding", `embedding validation failed for ${config.model}`, error);
       return false;
     }
   },
@@ -159,7 +163,8 @@ export const defaultOnboardingRuntime: OnboardingRuntime = {
         ...(config.apiKeyEnv ? { apiKeyEnv: config.apiKeyEnv } : {}),
       });
       return await provider.available();
-    } catch {
+    } catch (error) {
+      debugLog("onboarding", `decision validation failed for ${config.model}`, error);
       return false;
     }
   },
