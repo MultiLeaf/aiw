@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
 
-export const ORCHESTRATION_AGENTS = ["codex", "claude", "gemini"] as const;
+export const ORCHESTRATION_AGENTS = ["codex", "claude", "gemini", "antigravity"] as const;
 export type OrchestrationAgent = (typeof ORCHESTRATION_AGENTS)[number];
 export type OrchestrationTask = {
   id: string;

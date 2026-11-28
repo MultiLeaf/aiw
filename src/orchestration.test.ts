@@ -34,6 +34,11 @@ describe("multi-agent orchestration", () => {
     );
   });
 
+  it("accepts antigravity as an orchestration agent", () => {
+    const plan = parseOrchestrationPlan(content.replace("agent: codex", "agent: antigravity"));
+    expect(plan.tasks[0].agent).toBe("antigravity");
+  });
+
   it("accepts portable CRLF plans without changing their meaning", () => {
     expect(parseOrchestrationPlan(content.replaceAll("\n", "\r\n"))).toEqual(
       parseOrchestrationPlan(content),

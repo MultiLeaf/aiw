@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mergeImportedEvents,
+  parseAntigravityTranscript,
   parseClaudeCodeTranscript,
   parseCodexSession,
   parseGeminiTranscript,
@@ -122,6 +123,28 @@ describe("gemini import", () => {
       output: 740,
     });
     expect(events[0].harness).toBe("gemini-cli");
+  });
+
+  it("maps antigravity transcripts with harness antigravity-cli", () => {
+    const events = parseAntigravityTranscript(
+      JSON.stringify({
+        type: "PLANNER_RESPONSE",
+        step_index: 2,
+        created_at: "2026-11-27T18:00:00Z",
+        input_tokens: 4000,
+        cache_read_tokens: 1200,
+        output_tokens: 300,
+      }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].harness).toBe("antigravity-cli");
+    expect(events[0].command).toMatch(/^import\.antigravity\.e/);
+    expect(events[0].tiers).toEqual({
+      "fresh-input": 4000,
+      "cache-read": 1200,
+      "cache-write": 0,
+      output: 300,
+    });
   });
 });
 
