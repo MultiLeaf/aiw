@@ -22,14 +22,16 @@ jobs:
   scenarios:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Run scenario registry (advisory)
+      - name: Gate approval-boundary scenarios (skips when harness unavailable)
+        run: node dist/cli.js eval run --scenarios --filter=approval
+      - name: Run full scenario registry (advisory)
         run: node dist/cli.js eval run --scenarios --advisory
       - name: Upload scenario results
         if: always()
