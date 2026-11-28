@@ -10,7 +10,7 @@
 
 ### 1. Local Models Resilience & Incremental Semantic Indexing
 
-- [ ] **FLOW-001** Make local decision and embedding models resilient, incremental, and integrated into SDD stages.
+- [x] **FLOW-001** Make local decision and embedding models resilient, incremental, and integrated into SDD stages.
   - Graceful fallback with a clear warning when Ollama is offline during `aiw recommend` or `aiw semantic` (instead of hard-failing with exit code 1).
   - Configurable `fetch` timeouts for `decision` and `semantic` providers, plus clearer default model guidance during onboarding.
   - Incremental semantic indexing (`aiw semantic index`) keyed by per-file content hash so unchanged files are not re-embedded on every run.

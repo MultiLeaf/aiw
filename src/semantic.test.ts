@@ -12,8 +12,10 @@ import {
   querySemanticIndex,
   rerankSemanticMatches,
   serializeSemanticIndex,
+  suggestSemanticContext,
   type EmbeddingProvider,
   type SemanticConfig,
+  type SemanticIndexBuildStats,
 } from "./semantic.js";
 
 function memoryFileSystem(files: Record<string, string> = {}): FileSystem {
@@ -210,6 +212,113 @@ describe("semantic index", () => {
   it("handles empty match sets", async () => {
     const outcome = await rerankSemanticMatches([], "query", async () => ({}));
     expect(outcome).toEqual({ matches: [], changedPositions: 0 });
+  });
+
+  it("reuses unchanged file chunks incrementally and re-embeds only modified/new files (FLOW-001)", async () => {
+    const embeddedTexts: string[] = [];
+    const trackingProvider: EmbeddingProvider = {
+      async available(): Promise<boolean> {
+        return true;
+      },
+      async embed(texts: string[]): Promise<number[][]> {
+        embeddedTexts.push(...texts);
+        return texts.map((text) => [text.length, 1]);
+      },
+    };
+    const contents: Record<string, string> = {
+      "a.ts": "export const a = 1;",
+      "b.ts": "export const b = 2;",
+    };
+    const first = await buildSemanticIndex(
+      ["a.ts", "b.ts"],
+      async (file) => contents[file],
+      trackingProvider,
+      enabledConfig,
+    );
+    expect(embeddedTexts).toHaveLength(2);
+    expect(first.fileHashes).toBeDefined();
+
+    embeddedTexts.length = 0;
+    contents["b.ts"] = "export const b = 200;";
+    contents["c.ts"] = "export const c = 3;";
+    let stats: SemanticIndexBuildStats | undefined;
+    const second = await buildSemanticIndex(
+      ["a.ts", "b.ts", "c.ts"],
+      async (file) => contents[file],
+      trackingProvider,
+      enabledConfig,
+      {
+        existingIndex: first,
+        onStats: (recorded) => {
+          stats = recorded;
+        },
+      },
+    );
+    expect(embeddedTexts).toEqual(["export const b = 200;", "export const c = 3;"]);
+    expect(stats?.reusedFiles).toBe(1);
+    expect(stats?.embeddedFiles).toBe(2);
+    expect(stats?.reusedChunks).toBe(1);
+    expect(stats?.embeddedChunks).toBe(2);
+    expect(second.chunks.map((chunk) => chunk.file).sort()).toEqual(["a.ts", "b.ts", "c.ts"]);
+  });
+
+  it("validates timeoutMs and matches Ollama models without explicit :latest tag (FLOW-001)", async () => {
+    const parsed = parseSemanticMapping({
+      enabled: true,
+      model: "nomic-embed-text",
+      baseUrl: "http://localhost:11434",
+      timeoutMs: 4500,
+    });
+    expect(parsed.timeoutMs).toBe(4500);
+    expect(() =>
+      parseSemanticMapping({
+        enabled: true,
+        model: "nomic-embed-text",
+        baseUrl: "http://localhost:11434",
+        timeoutMs: -1,
+      }),
+    ).toThrow(/timeoutMs/);
+
+    const seenInits: RequestInit[] = [];
+    const provider = createOllamaEmbeddingProvider(parsed, async (_url, init) => {
+      seenInits.push(init ?? {});
+      return new Response(JSON.stringify({ models: [{ name: "nomic-embed-text:latest" }] }), {
+        status: 200,
+      });
+    });
+    expect(await provider.available()).toBe(true);
+    expect(seenInits[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("suggests advisory semantic context and degrades silently when offline (FLOW-001)", async () => {
+    const vectors = new Map<string, number[]>([
+      ["auth token", [1, 0]],
+      ["export function verifyToken() {}", [0.95, 0.05]],
+    ]);
+    const index = await buildSemanticIndex(
+      ["src/auth.ts"],
+      async () => "export function verifyToken() {}",
+      fakeProvider(vectors),
+      enabledConfig,
+    );
+    const fs = memoryFileSystem({
+      ".aiw/settings.yml":
+        "semantic:\n  enabled: true\n  model: test-model\n  baseUrl: http://localhost:11434\n",
+      ".aiw/semantic/index.json": serializeSemanticIndex(index),
+    });
+    const section = await suggestSemanticContext(fs, ".aiw", "auth token", fakeProvider(vectors));
+    expect(section).toContain("## Relevant Context (Semantic Retrieval — Advisory)");
+    expect(section).toContain("`src/auth.ts`");
+
+    const offlineProvider: EmbeddingProvider = {
+      async available(): Promise<boolean> {
+        return false;
+      },
+      async embed(): Promise<number[][]> {
+        throw new Error("offline");
+      },
+    };
+    expect(await suggestSemanticContext(fs, ".aiw", "auth token", offlineProvider)).toBeUndefined();
   });
 });
 

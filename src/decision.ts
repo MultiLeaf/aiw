@@ -1,4 +1,5 @@
 import { parseDocument } from "yaml";
+import { debugLog } from "./debug.js";
 import type { FileSystem } from "./types.js";
 import { loadSettings } from "./settings.js";
 
@@ -7,7 +8,11 @@ export type DecisionConfig = {
   model: string;
   baseUrl: string;
   apiKeyEnv?: string;
+  timeoutMs?: number;
 };
+
+export const DEFAULT_DECISION_AVAILABILITY_TIMEOUT_MS = 5_000;
+export const DEFAULT_DECISION_TIMEOUT_MS = 15_000;
 
 export type DecisionQuestion =
   | { type: "noul"; instructions: string; criteria?: { true: string; false: string } }
@@ -54,6 +59,7 @@ export function parseDecisionMapping(raw: unknown): DecisionConfig {
   const model = record.model;
   const baseUrl = record.baseUrl;
   const apiKeyEnv = record.apiKeyEnv;
+  const timeoutMs = record.timeoutMs;
   if (typeof enabled !== "boolean") throw new Error("decision.enabled must be a boolean");
   if (!enabled) return { ...DEFAULT_DECISION_CONFIG, enabled: false };
   if (
@@ -61,15 +67,26 @@ export function parseDecisionMapping(raw: unknown): DecisionConfig {
     (typeof apiKeyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv))
   )
     throw new Error("decision.apiKeyEnv must be an uppercase environment variable name");
+  if (
+    timeoutMs !== undefined &&
+    (typeof timeoutMs !== "number" || !Number.isInteger(timeoutMs) || timeoutMs < 1)
+  )
+    throw new Error("decision.timeoutMs must be a positive integer");
   if (typeof model !== "string" || model.trim() === "")
     throw new Error("decision.model must be a non-empty string when decision mapping is enabled");
   if (typeof baseUrl !== "string" || !/^https?:\/\//i.test(baseUrl))
     throw new Error("decision.baseUrl must be an http(s) URL when decision mapping is enabled");
-  return { enabled: true, model, baseUrl, ...(apiKeyEnv ? { apiKeyEnv } : {}) };
+  return {
+    enabled: true,
+    model,
+    baseUrl,
+    ...(apiKeyEnv ? { apiKeyEnv } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+  };
 }
 
 export function serializeDecisionConfig(config: DecisionConfig): string {
-  return `decision:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}${config.apiKeyEnv ? `\n  apiKeyEnv: ${config.apiKeyEnv}` : ""}\n`;
+  return `decision:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}${config.apiKeyEnv ? `\n  apiKeyEnv: ${config.apiKeyEnv}` : ""}${config.timeoutMs !== undefined ? `\n  timeoutMs: ${config.timeoutMs}` : ""}\n`;
 }
 
 export function parseDecisionConfig(text: string): DecisionConfig {
@@ -110,6 +127,20 @@ export function parseDecisionResponse(text: string): DecisionResponse {
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
+function hasOllamaModel(
+  models: { name?: unknown; model?: unknown }[] | undefined,
+  configured: string,
+): boolean {
+  const names = new Set(
+    (models ?? []).flatMap((entry) =>
+      [entry?.name, entry?.model].filter((value): value is string => typeof value === "string"),
+    ),
+  );
+  if (names.has(configured)) return true;
+  if (!configured.includes(":") && names.has(`${configured}:latest`)) return true;
+  return false;
+}
+
 export function createOllamaDecisionProvider(
   config: DecisionConfig,
   fetchImpl: FetchLike = (url, init) => fetch(url, init),
@@ -118,27 +149,28 @@ export function createOllamaDecisionProvider(
   const externalToken = config.apiKeyEnv ? env[config.apiKeyEnv] : undefined;
   const authHeaders = (extra: Record<string, string> = {}): Record<string, string> =>
     externalToken ? { ...extra, authorization: `Bearer ${externalToken}` } : extra;
+  const requestTimeoutMs = config.timeoutMs ?? DEFAULT_DECISION_TIMEOUT_MS;
+  const availabilityTimeoutMs = Math.min(
+    requestTimeoutMs,
+    DEFAULT_DECISION_AVAILABILITY_TIMEOUT_MS,
+  );
   return {
     async available(): Promise<boolean> {
       try {
+        const signal = AbortSignal.timeout(availabilityTimeoutMs);
         if (config.apiKeyEnv !== undefined) {
           const response = await fetchImpl(`${config.baseUrl}/v1/models`, {
             headers: authHeaders(),
+            signal,
           });
           return response.ok;
         }
-        const response = await fetchImpl(`${config.baseUrl}/api/tags`);
+        const response = await fetchImpl(`${config.baseUrl}/api/tags`, { signal });
         if (!response.ok) return false;
         const body = (await response.json()) as { models?: { name?: string; model?: string }[] };
-        const names = new Set(
-          (body.models ?? []).flatMap((entry) =>
-            typeof entry?.name === "string" && typeof entry?.model === "string"
-              ? [entry.name, entry.model]
-              : [],
-          ),
-        );
-        return names.has(config.model);
-      } catch {
+        return hasOllamaModel(body.models, config.model);
+      } catch (error) {
+        debugLog("models", `decision availability check failed for ${config.model}`, error);
         return false;
       }
     },
@@ -149,6 +181,7 @@ export function createOllamaDecisionProvider(
       const response = await fetchImpl(`${config.baseUrl}/v1/systemone`, {
         method: "POST",
         headers: authHeaders({ "content-type": "application/json" }),
+        signal: AbortSignal.timeout(requestTimeoutMs),
         body: JSON.stringify({
           model: config.model,
           state: request.state,

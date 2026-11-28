@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { parseDocument } from "yaml";
 import { join } from "path";
+import { debugLog } from "./debug.js";
 import type { FileSystem } from "./types.js";
 import { loadSettings } from "./settings.js";
 
@@ -11,10 +13,32 @@ export type SemanticConfig = {
   topK: number;
   excludeLockfiles: boolean;
   apiKeyEnv?: string;
+  timeoutMs?: number;
 };
 
+export const DEFAULT_SEMANTIC_AVAILABILITY_TIMEOUT_MS = 5_000;
+export const DEFAULT_SEMANTIC_EMBED_TIMEOUT_MS = 30_000;
+
 export type SemanticIndexChunk = { file: string; text: string; vector: number[] };
-export type SemanticIndex = { schema: 1; model: string; chunks: SemanticIndexChunk[] };
+export type SemanticIndex = {
+  schema: 1;
+  model: string;
+  chunkChars?: number;
+  fileHashes?: Record<string, string>;
+  chunks: SemanticIndexChunk[];
+};
+export type SemanticIndexBuildStats = {
+  totalChunks: number;
+  reusedChunks: number;
+  embeddedChunks: number;
+  embeddedChars: number;
+  reusedFiles: number;
+  embeddedFiles: number;
+};
+export type BuildSemanticIndexOptions = {
+  existingIndex?: SemanticIndex;
+  onStats?: (stats: SemanticIndexBuildStats) => void;
+};
 export type SemanticMatch = { file: string; score: number; excerpt: string };
 export type RerankedMatch = SemanticMatch & { rerankScore?: number };
 export type RerankOutcome = { matches: RerankedMatch[]; changedPositions: number };
@@ -73,6 +97,7 @@ export function parseSemanticMapping(raw: unknown): SemanticConfig {
   const topK = raw2.topK;
   const rawExclude = raw2.excludeLockfiles;
   const apiKeyEnv = raw2.apiKeyEnv;
+  const timeoutMs = raw2.timeoutMs;
   if (typeof enabled !== "boolean") throw new Error("semantic.enabled must be a boolean");
   const excludeLockfiles = rawExclude === undefined ? true : (rawExclude as boolean);
   if (!enabled) return { ...DEFAULT_SEMANTIC_CONFIG, enabled: false, excludeLockfiles };
@@ -83,6 +108,11 @@ export function parseSemanticMapping(raw: unknown): SemanticConfig {
     (typeof apiKeyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv))
   )
     throw new Error("semantic.apiKeyEnv must be an uppercase environment variable name");
+  if (
+    timeoutMs !== undefined &&
+    (typeof timeoutMs !== "number" || !Number.isInteger(timeoutMs) || timeoutMs < 1)
+  )
+    throw new Error("semantic.timeoutMs must be a positive integer");
   if (typeof model !== "string" || model.trim() === "")
     throw new Error("semantic.model must be a non-empty string when semantic mapping is enabled");
   if (typeof baseUrl !== "string" || !/^https?:\/\//i.test(baseUrl))
@@ -102,11 +132,12 @@ export function parseSemanticMapping(raw: unknown): SemanticConfig {
     topK: parsedTopK,
     excludeLockfiles,
     ...(apiKeyEnv ? { apiKeyEnv } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   };
 }
 
 export function serializeSemanticConfig(config: SemanticConfig): string {
-  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n  excludeLockfiles: ${config.excludeLockfiles}${config.apiKeyEnv ? `\n  apiKeyEnv: ${config.apiKeyEnv}` : ""}\n`;
+  return `semantic:\n  enabled: ${config.enabled}\n  model: ${config.model}\n  baseUrl: ${config.baseUrl}\n  chunkChars: ${config.chunkChars}\n  topK: ${config.topK}\n  excludeLockfiles: ${config.excludeLockfiles}${config.apiKeyEnv ? `\n  apiKeyEnv: ${config.apiKeyEnv}` : ""}${config.timeoutMs !== undefined ? `\n  timeoutMs: ${config.timeoutMs}` : ""}\n`;
 }
 
 export function loadSemanticConfig(fs: FileSystem, aiwPath: string): SemanticConfig | undefined {
@@ -140,6 +171,20 @@ type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 const EMBED_BATCH_SIZE = 64;
 
+function hasOllamaModel(
+  models: { name?: unknown; model?: unknown }[] | undefined,
+  configured: string,
+): boolean {
+  const names = new Set(
+    (models ?? []).flatMap((entry) =>
+      [entry?.name, entry?.model].filter((value): value is string => typeof value === "string"),
+    ),
+  );
+  if (names.has(configured)) return true;
+  if (!configured.includes(":") && names.has(`${configured}:latest`)) return true;
+  return false;
+}
+
 export function createOllamaEmbeddingProvider(
   config: SemanticConfig,
   fetchImpl: FetchLike = (url, init) => fetch(url, init),
@@ -149,15 +194,19 @@ export function createOllamaEmbeddingProvider(
   const isExternal = config.apiKeyEnv !== undefined;
   const authHeaders = (extra: Record<string, string> = {}): Record<string, string> =>
     externalToken ? { ...extra, authorization: `Bearer ${externalToken}` } : extra;
+  const embedTimeoutMs = config.timeoutMs ?? DEFAULT_SEMANTIC_EMBED_TIMEOUT_MS;
+  const availabilityTimeoutMs = Math.min(embedTimeoutMs, DEFAULT_SEMANTIC_AVAILABILITY_TIMEOUT_MS);
   if (isExternal)
     return {
       async available(): Promise<boolean> {
         try {
           const response = await fetchImpl(`${config.baseUrl}/v1/models`, {
             headers: authHeaders(),
+            signal: AbortSignal.timeout(availabilityTimeoutMs),
           });
           return response.ok;
-        } catch {
+        } catch (error) {
+          debugLog("models", `external embedding availability failed for ${config.model}`, error);
           return false;
         }
       },
@@ -168,6 +217,7 @@ export function createOllamaEmbeddingProvider(
           const response = await fetchImpl(`${config.baseUrl}/v1/embeddings`, {
             method: "POST",
             headers: authHeaders({ "content-type": "application/json" }),
+            signal: AbortSignal.timeout(embedTimeoutMs),
             body: JSON.stringify({ model: config.model, input: batch }),
           });
           if (!response.ok) throw new Error(`Embedding request failed for model ${config.model}`);
@@ -189,18 +239,14 @@ export function createOllamaEmbeddingProvider(
   return {
     async available(): Promise<boolean> {
       try {
-        const response = await fetchImpl(`${config.baseUrl}/api/tags`);
+        const response = await fetchImpl(`${config.baseUrl}/api/tags`, {
+          signal: AbortSignal.timeout(availabilityTimeoutMs),
+        });
         if (!response.ok) return false;
         const body = (await response.json()) as { models?: { name?: string; model?: string }[] };
-        const names = new Set(
-          (body.models ?? []).flatMap((entry) =>
-            typeof entry?.name === "string" && typeof entry?.model === "string"
-              ? [entry.name, entry.model]
-              : [],
-          ),
-        );
-        return names.has(config.model);
-      } catch {
+        return hasOllamaModel(body.models, config.model);
+      } catch (error) {
+        debugLog("models", `ollama embedding availability failed for ${config.model}`, error);
         return false;
       }
     },
@@ -211,6 +257,7 @@ export function createOllamaEmbeddingProvider(
         const response = await fetchImpl(`${config.baseUrl}/api/embed`, {
           method: "POST",
           headers: { "content-type": "application/json" },
+          signal: AbortSignal.timeout(embedTimeoutMs),
           body: JSON.stringify({ model: config.model, input: batch }),
         });
         if (!response.ok) throw new Error(`Embedding request failed for model ${config.model}`);
@@ -261,25 +308,78 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+function hashFileContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 export async function buildSemanticIndex(
   files: string[],
   readContent: (file: string) => Promise<string | undefined>,
   provider: EmbeddingProvider,
   config: SemanticConfig,
+  options: BuildSemanticIndexOptions = {},
 ): Promise<SemanticIndex> {
-  const entries: { file: string; text: string }[] = [];
+  const existing = options.existingIndex;
+  const canReuse =
+    existing !== undefined &&
+    existing.model === config.model &&
+    (existing.chunkChars === undefined || existing.chunkChars === config.chunkChars) &&
+    existing.fileHashes !== undefined;
+  const existingByFile = new Map<string, SemanticIndexChunk[]>();
+  if (canReuse && existing) {
+    for (const chunk of existing.chunks) {
+      const list = existingByFile.get(chunk.file);
+      if (list) list.push(chunk);
+      else existingByFile.set(chunk.file, [chunk]);
+    }
+  }
+
+  const reusedChunks: SemanticIndexChunk[] = [];
+  const pendingEntries: { file: string; text: string }[] = [];
+  const fileHashes: Record<string, string> = {};
+  let reusedFiles = 0;
+  let embeddedFiles = 0;
+
   for (const file of files) {
     if (config.excludeLockfiles && isExcludedIndexFile(file)) continue;
     const content = await readContent(file);
     if (content === undefined) continue;
-    for (const chunk of chunkText(content, config.chunkChars)) entries.push({ file, text: chunk });
+    const digest = hashFileContent(content);
+    fileHashes[file] = digest;
+    if (canReuse && existing?.fileHashes?.[file] === digest) {
+      const prior = existingByFile.get(file) ?? [];
+      reusedChunks.push(...prior);
+      reusedFiles += 1;
+      continue;
+    }
+    const chunks = chunkText(content, config.chunkChars);
+    for (const chunk of chunks) pendingEntries.push({ file, text: chunk });
+    if (chunks.length > 0) embeddedFiles += 1;
   }
-  if (entries.length === 0) return { schema: 1, model: config.model, chunks: [] };
-  const vectors = await provider.embed(entries.map((entry) => entry.text));
+
+  const vectors =
+    pendingEntries.length > 0
+      ? await provider.embed(pendingEntries.map((entry) => entry.text))
+      : [];
+  const embeddedChunks: SemanticIndexChunk[] = pendingEntries.map((entry, index) => ({
+    ...entry,
+    vector: vectors[index],
+  }));
+  const allChunks = [...reusedChunks, ...embeddedChunks];
+  options.onStats?.({
+    totalChunks: allChunks.length,
+    reusedChunks: reusedChunks.length,
+    embeddedChunks: embeddedChunks.length,
+    embeddedChars: embeddedChunks.reduce((total, chunk) => total + chunk.text.length, 0),
+    reusedFiles,
+    embeddedFiles,
+  });
   return {
     schema: 1,
     model: config.model,
-    chunks: entries.map((entry, index) => ({ ...entry, vector: vectors[index] })),
+    chunkChars: config.chunkChars,
+    fileHashes,
+    chunks: allChunks,
   };
 }
 
@@ -291,6 +391,19 @@ export function parseSemanticIndex(text: string): SemanticIndex {
   const parsed = JSON.parse(text) as SemanticIndex;
   if (parsed.schema !== 1 || typeof parsed.model !== "string" || !Array.isArray(parsed.chunks))
     throw new Error("Invalid semantic index");
+  if (
+    parsed.chunkChars !== undefined &&
+    (typeof parsed.chunkChars !== "number" || !Number.isInteger(parsed.chunkChars))
+  )
+    throw new Error("Invalid semantic index chunkChars");
+  if (
+    parsed.fileHashes !== undefined &&
+    (typeof parsed.fileHashes !== "object" ||
+      parsed.fileHashes === null ||
+      Array.isArray(parsed.fileHashes) ||
+      Object.values(parsed.fileHashes).some((value) => typeof value !== "string"))
+  )
+    throw new Error("Invalid semantic index fileHashes");
   for (const chunk of parsed.chunks) {
     if (
       typeof chunk.file !== "string" ||
@@ -387,8 +500,54 @@ export async function semanticCoveringEvidence(
       if (matches.some((match) => TEST_FILE_PATTERN.test(match.file))) covering.push(path);
     }
     return { covering, degraded: false };
-  } catch {
+  } catch (error) {
+    debugLog("models", "semantic covering evidence degraded", error);
     return { covering: [], degraded: true };
+  }
+}
+
+/**
+ * FLOW-001: advisory semantic context lookup for SDD artifact scaffolds.
+ * Never throws; returns undefined when semantic retrieval is disabled, missing,
+ * offline, or yields no matches.
+ */
+export async function suggestSemanticContext(
+  fs: FileSystem,
+  aiwPath: string,
+  query: string,
+  provider?: EmbeddingProvider,
+  maxItems = 5,
+): Promise<string | undefined> {
+  const trimmed = query.trim();
+  if (!trimmed) return undefined;
+  const config = loadSemanticConfig(fs, aiwPath);
+  if (!config?.enabled) return undefined;
+  const indexPath = join(aiwPath, SEMANTIC_INDEX_PATH);
+  if (!fs.exists(indexPath)) return undefined;
+  try {
+    const index = parseSemanticIndex(fs.read(indexPath));
+    if (index.model !== config.model || index.chunks.length === 0) return undefined;
+    const embed = provider ?? createOllamaEmbeddingProvider(config);
+    if (!(await embed.available())) return undefined;
+    const matches = await querySemanticIndex(index, trimmed, embed, {
+      ...config,
+      topK: Math.min(config.topK, maxItems),
+    });
+    if (matches.length === 0) return undefined;
+    const seen = new Set<string>();
+    const lines: string[] = [];
+    for (const match of matches) {
+      if (seen.has(match.file)) continue;
+      seen.add(match.file);
+      const snippet = match.excerpt.replace(/\s+/g, " ").trim().slice(0, 120);
+      lines.push(`- \`${match.file}\` (score ${match.score.toFixed(3)}): ${snippet}`);
+      if (lines.length >= maxItems) break;
+    }
+    if (lines.length === 0) return undefined;
+    return `\n## Relevant Context (Semantic Retrieval — Advisory)\n\n${lines.join("\n")}\n`;
+  } catch (error) {
+    debugLog("models", `semantic context suggestion degraded for query "${trimmed}"`, error);
+    return undefined;
   }
 }
 
