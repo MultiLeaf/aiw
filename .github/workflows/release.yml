@@ -37,8 +37,6 @@ jobs:
       - run: npm run release:check
       - run: npm run release:publish-check -- --tag="$TAG"
       - run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   github-release:
     needs: publish

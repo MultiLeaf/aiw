@@ -60,7 +60,7 @@ describe("release package", () => {
     expect(workflow).toContain("TAG: ${{ inputs.tag || github.ref_name }}");
     expect(workflow).toContain("ref: ${{ inputs.tag || github.ref }}");
     expect(workflow).toContain("npm publish --access public --provenance");
-    expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
+    expect(workflow).not.toContain("NODE_AUTH_TOKEN");
     expect(workflow).toContain("github-release:");
     expect(workflow).toContain("needs: publish");
     expect(workflow).toContain("gh release create");
