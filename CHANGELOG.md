@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-27
+
+### Added
+
+- Opt-in CLI harness runner (`--runner=cli`, `--timeout-ms=<ms>`) for `aiw orchestrate --execute` (`codex exec`, `claude -p`, `gemini -p`, `agy -p` via `execFile` with no shell interpolation, honoring `task.worktree` as `cwd` under `--isolate`, and exported from `@multileaf/ai-workflow/orchestration`).
+- Full `antigravity` (`agy`) ecosystem integration: added `antigravity` to `ORCHESTRATION_AGENTS`, added `usage-sidecar import --from=antigravity|agy` (`parseAntigravityTranscript`, `harness: "antigravity-cli"`), and documented the 7-target path matrix in `docs/adapter-model.md`.
+- Expanded behavioral evaluation scenario registry (`resources/evals/scenarios/`) to 9 scenarios across 8 families by adding `antigravity-approval-boundary`, `pr-readiness-gate`, and `policy-path-rules-enforcement`, and promoted `--filter=approval` to a CI gate in `.github/workflows/behavioral-evals.yml` on Node 24.
+
+### Changed
+
+- `.github/workflows/release.yml` now publishes exclusively via GitHub Actions OIDC Trusted Publishing (`npm publish --access public --provenance`) without legacy `NODE_AUTH_TOKEN` / `NPM_TOKEN`.
+
 ## [0.19.0] - 2026-11-27
 
 ### Added
