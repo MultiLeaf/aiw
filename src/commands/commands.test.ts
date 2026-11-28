@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nodeFileSystem } from "../files.js";
-import { runCommand } from "../workflow.js";
+import { HELP_OUTPUT, REGISTERED_COMMANDS, runCommand } from "../workflow.js";
 import {
   containsCredential,
   EMPTY_LOCKFILE,
@@ -31,6 +31,20 @@ describe("workflow command dispatcher contract", () => {
       expect(result.error).toBeUndefined();
     },
   );
+
+  it.each(["--version", "-v"])("prints the package.json version for %s", async (flag) => {
+    const cwd = mkdtempSync(join(tmpdir(), "aiw-cmd-ver-"));
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+    const result = await runCommand([flag], cwd, nodeFileSystem);
+    expect(result).toEqual({ exitCode: 0, output: pkg.version });
+  });
+
+  it("documents every registered command in HELP_OUTPUT", () => {
+    const missing = REGISTERED_COMMANDS.filter(
+      (command) => !new RegExp(`\\b${command.replace(/-/g, "\\-")}\\b`).test(HELP_OUTPUT),
+    );
+    expect(missing).toEqual([]);
+  });
 });
 
 describe("src/commands/shared helpers", () => {

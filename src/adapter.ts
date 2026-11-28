@@ -23,6 +23,9 @@ export function isTarget(value: string): value is Target {
 }
 
 export function detectTarget(root: string, fs: FileSystem): Target | undefined {
+  if (fs.exists(join(root, ".agents")) && fs.exists(join(root, "GEMINI.md"))) {
+    return "antigravity";
+  }
   const markers: Array<[Target, string]> = [
     ["codex", ".agents"],
     ["claude", ".claude"],
