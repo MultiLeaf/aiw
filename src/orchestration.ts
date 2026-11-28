@@ -2,6 +2,15 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
 
+export {
+  createCliOrchestrator,
+  DEFAULT_CLI_HARNESSES,
+  DEFAULT_CLI_TIMEOUT_MS,
+  type CliHarnessSpec,
+  type ProcessRunner,
+  type ProcessRunResult,
+} from "./orchestration-cli-runner.js";
+
 export const ORCHESTRATION_AGENTS = ["codex", "claude", "gemini", "antigravity"] as const;
 export type OrchestrationAgent = (typeof ORCHESTRATION_AGENTS)[number];
 export type OrchestrationTask = {

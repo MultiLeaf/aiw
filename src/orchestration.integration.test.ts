@@ -79,6 +79,9 @@ describe("orchestration workflow", () => {
       ["orchestrate", "--plan=orchestration.yml", "--max-parallel=17"],
       ["orchestrate", "--plan=orchestration.yml", "--max-parallel=1.5"],
       ["orchestrate", "--plan=orchestration.yml", "--max-parallel=abc"],
+      ["orchestrate", "--plan=orchestration.yml", "--execute", "--runner=unknown"],
+      ["orchestrate", "--plan=orchestration.yml", "--execute", "--runner=cli", "--timeout-ms=0"],
+      ["orchestrate", "--plan=orchestration.yml", "--execute", "--runner=cli", "--timeout-ms=abc"],
     ]) {
       const fs = project();
       const before = fs.snapshot();

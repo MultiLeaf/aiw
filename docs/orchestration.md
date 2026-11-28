@@ -29,9 +29,10 @@ Plan identifiers use lowercase letters, numbers, and hyphens. Task identifiers u
 ```bash
 aiw orchestrate --plan=orchestration.yml
 aiw orchestrate --plan=orchestration.yml --execute --max-parallel=2
+aiw orchestrate --plan=orchestration.yml --execute --runner=cli --isolate --max-parallel=2 --timeout-ms=300000
 ```
 
-The first command prints deterministic execution waves and does not invoke an agent or mutate project state. `--execute` requires a host-provided adapter. Parallelism must be an integer from 1 through 16. A failed or unavailable agent marks its task as failed; dependent tasks are blocked, while unrelated tasks continue.
+The first command prints deterministic execution waves and does not invoke an agent or mutate project state. `--execute` uses a host-provided `AgentOrchestrator`, or the built-in CLI harness runner when `--runner=cli` is explicitly passed (`codex exec`, `claude -p`, `gemini -p`, `agy -p`). Each subprocess runs via `execFile` (no shell interpolation) with `cwd` set to `task.worktree` when `--isolate` is active. Parallelism must be an integer from 1 through 16; `--timeout-ms` accepts `1000..3600000` (default `300000`). A failed, timed-out, or unavailable agent marks its task as failed; dependent tasks are blocked, while unrelated tasks continue.
 
 Each executed plan writes one `.aiw/checkpoints/orchestration-<plan-id>.yml` result. Existing checkpoints are never overwritten: use a new plan identifier for a new run. Agent result details are bounded and serialized safely.
 

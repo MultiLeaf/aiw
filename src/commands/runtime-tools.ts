@@ -21,6 +21,7 @@ import {
   writeClaudeSettings,
 } from "../hook-installer.js";
 import {
+  createCliOrchestrator,
   createTaskWorktrees,
   currentBranch,
   executeOrchestrationPlan,
@@ -131,21 +132,43 @@ async function handleOrchestrate({
   const named = args
     .slice(1)
     .filter((arg) => arg !== "--execute" && arg !== "--isolate" && arg !== "--cleanup");
-  const parsed = parseNamedOptions(named, ["plan", "max-parallel"]);
+  const parsed = parseNamedOptions(named, ["plan", "max-parallel", "runner", "timeout-ms"]);
   if (!parsed?.plan)
     return {
       exitCode: 1,
       error:
-        "Usage: aiw orchestrate --plan=path [--execute] [--isolate] [--cleanup] [--max-parallel=number]",
+        "Usage: aiw orchestrate --plan=path [--execute] [--runner=cli] [--timeout-ms=ms] [--isolate] [--cleanup] [--max-parallel=number]",
     };
+  if (parsed.runner !== undefined && parsed.runner !== "cli")
+    return {
+      exitCode: 1,
+      error: `Unsupported orchestration runner: ${parsed.runner}. Supported: cli.`,
+    };
+  let timeoutMs: number | undefined;
+  if (parsed["timeout-ms"] !== undefined) {
+    if (!/^\d+$/.test(parsed["timeout-ms"]))
+      return {
+        exitCode: 1,
+        error: "Orchestration --timeout-ms must be an integer in milliseconds.",
+      };
+    timeoutMs = Number(parsed["timeout-ms"]);
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3_600_000)
+      return { exitCode: 1, error: "Orchestration --timeout-ms must be between 1000 and 3600000." };
+  }
   const planPath = safeProjectFile(root, parsed.plan, fs);
   const plan = parseOrchestrationPlan(fs.read(planPath));
   const maxParallel = validateOrchestrationParallelism(
     parsed["max-parallel"] === undefined ? 2 : Number(parsed["max-parallel"]),
   );
   if (!execute) return { exitCode: 0, output: serializeOrchestrationPreview(plan) };
-  if (!services.orchestrator)
-    return { exitCode: 1, error: "No multi-agent orchestrator is configured." };
+  const orchestrator =
+    services.orchestrator ??
+    (parsed.runner === "cli" ? createCliOrchestrator({ root, timeoutMs }) : undefined);
+  if (!orchestrator)
+    return {
+      exitCode: 1,
+      error: "No multi-agent orchestrator is configured. Pass --runner=cli or inject an adapter.",
+    };
   const checkpoint = join(aiw, `checkpoints/orchestration-${plan.id}.yml`);
   const reservation = `${checkpoint}.lock`;
   if (!fs.createExclusive)
@@ -163,12 +186,7 @@ async function handleOrchestrate({
           worktrees: createTaskWorktrees(root, aiw, plan),
         }
       : undefined;
-    const results = await executeOrchestrationPlan(
-      plan,
-      services.orchestrator,
-      maxParallel,
-      isolation,
-    );
+    const results = await executeOrchestrationPlan(plan, orchestrator, maxParallel, isolation);
     if (isolation) {
       const passedPaths = results
         .filter(({ status, worktree }) => status === "passed" && worktree)
