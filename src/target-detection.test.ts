@@ -13,6 +13,10 @@ function fileSystem(paths: string[]): FileSystem {
 
 describe("target detection", () => {
   it("detects installed target markers", () => {
+    expect(detectTarget("/project", fileSystem(["/project/.agents", "/project/GEMINI.md"]))).toBe(
+      "antigravity",
+    );
+    expect(detectTarget("/project", fileSystem(["/project/.agents"]))).toBe("codex");
     expect(detectTarget("/project", fileSystem(["/project/.claude"]))).toBe("claude");
     expect(detectTarget("/project", fileSystem(["/project/.cursor"]))).toBe("cursor");
     expect(detectTarget("/project", fileSystem(["/project/.gemini"]))).toBe("gemini");

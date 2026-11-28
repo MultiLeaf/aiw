@@ -384,10 +384,10 @@ Create `orchestration.yml` using the schema in [Multi-agent Orchestration](docs/
 
 ```bash
 npx @multileaf/ai-workflow orchestrate --plan=orchestration.yml
-npx @multileaf/ai-workflow orchestrate --plan=orchestration.yml --execute --max-parallel=4
+npx @multileaf/ai-workflow orchestrate --plan=orchestration.yml --execute --runner=cli --isolate --max-parallel=4
 ```
 
-Preview is deterministic and read-only. Execution is opt-in and requires an application host to inject an `AgentOrchestrator`; the standalone CLI does not configure one, so its `--execute` form fails clearly until integrated by a host. Dependencies, bounded concurrency, failure propagation, replay protection, and checkpoint evidence are handled by the orchestration domain. The typed contract is exported from `@multileaf/ai-workflow/orchestration`.
+Preview is deterministic and read-only. Execution is opt-in: pass `--runner=cli` (with optional `--timeout-ms=<ms>`) to run tasks directly through local CLI harnesses (`codex`, `claude`, `gemini`, `antigravity`/`agy`) via `execFile`, or inject a custom `AgentOrchestrator` from an application host. Dependencies, bounded concurrency, failure propagation, replay protection, and checkpoint evidence are handled by the orchestration domain. The typed contract and CLI runner are exported from `@multileaf/ai-workflow/orchestration`.
 
 ## Plugins and SDK
 
