@@ -56,6 +56,7 @@ import { parseTraceabilityGraph } from "../traceability.js";
 import type { CommandResult } from "../types.js";
 import {
   mergeImportedEvents,
+  parseAntigravityTranscript,
   parseClaudeCodeTranscript,
   parseCodexSession,
   parseGeminiTranscript,
@@ -389,12 +390,17 @@ function handleUsageSidecar({ args, root, aiw, fs }: CommandContext): CommandRes
   }
   if (action === "import") {
     const parsed = parseNamedOptions(args.slice(2), ["from", "path"]);
-    const source = parsed?.from as ImportSource | undefined;
-    if (!parsed || !source || !["claude-code", "codex", "gemini", "pi"].includes(source))
+    const rawSource = parsed?.from === "agy" ? "antigravity" : parsed?.from;
+    const source = rawSource as ImportSource | undefined;
+    if (
+      !parsed ||
+      !source ||
+      !["claude-code", "codex", "gemini", "antigravity", "pi"].includes(source)
+    )
       return {
         exitCode: 1,
         error:
-          "Usage: aiw usage-sidecar import --from=claude-code|codex|gemini|pi [--path=logs-directory]",
+          "Usage: aiw usage-sidecar import --from=claude-code|codex|gemini|antigravity|pi [--path=logs-directory]",
       };
     if (!fs.list) return { exitCode: 1, error: "The filesystem cannot enumerate harness logs." };
     const home = homedir();
@@ -452,6 +458,7 @@ function handleUsageSidecar({ args, root, aiw, fs }: CommandContext): CommandRes
         const parsedEvents = parseCodexSession(content, root);
         if (parsedEvents) events.push(...parsedEvents);
       } else if (source === "pi") events.push(...parsePiSession(content));
+      else if (source === "antigravity") events.push(...parseAntigravityTranscript(content));
       else events.push(...parseGeminiTranscript(content));
     }
     let ledger: UsageSidecarEntry[];
@@ -475,8 +482,8 @@ function handleUsageSidecar({ args, root, aiw, fs }: CommandContext): CommandRes
       exitCode: 0,
       output:
         summarizeImport(result) +
-        (source === "gemini"
-          ? "\nnote: Gemini transcripts do not record a working directory, so imports cannot be scoped to this project."
+        (source === "gemini" || source === "antigravity"
+          ? `\nnote: ${source === "antigravity" ? "Antigravity" : "Gemini"} transcripts do not record a working directory, so imports cannot be scoped to this project.`
           : "") +
         `\nLedger: .aiw/${USAGE_SIDECAR_PATH} (rerun safely: already-imported events are skipped).`,
     };

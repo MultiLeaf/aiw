@@ -27,7 +27,7 @@ import type { UsageSidecarEntry, UsageTier } from "./usage-sidecar.js";
  * are skipped, so reruns never double-count.
  */
 
-export type ImportSource = "claude-code" | "codex" | "gemini" | "pi";
+export type ImportSource = "claude-code" | "codex" | "gemini" | "antigravity" | "pi";
 
 /** An event ready to append: no seq (assigned by the ledger). */
 export type ImportedUsageEvent = Omit<UsageSidecarEntry, "seq">;
@@ -66,7 +66,8 @@ function event(
     command: `import.${source}.e${hash}`,
     label: "measured",
     tiers,
-    harness: source === "gemini" ? "gemini-cli" : source,
+    harness:
+      source === "gemini" ? "gemini-cli" : source === "antigravity" ? "antigravity-cli" : source,
     ...(extra.model ? { model: extra.model } : {}),
     ...(extra.provider ? { provider: extra.provider } : {}),
     ...(extra.harnessVersion ? { harnessVersion: extra.harnessVersion } : {}),
@@ -163,8 +164,10 @@ export function parseCodexSession(
   return events;
 }
 
-/** Gemini (antigravity-cli): transcript_full JSONL; PLANNER_RESPONSE steps carry token counts. */
-export function parseGeminiTranscript(content: string): ImportedUsageEvent[] {
+function parsePlannerTranscript(
+  content: string,
+  source: "gemini" | "antigravity",
+): ImportedUsageEvent[] {
   const events: ImportedUsageEvent[] = [];
   for (const line of content.split("\n")) {
     if (!line.includes("input_tokens")) continue;
@@ -172,7 +175,7 @@ export function parseGeminiTranscript(content: string): ImportedUsageEvent[] {
     if (!entry || entry.type !== "PLANNER_RESPONSE") continue;
     const num = (value: unknown): number => (typeof value === "number" ? value : 0);
     const parsed = event(
-      "gemini",
+      source,
       `${entry.created_at ?? ""}:${entry.step_index ?? ""}:${createHash("sha256").update(line).digest("hex").slice(0, 16)}`,
       tiersOf({
         "fresh-input": num(entry.input_tokens),
@@ -183,6 +186,16 @@ export function parseGeminiTranscript(content: string): ImportedUsageEvent[] {
     if (parsed) events.push(parsed);
   }
   return events;
+}
+
+/** Gemini: transcript_full JSONL; PLANNER_RESPONSE steps carry token counts. */
+export function parseGeminiTranscript(content: string): ImportedUsageEvent[] {
+  return parsePlannerTranscript(content, "gemini");
+}
+
+/** Antigravity (agy): transcript_full JSONL under ~/.gemini/antigravity-cli/brain. */
+export function parseAntigravityTranscript(content: string): ImportedUsageEvent[] {
+  return parsePlannerTranscript(content, "antigravity");
 }
 
 /** Pi (pi.dev): session JSONL; assistant messages and dedicated usage entries both carry per-message tiers and provider. */
