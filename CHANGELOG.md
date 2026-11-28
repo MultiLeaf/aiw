@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-28
+
+### Added
+
+- Categorized `aiw help` output covering all 67 registered CLI commands with a CI parity test, plus `aiw --version` / `-v` reporting the installed package version.
+- Automatic `antigravity` target detection in `detectTarget` when `.agents` and `GEMINI.md` coexist (while preserving `.agents`-only repositories as `codex`).
+- Opt-in `AIW_DEBUG` diagnostics (`AIW_DEBUG=1` or comma-separated scopes like `AIW_DEBUG=onboarding,orchestration,workflow,setup`) writing to `stderr` only for 21 previously silent `catch` fallbacks across `model-onboarding`, `orchestration`, `workflow-state`, and `setup`/`migration`.
+- Dedicated unit test suites for `src/files.ts`, `src/settings.ts`, `src/hook-installer.ts`, `src/bundled-resources.ts`, and `src/debug.ts` (`114/114` test files, `875/875` tests).
+
+### Changed
+
+- Updated `README.md` multi-agent orchestration documentation to reflect `--runner=cli` and `--timeout-ms`.
+- Split `src/commands/setup-migration.ts` and `src/commands/intelligence.ts` into four cohesive `<500` LOC command modules (`setup.ts`, `migration.ts`, `intelligence.ts`, `generation.ts`).
+
 ## [0.20.1] - 2026-11-27
 
 ### Added
