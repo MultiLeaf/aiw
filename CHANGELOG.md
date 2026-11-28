@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-27
+
 ### Added
 
 - `antigravity` target (with `agy` alias) rendering skills to `.agents/skills/<id>/SKILL.md`, rules to `.agents/rules/<id>.md`, compatibility resources under `.agents/`, and root context to `GEMINI.md`, while preserving the `gemini` target in `.gemini/` for Gemini CLI (#15).
@@ -12,6 +14,7 @@ All notable changes to this project are documented in this file. The format foll
 ### Fixed
 
 - Ollama model onboarding checks the installed Ollama server version (`/api/version`) before pulling `embeddinggemma*`, surfaces HTTP `412` / pull `stderr` details with upgrade instructions instead of a generic failure, and allows interactive reinstalls (`aiw install` / `aiw install --configure-models`) to finish model setup without deleting `.aiw/` (#15).
+- Resolved all 9 moderate `devDependencies` vulnerabilities via `npm audit fix` (`0` vulnerabilities reported by `npm audit`).
 
 ## [0.18.0] - 2026-11-27
 
