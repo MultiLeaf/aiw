@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { normalizeTarget } from "../adapter.js";
 import { serializeAdapterCapabilities } from "../adapter-contract.js";
 import { resolveStageArtifact } from "../artifact-paths.js";
 import { BlockingError, describeBlockingReason } from "../blocking-reasons.js";
@@ -446,8 +447,8 @@ async function handleSelfValidate({
 }
 
 function handleCapabilities({ args }: CommandContext): CommandResult {
-  const target = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
-  return { exitCode: 0, output: serializeAdapterCapabilities(target) };
+  const rawTarget = args.find((arg) => arg.startsWith("--target="))?.slice(9) ?? "universal";
+  return { exitCode: 0, output: serializeAdapterCapabilities(normalizeTarget(rawTarget)) };
 }
 
 export const sddArtifactsCommands: Record<string, CommandHandler> = {

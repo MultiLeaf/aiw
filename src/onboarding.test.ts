@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { configureOptionalModels, type OnboardingRuntime } from "./model-onboarding.js";
+import {
+  compareOllamaVersion,
+  configureOptionalModels,
+  requiredOllamaVersionForModel,
+  type OnboardingRuntime,
+} from "./model-onboarding.js";
 import { nodeFileSystem } from "./files.js";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -356,6 +361,103 @@ describe("model provider onboarding", () => {
       expect(parseSemanticMapping(loadSettings(nodeFileSystem, aiw)?.semantic).model).toBe(
         "custom-model",
       );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("checks Ollama version before pulling embeddinggemma and shows upgrade guidance when outdated", async () => {
+    expect(compareOllamaVersion("0.9.5", "0.11.10")).toBe(-1);
+    expect(compareOllamaVersion("v0.11.10", "0.11.10")).toBe(0);
+    expect(compareOllamaVersion("0.12.1", "0.11.10")).toBe(1);
+    expect(requiredOllamaVersionForModel("embeddinggemma-2:latest")).toBe("0.11.10");
+
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const questions: string[] = [];
+      let pulls = 0;
+      const answers = ["y", "1", "y", "", "", "n"];
+      const enabled = await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          questions.push(question);
+          return answers.shift() ?? "";
+        },
+        runtime({
+          getOllamaVersion: async () => "0.9.5",
+          listOllamaModels: async () => [],
+          pullOllamaModel: async () => {
+            pulls += 1;
+            return { ok: true };
+          },
+        }),
+      );
+      expect(pulls).toBe(0);
+      expect(enabled).toEqual([]);
+      const upgradeNotice = questions.find((q) => q.includes("older than 0.11.10"));
+      expect(upgradeNotice).toContain("https://ollama.com/download");
+      expect(upgradeNotice).toContain("aiw install");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces 412 upgrade guidance and concise pull errors when ollama pull fails", async () => {
+    const { root, aiw } = tempProject();
+    try {
+      nodeFileSystem.mkdir(aiw);
+      const upgradeQuestions: string[] = [];
+      const upgradeAnswers = ["y", "1", "y", "", "", "", "n"];
+      await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          upgradeQuestions.push(question);
+          return upgradeAnswers.shift() ?? "";
+        },
+        runtime({
+          getOllamaVersion: async () => "0.11.10",
+          listOllamaModels: async () => [],
+          pullOllamaModel: async () => ({
+            ok: false,
+            error: "Error: pull model manifest: 412: requires a newer version of Ollama",
+            requiresUpgrade: true,
+          }),
+        }),
+      );
+      expect(
+        upgradeQuestions.some(
+          (q) =>
+            q.includes("(Ollama 0.11.10)") &&
+            q.includes("requires a newer version of Ollama") &&
+            q.includes("https://ollama.com/download"),
+        ),
+      ).toBe(true);
+
+      const errorQuestions: string[] = [];
+      const errorAnswers = ["y", "1", "y", "", "", "", "n"];
+      await configureOptionalModels(
+        nodeFileSystem,
+        aiw,
+        async (question) => {
+          errorQuestions.push(question);
+          return errorAnswers.shift() ?? "";
+        },
+        runtime({
+          getOllamaVersion: async () => "0.12.0",
+          listOllamaModels: async () => [],
+          pullOllamaModel: async () => ({
+            ok: false,
+            error: "Error: dial tcp: connection refused",
+            requiresUpgrade: false,
+          }),
+        }),
+      );
+      expect(
+        errorQuestions.some((q) => q.includes("Pull failed: Error: dial tcp: connection refused")),
+      ).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

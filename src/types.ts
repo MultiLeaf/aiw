@@ -1,4 +1,12 @@
-export const TARGETS = ["codex", "claude", "cursor", "gemini", "copilot", "universal"] as const;
+export const TARGETS = [
+  "codex",
+  "claude",
+  "cursor",
+  "gemini",
+  "antigravity",
+  "copilot",
+  "universal",
+] as const;
 export type Target = (typeof TARGETS)[number];
 export const HUMAN_APPROVAL_STAGES = [
   "brainstorming",

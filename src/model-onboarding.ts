@@ -8,9 +8,16 @@ export type ConfirmQuestion = (question: string) => Promise<string>;
 
 export type OllamaModel = { name: string; embedding: boolean };
 
+export type OllamaPullResult = {
+  ok: boolean;
+  error?: string;
+  requiresUpgrade?: boolean;
+};
+
 export type OnboardingRuntime = {
+  getOllamaVersion?(baseUrl: string): Promise<string | undefined>;
   listOllamaModels(baseUrl: string): Promise<OllamaModel[] | undefined>;
-  pullOllamaModel(model: string): Promise<boolean>;
+  pullOllamaModel(model: string): Promise<boolean | OllamaPullResult>;
   validateEmbedding(config: {
     baseUrl: string;
     model: string;
@@ -24,6 +31,50 @@ export type OnboardingRuntime = {
 };
 
 const OLLAMA_BASE_URL = "http://localhost:11434";
+const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
+
+/** Known minimum Ollama versions required to pull specific model families. */
+const MIN_OLLAMA_VERSION_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ["embeddinggemma", "0.11.10"],
+];
+
+export function compareOllamaVersion(actual: string, minimum: string): number {
+  const parse = (raw: string): [number, number, number] | undefined => {
+    const match = raw.trim().match(/^v?(\d+)\.(\d+)(?:\.(\d+))?/);
+    if (!match) return undefined;
+    return [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
+  };
+  const a = parse(actual);
+  const b = parse(minimum);
+  if (!a || !b) return 0;
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+export function requiredOllamaVersionForModel(model: string): string | undefined {
+  const lower = model.trim().toLowerCase();
+  return MIN_OLLAMA_VERSION_PREFIXES.find(([prefix]) => lower.startsWith(prefix))?.[1];
+}
+
+function normalizePullResult(outcome: boolean | OllamaPullResult): OllamaPullResult {
+  if (typeof outcome === "boolean") return { ok: outcome };
+  return outcome;
+}
+
+function isUpgradeError(message: string): boolean {
+  return /\b412\b/.test(message) || /requires a newer version of ollama/i.test(message);
+}
+
+function concisePullError(stderr: string, stdout: string, fallback: string): string {
+  const combined = `${stderr}\n${stdout}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^pulling\b/i.test(line));
+  const match = combined.find((line) => /error:|412|requires a newer version/i.test(line));
+  return (match ?? combined[0] ?? fallback).slice(0, 220);
+}
 
 function isEmbeddingModel(name: string, families: string[]): boolean {
   if (name.toLowerCase().includes("embed")) return true;
@@ -31,6 +82,18 @@ function isEmbeddingModel(name: string, families: string[]): boolean {
 }
 
 export const defaultOnboardingRuntime: OnboardingRuntime = {
+  async getOllamaVersion(baseUrl) {
+    try {
+      const response = await fetch(`${baseUrl}/api/version`);
+      if (!response.ok) return undefined;
+      const body = (await response.json()) as { version?: unknown };
+      return typeof body?.version === "string" && body.version.trim().length > 0
+        ? body.version.trim()
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  },
   async listOllamaModels(baseUrl) {
     try {
       const response = await fetch(`${baseUrl}/api/tags`);
@@ -55,9 +118,18 @@ export const defaultOnboardingRuntime: OnboardingRuntime = {
   },
   pullOllamaModel(model) {
     return new Promise((resolve) => {
-      execFile("ollama", ["pull", model], { timeout: 10 * 60_000 }, (error) =>
-        resolve(error === null),
-      );
+      execFile("ollama", ["pull", model], { timeout: 10 * 60_000 }, (error, stdout, stderr) => {
+        if (error === null) {
+          resolve({ ok: true });
+          return;
+        }
+        const detail = concisePullError(stderr, stdout, error.message);
+        resolve({
+          ok: false,
+          error: detail,
+          requiresUpgrade: isUpgradeError(`${stderr}\n${stdout}\n${error.message}`),
+        });
+      });
     });
   },
   async validateEmbedding(config) {
@@ -154,13 +226,27 @@ async function gatherCapabilitySetup(
         `No embedding models found. Pull ${options.pullModel}? [y/N] `,
       );
       if (pull) {
-        await answer(`Pulling ${options.pullModel}... [Enter] `);
-        const pulled = await runtime.pullOllamaModel(options.pullModel);
-        if (pulled) {
-          const refreshed = await runtime.listOllamaModels(OLLAMA_BASE_URL);
-          candidates = (refreshed ?? []).filter((model) => model.embedding);
+        const version = await runtime.getOllamaVersion?.(OLLAMA_BASE_URL);
+        const minVersion = requiredOllamaVersionForModel(options.pullModel);
+        if (version && minVersion && compareOllamaVersion(version, minVersion) < 0) {
+          await answer(
+            `Ollama ${version} is older than ${minVersion} required for ${options.pullModel}. Upgrade at ${OLLAMA_DOWNLOAD_URL} (or \`curl -fsSL https://ollama.com/install.sh | sh\`), then rerun \`aiw install\` to finish model setup. [Enter] `,
+          );
         } else {
-          await answer("Pull failed. Enter a model manually. [Enter] ");
+          await answer(`Pulling ${options.pullModel}... [Enter] `);
+          const pullResult = normalizePullResult(await runtime.pullOllamaModel(options.pullModel));
+          if (pullResult.ok) {
+            const refreshed = await runtime.listOllamaModels(OLLAMA_BASE_URL);
+            candidates = (refreshed ?? []).filter((model) => model.embedding);
+          } else if (pullResult.requiresUpgrade) {
+            await answer(
+              `Pull failed${version ? ` (Ollama ${version})` : ""}: ${options.pullModel} requires a newer version of Ollama. Upgrade at ${OLLAMA_DOWNLOAD_URL} (or \`curl -fsSL https://ollama.com/install.sh | sh\`), then rerun \`aiw install\` to finish model setup. [Enter] `,
+            );
+          } else {
+            await answer(
+              `Pull failed${pullResult.error ? `: ${pullResult.error}` : ""}. Enter a model manually. [Enter] `,
+            );
+          }
         }
       }
       if (candidates.length === 0) {

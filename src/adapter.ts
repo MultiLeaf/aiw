@@ -6,8 +6,18 @@ import { describeCodexResource } from "./codex-layout.js";
 import { describeClaudeResource } from "./claude-layout.js";
 import { describeCursorResource } from "./cursor-layout.js";
 import { describeGeminiResource } from "./gemini-layout.js";
+import { describeAntigravityResource } from "./antigravity-layout.js";
 import { describeCopilotResource } from "./copilot-layout.js";
 import { describeUniversalResource } from "./universal-layout.js";
+
+const TARGET_ALIASES: Readonly<Record<string, Target>> = {
+  agy: "antigravity",
+};
+
+export function normalizeTarget(value: string): string {
+  return TARGET_ALIASES[value] ?? value;
+}
+
 export function isTarget(value: string): value is Target {
   return TARGETS.includes(value as Target);
 }
@@ -84,6 +94,7 @@ export function renderAiInitPath(target: Target): string {
     claude: ".claude/skills/ai-init/SKILL.md",
     cursor: ".cursor/skills/ai-init/SKILL.md",
     gemini: ".gemini/skills/ai-init/SKILL.md",
+    antigravity: ".agents/skills/ai-init/SKILL.md",
     copilot: ".github/copilot-instructions.md",
     universal: ".aiw/resources/skills/ai-init.md",
   };
@@ -109,6 +120,7 @@ export function describeResource(
   if (target === "claude") return describeClaudeResource(type, id);
   if (target === "cursor") return describeCursorResource(type, id);
   if (target === "gemini") return describeGeminiResource(type, id);
+  if (target === "antigravity") return describeAntigravityResource(type, id);
   if (target === "copilot") return describeCopilotResource(type, id);
   return describeUniversalResource(type, id);
 }
