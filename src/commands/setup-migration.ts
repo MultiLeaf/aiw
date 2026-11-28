@@ -13,6 +13,7 @@ import {
 import { describeBlockingReason, formatBlockingOutput } from "../blocking-reasons.js";
 import { loadBundledResources } from "../bundled-resources.js";
 import { BASE_DIRECTORIES, WORKFLOW_DIRECTORY } from "../constants.js";
+import { debugLog } from "../debug.js";
 import { assertSafeProjectPath, writeProjectFilesAtomically } from "../files.js";
 import {
   detectStageListDrift,
@@ -284,7 +285,8 @@ function handleTarget({ args, root, aiw, fs }: CommandContext): CommandResult {
       }
       migrations.push(migration);
       migrationBytes.set(migration.source, bytes);
-    } catch {
+    } catch (error) {
+      debugLog("setup", `failed to read neutral resource ${relativeSource}`, error);
       diagnostics.push({ path: relativeSource, reason: "resource cannot be read safely" });
     }
   }
@@ -310,7 +312,8 @@ function handleTarget({ args, root, aiw, fs }: CommandContext): CommandResult {
           reason: "resource is not a regular file",
         });
       else aiInitBytes = readResourceBytes(fs, neutralAiInit);
-    } catch {
+    } catch (error) {
+      debugLog("setup", "failed to read neutral ai-init resource", error);
       diagnostics.push({
         path: ".aiw/resources/skills/ai-init.md",
         reason: "resource cannot be read safely",
@@ -473,7 +476,8 @@ function handleTarget({ args, root, aiw, fs }: CommandContext): CommandResult {
         return;
       }
       fileChanges.set(destination, desired);
-    } catch {
+    } catch (error) {
+      debugLog("setup", `migration destination conflict check failed for ${destination}`, error);
       conflicts.add(destination);
     }
   }
@@ -498,7 +502,8 @@ function handleTarget({ args, root, aiw, fs }: CommandContext): CommandResult {
       }
       removals.add(relativePath);
       fileChanges.set(path, undefined);
-    } catch {
+    } catch (error) {
+      debugLog("setup", `owned removal check failed for ${path}`, error);
       conflicts.add(path);
     }
   }
@@ -536,7 +541,8 @@ function handleRollback({ root, aiw, fs }: CommandContext): CommandResult {
       const expected = postMigrationSnapshots?.[index];
       if (!expected || migrationSnapshotMatches(fs, path, expected)) restorable.push(snapshot);
       else conflicts.push(snapshot.path);
-    } catch {
+    } catch (error) {
+      debugLog("setup", `rollback snapshot check failed for ${snapshot.path}`, error);
       conflicts.push(snapshot.path);
     }
   }
@@ -775,7 +781,8 @@ function handleUninstall({ args, root, aiw, fs }: CommandContext): CommandResult
       const actual = `sha256-${checksumPackage(fs.readBytes?.(path) ?? fs.read(path))}`;
       if (actual === file.checksum) removable.push(path);
       else conflicts.push(file.path);
-    } catch {
+    } catch (error) {
+      debugLog("setup", `uninstall ownership check failed for ${file.path}`, error);
       conflicts.push(file.path);
     }
   }

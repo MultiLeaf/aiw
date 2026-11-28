@@ -4,6 +4,7 @@ import { parse as parseYaml, stringify } from "yaml";
 import { resolveStageArtifact, stageArtifactPaths } from "../artifact-paths.js";
 import { BlockingError, describeBlockingReason } from "../blocking-reasons.js";
 import { buildCompletionReport } from "../completion-report.js";
+import { debugLog } from "../debug.js";
 import {
   computeCostAttribution,
   type CostAttribution,
@@ -88,7 +89,8 @@ export function activeWorkflowId(fs: FileSystem, aiw: string): string | undefine
   if (!fs.exists(sessionPath)) return undefined;
   try {
     return parseWorkflowSession(fs.read(sessionPath)).workflowId;
-  } catch {
+  } catch (error) {
+    debugLog("workflow", `failed to parse active workflow session ${sessionPath}`, error);
     return undefined;
   }
 }
@@ -123,23 +125,26 @@ export async function writeCompletionReport(
         parseUsageSidecar(fs.read(sidecarPath)),
         parseTraceabilityGraph(fs.read(tracePath)),
       );
-  } catch {
+  } catch (error) {
     // REQ-003: unreadable usage data degrades to an advisory, never blocks completion.
+    debugLog("workflow", "failed to load usage/traceability data for completion report", error);
   }
   let prReadiness: string | undefined;
   try {
     const prPath = resolveStageArtifact(fs, aiw, "pr", session.workflowId).path;
     if (fs.exists(prPath)) prReadiness = fs.read(prPath);
-  } catch {
+  } catch (error) {
     // REQ-003: unreadable PR evidence degrades the report section, never blocks completion.
+    debugLog("workflow", "failed to read PR readiness artifact for completion report", error);
   }
   const report = buildCompletionReport({ session, ledger, usage, attribution, prReadiness });
   try {
     const reportDir = join(aiw, "generated/reports");
     if (!fs.exists(reportDir)) fs.mkdir(reportDir);
     fs.write(join(reportDir, `usage-${session.workflowId}.md`), report.markdown);
-  } catch {
+  } catch (error) {
     // REQ-003: a failed artifact write never blocks completion.
+    debugLog("workflow", "failed to write completion report artifact", error);
   }
   return report.consoleSummary;
 }
@@ -402,13 +407,15 @@ export function recordObserveDecision(
   if (fs.exists(path)) {
     try {
       entries = (parseYaml(fs.read(path)) ?? []) as ObserveDecisionEntry[];
-    } catch {
+    } catch (error) {
+      debugLog("workflow", `failed to parse observe checkpoint ${path}`, error);
       entries = [];
     }
   } else if (fs.exists(legacyJsonPath)) {
     try {
       entries = JSON.parse(fs.read(legacyJsonPath)) as ObserveDecisionEntry[];
-    } catch {
+    } catch (error) {
+      debugLog("workflow", `failed to parse legacy observe checkpoint ${legacyJsonPath}`, error);
       entries = [];
     }
   }
