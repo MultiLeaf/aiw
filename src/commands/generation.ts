@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import type { FactOverride } from "../confirmation.js";
+import { debugLog } from "../debug.js";
 import {
   buildRecommendationRankingRequest,
   createOllamaDecisionProvider,
@@ -66,52 +67,59 @@ async function handleRecommend(ctx: CommandContext): Promise<CommandResult> {
     services.recommender?.recommend(profile) ?? recommendCapabilities(profile);
   let ordered = recommendations;
   let ranked: RankedRecommendations | undefined;
+  let rankingAdvisory: string | undefined;
   const rankingConfig = loadDecisionConfig(fs, aiw);
   if (rankingConfig?.enabled) {
     const decisionProvider =
       services.decisionProvider ?? createOllamaDecisionProvider(rankingConfig);
-    if (!(await decisionProvider.available()))
-      return {
-        exitCode: 1,
-        error: `Decision model ${rankingConfig.model} is not available at ${rankingConfig.baseUrl}.`,
-      };
-    let decisionTokens = 0;
-    ranked = await rankRecommendations(recommendations, profile, async (scoped, recs) => {
-      const request = buildRecommendationRankingRequest(profileSummaryForRanking(scoped), recs);
-      decisionTokens += Math.ceil(
-        (request.state.length +
-          Object.values(request.questions).reduce(
-            (total, question) => total + question.instructions.length,
-            0,
-          )) /
-          4,
-      );
-      const response = await decisionProvider.decide(request);
-      const answers: Record<string, { relevance?: number; confidence?: number }> = {};
-      for (const [id, answer] of Object.entries(response.answers))
-        answers[id] =
-          typeof answer.score === "number"
-            ? {
-                relevance: answer.score,
-                ...(typeof answer.confidence === "number" ? { confidence: answer.confidence } : {}),
-              }
-            : {};
-      return answers;
-    });
-    const usagePath = join(aiw, "usage.yml");
-    const entries = fs.exists(usagePath) ? parseTokenUsage(fs.read(usagePath)) : [];
-    fs.write(
-      usagePath,
-      serializeTokenUsage(
-        recordTokenUsage(entries, {
-          stage: "recommend.decision",
-          budget: decisionTokens,
-          used: decisionTokens,
-          model: rankingConfig.model,
-        }),
-      ),
-    );
-    ordered = ranked.items;
+    try {
+      if (!(await decisionProvider.available())) {
+        rankingAdvisory = ` Advisory: decision model ${rankingConfig.model} is not available at ${rankingConfig.baseUrl}; kept deterministic recommendation order.`;
+      } else {
+        let decisionTokens = 0;
+        ranked = await rankRecommendations(recommendations, profile, async (scoped, recs) => {
+          const request = buildRecommendationRankingRequest(profileSummaryForRanking(scoped), recs);
+          decisionTokens += Math.ceil(
+            (request.state.length +
+              Object.values(request.questions).reduce(
+                (total, question) => total + question.instructions.length,
+                0,
+              )) /
+              4,
+          );
+          const response = await decisionProvider.decide(request);
+          const answers: Record<string, { relevance?: number; confidence?: number }> = {};
+          for (const [id, answer] of Object.entries(response.answers))
+            answers[id] =
+              typeof answer.score === "number"
+                ? {
+                    relevance: answer.score,
+                    ...(typeof answer.confidence === "number"
+                      ? { confidence: answer.confidence }
+                      : {}),
+                  }
+                : {};
+          return answers;
+        });
+        const usagePath = join(aiw, "usage.yml");
+        const entries = fs.exists(usagePath) ? parseTokenUsage(fs.read(usagePath)) : [];
+        fs.write(
+          usagePath,
+          serializeTokenUsage(
+            recordTokenUsage(entries, {
+              stage: "recommend.decision",
+              budget: decisionTokens,
+              used: decisionTokens,
+              model: rankingConfig.model,
+            }),
+          ),
+        );
+        ordered = ranked.items;
+      }
+    } catch (error) {
+      debugLog("models", "recommendation decision ranking degraded", error);
+      rankingAdvisory = ` Advisory: decision ranking failed (${error instanceof Error ? error.message : String(error)}); kept deterministic recommendation order.`;
+    }
   }
   const selectedOption = args.find((arg) => arg.startsWith("--select="));
   const selectedArg = selectedOption?.slice("--select=".length) ?? "";
@@ -134,7 +142,7 @@ async function handleRecommend(ctx: CommandContext): Promise<CommandResult> {
   );
   const rankingNote = ranked
     ? ` Advisory decision-model ranking applied (${ranked.changedPositions} positions reordered); evidence states are unchanged.`
-    : "";
+    : (rankingAdvisory ?? "");
   return {
     exitCode: 0,
     output: `${ordered.length} recommendations generated${

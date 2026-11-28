@@ -255,7 +255,11 @@ async function gatherCapabilitySetup(
         }
       }
       if (candidates.length === 0) {
-        const manual = (await answer(`Model name to use [${options.pullModel}]: `)).trim();
+        const manual = (
+          await answer(
+            `Model name to use [${options.pullModel}] (e.g. nomic-embed-text, mxbai-embed-large): `,
+          )
+        ).trim();
         if (manual.length === 0) return undefined;
         return { baseUrl: OLLAMA_BASE_URL, model: manual };
       }

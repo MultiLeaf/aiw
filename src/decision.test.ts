@@ -231,3 +231,55 @@ describe("findings triage + lane scope-watch requests (OPP-007)", () => {
     expect(request.state).toContain("src/auth");
   });
 });
+
+describe("decision resilience and Ollama matching (FLOW-001)", () => {
+  it("parses and validates optional timeoutMs", () => {
+    const config = parseDecisionMapping({
+      enabled: true,
+      model: "clef-flash",
+      baseUrl: "http://localhost:11434",
+      timeoutMs: 4000,
+    });
+    expect(config.timeoutMs).toBe(4000);
+    expect(() =>
+      parseDecisionMapping({
+        enabled: true,
+        model: "clef-flash",
+        baseUrl: "http://localhost:11434",
+        timeoutMs: 0,
+      }),
+    ).toThrow(/timeoutMs/);
+  });
+
+  it("matches Ollama models without explicit :latest tag and passes an AbortSignal", async () => {
+    const seenInits: RequestInit[] = [];
+    const provider = createOllamaDecisionProvider(
+      {
+        enabled: true,
+        model: "clef-flash",
+        baseUrl: "http://localhost:11434",
+        timeoutMs: 2500,
+      },
+      async (url, init) => {
+        seenInits.push(init ?? {});
+        if (url.endsWith("/api/tags")) {
+          return new Response(JSON.stringify({ models: [{ name: "clef-flash:latest" }] }), {
+            status: 200,
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            model: "clef-flash",
+            answers: { gate: { type: "choice", choice: "ready", confidence: 0.9 } },
+          }),
+          { status: 200 },
+        );
+      },
+    );
+    expect(await provider.available()).toBe(true);
+    await provider.decide(buildEvidenceTriageRequest("evidence"));
+    expect(seenInits).toHaveLength(2);
+    expect(seenInits[0].signal).toBeInstanceOf(AbortSignal);
+    expect(seenInits[1].signal).toBeInstanceOf(AbortSignal);
+  });
+});

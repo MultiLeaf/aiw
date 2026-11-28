@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { applyOverrides } from "../confirmation.js";
+import { debugLog } from "../debug.js";
 import {
   buildEvidenceTriageRequest,
   buildFindingsTriageRequest,
@@ -33,6 +34,8 @@ import {
   SEMANTIC_INDEX_PATH,
   serializeSemanticIndex,
   type RerankedMatch,
+  type SemanticIndex,
+  type SemanticIndexBuildStats,
 } from "../semantic.js";
 import { readFactOverrides } from "../settings.js";
 import { parseTokenUsage, recordTokenUsage, serializeTokenUsage } from "../token-usage.js";
@@ -148,39 +151,77 @@ async function handleScan(ctx: CommandContext): Promise<CommandResult> {
     join(aiw, "profile.yml"),
     `schema: 1\nstatus: scanned\nfacts:\n${evidence}\nruntime:\n  languages: [${profile.runtime.languages.join(", ")}]\nframeworks: [${profile.frameworks.join(", ")}]\npackage_manager: ${profile.packageManager}\nquality:\n  linter: ${profile.quality.linter?.name ?? "unknown"}\n  linter_command: ${profile.quality.linter?.command ?? "unknown"}\n  formatter: ${profile.quality.formatter?.name ?? "unknown"}\n  formatter_command: ${profile.quality.formatter?.command ?? "unknown"}\n  typecheck: ${profile.quality.typecheck?.name ?? "unknown"}\n  typecheck_command: ${profile.quality.typecheck?.command ?? "unknown"}\ntesting: ${profile.testing?.name ?? "unknown"}\ntesting_command: ${profile.testing?.command ?? "unknown"}\nci: [${profile.ci.join(", ")}]\nworkspaces: [${profile.workspaces.join(", ")}]\nproject_modules: ${JSON.stringify(profile.modules ?? [])}\npolicies:\n  artifact_language: en\n`,
   );
+  const advisories: string[] = [];
   const semanticConfig = loadSemanticConfig(fs, aiw);
   if (semanticConfig?.enabled) {
     const provider = services.embeddingProvider ?? createOllamaEmbeddingProvider(semanticConfig);
-    if (!(await provider.available()))
-      return {
-        exitCode: 1,
-        error: `Semantic model ${semanticConfig.model} is not available at ${semanticConfig.baseUrl}.`,
-      };
-    const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
-    const index = await buildSemanticIndex(
-      scanFiles.files,
-      async (file) => {
-        const absolute = join(root, file);
-        try {
-          return new TextDecoder("utf-8", { fatal: true }).decode(
-            fs.readBytes?.(absolute) ?? Buffer.from(fs.read(absolute), "utf8"),
-          );
-        } catch {
-          return undefined;
+    try {
+      if (!(await provider.available())) {
+        advisories.push(
+          `Advisory: semantic model ${semanticConfig.model} is not available at ${semanticConfig.baseUrl}; skipped semantic index update and kept deterministic profile.`,
+        );
+      } else {
+        const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
+        let existingIndex: SemanticIndex | undefined;
+        if (fs.exists(indexPath)) {
+          try {
+            existingIndex = parseSemanticIndex(fs.read(indexPath));
+          } catch (error) {
+            debugLog(
+              "models",
+              "existing semantic index unreadable; rebuilding from scratch",
+              error,
+            );
+          }
         }
-      },
-      provider,
-      semanticConfig,
-    );
-    fs.mkdir(join(aiw, "semantic"));
-    fs.write(join(aiw, SEMANTIC_INDEX_PATH), serializeSemanticIndex(index));
-    const indexedChars = index.chunks.reduce((total, chunk) => total + chunk.text.length, 0);
-    modelUsage.push({
-      label: "embedding",
-      tokens: Math.ceil(indexedChars / 4),
-      detail: `${semanticConfig.model} — indexed ${index.chunks.length} chunks in ${Math.ceil(index.chunks.length / 64)} batch requests`,
-      model: semanticConfig.model,
-    });
+        let buildStats: SemanticIndexBuildStats | undefined;
+        const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
+        const index = await buildSemanticIndex(
+          scanFiles.files,
+          async (file) => {
+            const absolute = join(root, file);
+            try {
+              return new TextDecoder("utf-8", { fatal: true }).decode(
+                fs.readBytes?.(absolute) ?? Buffer.from(fs.read(absolute), "utf8"),
+              );
+            } catch {
+              return undefined;
+            }
+          },
+          provider,
+          semanticConfig,
+          {
+            existingIndex,
+            onStats: (stats) => {
+              buildStats = stats;
+            },
+          },
+        );
+        fs.mkdir(join(aiw, "semantic"));
+        fs.write(join(aiw, SEMANTIC_INDEX_PATH), serializeSemanticIndex(index));
+        const embeddedChars =
+          buildStats?.embeddedChars ??
+          index.chunks.reduce((total, chunk) => total + chunk.text.length, 0);
+        const embeddedChunks = buildStats?.embeddedChunks ?? index.chunks.length;
+        const reusedChunks = buildStats?.reusedChunks ?? 0;
+        const batches = Math.ceil(embeddedChunks / 64);
+        const detail =
+          reusedChunks > 0
+            ? `${semanticConfig.model} — indexed ${index.chunks.length} chunks (${reusedChunks} reused, ${embeddedChunks} embedded in ${batches} batch request${batches === 1 ? "" : "s"})`
+            : `${semanticConfig.model} — indexed ${index.chunks.length} chunks in ${batches} batch requests`;
+        modelUsage.push({
+          label: "embedding",
+          tokens: Math.ceil(embeddedChars / 4),
+          detail,
+          model: semanticConfig.model,
+        });
+      }
+    } catch (error) {
+      debugLog("models", "semantic indexing failed during scan; degraded gracefully", error);
+      advisories.push(
+        `Advisory: semantic indexing failed (${error instanceof Error ? error.message : String(error)}); deterministic profile was still written.`,
+      );
+    }
   }
   if (modelUsage.length > 0) {
     const usagePath = join(aiw, "usage.yml");
@@ -197,25 +238,29 @@ async function handleScan(ctx: CommandContext): Promise<CommandResult> {
     const sidecarPath = join(aiw, USAGE_SIDECAR_PATH);
     const ledger = fs.exists(sidecarPath) ? parseUsageSidecar(fs.read(sidecarPath)) : [];
     let sidecar = ledger;
+    let sidecarUpdated = false;
     for (const usage of modelUsage) {
       const measured = usage.detail.includes("(measured)");
       const isInterpreter = usage.label === "interpreter" && measured && interpreterUsage;
+      const tiers = isInterpreter
+        ? {
+            "cache-read": 0,
+            "fresh-input": interpreterUsage!.promptTokens,
+            "cache-write": 0,
+            output: interpreterUsage!.completionTokens,
+          }
+        : { "cache-read": 0, "fresh-input": usage.tokens, "cache-write": 0, output: 0 };
+      if (Object.values(tiers).every((value) => value === 0)) continue;
       sidecar = appendUsageSidecarEntry(sidecar, {
         command: `scan.${usage.label}`,
         label: measured ? "measured" : "estimated",
-        tiers: isInterpreter
-          ? {
-              "cache-read": 0,
-              "fresh-input": interpreterUsage!.promptTokens,
-              "cache-write": 0,
-              output: interpreterUsage!.completionTokens,
-            }
-          : { "cache-read": 0, "fresh-input": usage.tokens, "cache-write": 0, output: 0 },
+        tiers,
         model: usage.model,
         harness: "aiw-cli",
       });
+      sidecarUpdated = true;
     }
-    fs.write(sidecarPath, serializeUsageSidecar(sidecar));
+    if (sidecarUpdated) fs.write(sidecarPath, serializeUsageSidecar(sidecar));
   }
   return {
     exitCode: 0,
@@ -228,7 +273,8 @@ async function handleScan(ctx: CommandContext): Promise<CommandResult> {
                 `- ${usage.label}: ${usage.detail} (~${usage.tokens.toLocaleString("en-US")} tokens)`,
             )
             .join("\n")}`
-        : "\nModels used: none (deterministic scan)."),
+        : "\nModels used: none (deterministic scan).") +
+      (advisories.length > 0 ? `\n${advisories.join("\n")}` : ""),
   };
 }
 
@@ -260,7 +306,7 @@ async function handleDecision(ctx: CommandContext): Promise<CommandResult> {
     const artifactPath = safeProjectFile(root, parsed.artifact, fs);
     if (!fs.exists(artifactPath))
       return { exitCode: 1, error: `Artifact not found: ${parsed.artifact}` };
-    const provider = createOllamaDecisionProvider(config);
+    const provider = services.decisionProvider ?? createOllamaDecisionProvider(config);
     if (!(await provider.available()))
       return {
         exitCode: 1,
@@ -304,8 +350,9 @@ async function handleDecision(ctx: CommandContext): Promise<CommandResult> {
                 `  - ${finding.id}: evidence_supported: ${decision.answers[finding.id]?.choice ?? "unclear"}`,
               );
         }
-      } catch {
+      } catch (error) {
         // Advisory flow: provider failures degrade to shape-check-only output.
+        debugLog("models", "findings-triage decision call degraded", error);
       }
     }
     return { exitCode: 0, output: lines.join("\n") };
@@ -314,11 +361,66 @@ async function handleDecision(ctx: CommandContext): Promise<CommandResult> {
 }
 
 async function handleSemantic(ctx: CommandContext): Promise<CommandResult> {
-  const { args, aiw, fs, services } = ctx;
+  const { args, root, aiw, fs, services } = ctx;
   const usage =
-    "Usage: aiw semantic query --text=<query> [--rerank] | aiw semantic judge-context --paths=a.ts,b.ts [--budget=N] | aiw semantic status";
+    "Usage: aiw semantic index [--full] | aiw semantic query --text=<query> [--rerank] | aiw semantic judge-context --paths=a.ts,b.ts [--budget=N] | aiw semantic status";
   const action = args[1];
   const semanticConfig = loadSemanticConfig(fs, aiw);
+  if (action === "index") {
+    if (!semanticConfig?.enabled)
+      return {
+        exitCode: 1,
+        error:
+          "Semantic mapping is disabled. Set semantic.enabled=true in .aiw/settings.yml to build an index.",
+      };
+    const full = args.slice(2).includes("--full");
+    const provider = services.embeddingProvider ?? createOllamaEmbeddingProvider(semanticConfig);
+    if (!(await provider.available()))
+      return {
+        exitCode: 1,
+        error: `Semantic model ${semanticConfig.model} is not available at ${semanticConfig.baseUrl}.`,
+      };
+    const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
+    let existingIndex: SemanticIndex | undefined;
+    if (!full && fs.exists(indexPath)) {
+      try {
+        existingIndex = parseSemanticIndex(fs.read(indexPath));
+      } catch (error) {
+        debugLog("models", "existing semantic index unreadable; rebuilding from scratch", error);
+      }
+    }
+    let stats: SemanticIndexBuildStats | undefined;
+    const scanFiles = await (services.scanner?.scan(root) ?? scanProject(root));
+    const index = await buildSemanticIndex(
+      scanFiles.files,
+      async (file) => {
+        const absolute = join(root, file);
+        try {
+          return new TextDecoder("utf-8", { fatal: true }).decode(
+            fs.readBytes?.(absolute) ?? Buffer.from(fs.read(absolute), "utf8"),
+          );
+        } catch {
+          return undefined;
+        }
+      },
+      provider,
+      semanticConfig,
+      {
+        existingIndex,
+        onStats: (recorded) => {
+          stats = recorded;
+        },
+      },
+    );
+    fs.mkdir(join(aiw, "semantic"));
+    fs.write(indexPath, serializeSemanticIndex(index));
+    const reused = stats?.reusedChunks ?? 0;
+    const embedded = stats?.embeddedChunks ?? index.chunks.length;
+    return {
+      exitCode: 0,
+      output: `Semantic index updated (${semanticConfig.model}): ${index.chunks.length} total chunks (${reused} reused, ${embedded} embedded).`,
+    };
+  }
   if (action === "status") {
     const config = semanticConfig;
     if (!config)
@@ -400,7 +502,7 @@ async function handleSemantic(ctx: CommandContext): Promise<CommandResult> {
     const indexPath = join(aiw, SEMANTIC_INDEX_PATH);
     if (!fs.exists(indexPath))
       return { exitCode: 1, error: "Semantic index is missing. Run `aiw scan` first." };
-    const provider = createOllamaEmbeddingProvider(config);
+    const provider = services.embeddingProvider ?? createOllamaEmbeddingProvider(config);
     if (!(await provider.available()))
       return {
         exitCode: 1,
@@ -416,33 +518,37 @@ async function handleSemantic(ctx: CommandContext): Promise<CommandResult> {
     let influence: string | undefined;
     if (rerankRequested) {
       const decisionConfig = loadDecisionConfig(fs, aiw);
-      if (!decisionConfig?.enabled)
-        return {
-          exitCode: 1,
-          error:
-            "Decision model is disabled. Set decision.enabled=true in .aiw/settings.yml to use --rerank.",
-        };
-      const decisionProvider = createOllamaDecisionProvider(decisionConfig);
-      if (!(await decisionProvider.available()))
-        return {
-          exitCode: 1,
-          error: `Decision model ${decisionConfig.model} is not available at ${decisionConfig.baseUrl}.`,
-        };
-      const outcome = await rerankSemanticMatches(
-        matches,
-        parsed.text,
-        async (query, candidates) => {
-          const response = await decisionProvider.decide(
-            buildSemanticRerankRequest(query, candidates),
-          );
-          const scores: Record<string, number | undefined> = {};
-          for (const [id, answer] of Object.entries(response.answers))
-            scores[id] = typeof answer.score === "number" ? answer.score : undefined;
-          return scores;
-        },
-      );
-      ranked = outcome.matches;
-      influence = `rerank influence: ${outcome.changedPositions}/${outcome.matches.length} positions reordered (advisory; cosine recall unchanged)`;
+      if (!decisionConfig?.enabled) {
+        influence =
+          "Advisory: decision model is disabled; returning cosine-similarity order without rerank.";
+      } else {
+        const decisionProvider =
+          services.decisionProvider ?? createOllamaDecisionProvider(decisionConfig);
+        try {
+          if (!(await decisionProvider.available())) {
+            influence = `Advisory: decision model ${decisionConfig.model} is not available at ${decisionConfig.baseUrl}; returning cosine-similarity order without rerank.`;
+          } else {
+            const outcome = await rerankSemanticMatches(
+              matches,
+              parsed.text,
+              async (query, candidates) => {
+                const response = await decisionProvider.decide(
+                  buildSemanticRerankRequest(query, candidates),
+                );
+                const scores: Record<string, number | undefined> = {};
+                for (const [id, answer] of Object.entries(response.answers))
+                  scores[id] = typeof answer.score === "number" ? answer.score : undefined;
+                return scores;
+              },
+            );
+            ranked = outcome.matches;
+            influence = `rerank influence: ${outcome.changedPositions}/${outcome.matches.length} positions reordered (advisory; cosine recall unchanged)`;
+          }
+        } catch (error) {
+          debugLog("models", "semantic rerank degraded to cosine order", error);
+          influence = `Advisory: decision rerank failed (${error instanceof Error ? error.message : String(error)}); returning cosine-similarity order.`;
+        }
+      }
     }
     return {
       exitCode: 0,

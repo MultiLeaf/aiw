@@ -3,6 +3,14 @@ import { normalizeTarget } from "../adapter.js";
 import { serializeAdapterCapabilities } from "../adapter-contract.js";
 import { resolveStageArtifact } from "../artifact-paths.js";
 import { BlockingError, describeBlockingReason } from "../blocking-reasons.js";
+import { debugLog } from "../debug.js";
+import {
+  buildEvidenceTriageRequest,
+  buildFindingsTriageRequest,
+  createOllamaDecisionProvider,
+  loadDecisionConfig,
+  parseReviewFindings,
+} from "../decision.js";
 import { digestFreshness, formatDigestLine } from "../digest.js";
 import {
   APPROVAL_STAGES,
@@ -21,10 +29,11 @@ import {
 import { evaluateQualityGate, triageAdvisories, type QualityGateStage } from "../quality-gates.js";
 import { runRiskAssess } from "../risk-assess.js";
 import { serializeSelfValidationEvidence, validateTicketId } from "../self-validation.js";
+import { suggestSemanticContext } from "../semantic.js";
 import { buildTraceabilityGraph, serializeTraceabilityGraph } from "../traceability.js";
 import type { CommandResult, HumanApprovalStage } from "../types.js";
 import { nodeCommandExecutor } from "../vercel-skills.js";
-import { installationRequired } from "./shared.js";
+import { formatConfidence, formatNoul, installationRequired } from "./shared.js";
 import type { CommandContext, CommandHandler } from "./types.js";
 import {
   activeWorkflowId,
@@ -94,11 +103,18 @@ function handleSpec({ args, aiw, fs }: CommandContext): CommandResult {
   return { exitCode: 0, output: `Specification artifact created: ${path}` };
 }
 
-function handleAdr({ args, root, aiw, fs }: CommandContext): CommandResult {
+async function handleAdr({
+  args,
+  root,
+  aiw,
+  fs,
+  services,
+}: CommandContext): Promise<CommandResult> {
   if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
   assertStageReady(aiw, fs, "technical-design");
   const explicitId = args.find((arg) => arg.startsWith("--id="))?.slice(5);
   const title = args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Decision";
+  const skipSemantic = args.includes("--no-semantic");
   // Unix-time (ms) default: chronological sequence, collision-resistant.
   // A monotonic guard guarantees distinct ids even within the same
   // millisecond; same-ms creations bump until the path is free.
@@ -109,22 +125,29 @@ function handleAdr({ args, root, aiw, fs }: CommandContext): CommandResult {
       stamp = nextAdrStamp();
   const id = explicitId ?? String(stamp);
   const path = join(root, ".context/adrs", `ADR-${id}-${slug}.md`);
+  const contextSection = skipSemantic
+    ? undefined
+    : await suggestSemanticContext(fs, aiw, title, services.embeddingProvider);
   fs.write(
     path,
-    `# ADR-${id}: ${title}\n\n- **Status:** proposed\n- **Related artifacts:**\n  - .aiw/generated/specs/\n\n## Context\n\n## Alternatives\n\n1. **Alternative A** — Description and trade-offs.\n2. **Alternative B** — Description and trade-offs.\n\n## Decision\n\n## Rationale\n\n## Consequences\n\n`,
+    `# ADR-${id}: ${title}\n\n- **Status:** proposed\n- **Related artifacts:**\n  - .aiw/generated/specs/\n\n## Context\n\n## Alternatives\n\n1. **Alternative A** — Description and trade-offs.\n2. **Alternative B** — Description and trade-offs.\n\n## Decision\n\n## Rationale\n\n## Consequences\n\n${contextSection ?? ""}`,
   );
   return { exitCode: 0, output: `Architecture decision record created: ${path}` };
 }
 
-function handlePlan({ args, aiw, fs }: CommandContext): CommandResult {
+async function handlePlan({ args, aiw, fs, services }: CommandContext): Promise<CommandResult> {
   if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
   assertStageReady(aiw, fs, "plan");
   const title =
     args.find((arg) => arg.startsWith("--title="))?.slice(8) || "Untitled Implementation Plan";
+  const skipSemantic = args.includes("--no-semantic");
   const path = stageArtifactWritePath(fs, aiw, "plan");
+  const contextSection = skipSemantic
+    ? undefined
+    : await suggestSemanticContext(fs, aiw, title, services.embeddingProvider);
   fs.write(
     path,
-    `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test → exit 0\n  - Regression: <optional — touched existing behavior → the test proving it holds>\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n`,
+    `# ${title}\n\n## Linked Requirements\n\n- REQ-001: Link to the specification requirement.\n\n## Tasks\n\n- [ ] TASK-001: Implement the first increment.\n  - Requirement: REQ-001\n  - Code: src/\n  - Tests: src/**/*.test.ts\n  - Validation: npm test → exit 0\n  - Regression: <optional — touched existing behavior → the test proving it holds>\n  - Evidence: Record the passing command output and changed files.\n\n## Validation Commands\n\n- npm run check\n\n## Risks and Dependencies\n\n- Dependencies: List prerequisite tasks, packages, or decisions.\n- Risks: Record delivery, compatibility, and validation risks with mitigations.\n\n## Completion Evidence\n\n- TASK-001: Link code changes, test results, and validation output.\n\n${contextSection ?? ""}`,
   );
   return { exitCode: 0, output: `Implementation plan created: ${path}` };
 }
@@ -225,15 +248,24 @@ function handleDigest({ args, aiw, fs }: CommandContext): CommandResult {
   return { exitCode: 0, output: lines.join("\n") };
 }
 
-function handleDiagnosis({ args, aiw, fs }: CommandContext): CommandResult {
+async function handleDiagnosis({
+  args,
+  aiw,
+  fs,
+  services,
+}: CommandContext): Promise<CommandResult> {
   if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
   assertStageReady(aiw, fs, "diagnosis");
   const title =
     args.find((argument) => argument.startsWith("--title="))?.slice(8) || "Untitled Diagnosis";
+  const skipSemantic = args.includes("--no-semantic");
   const path = stageArtifactWritePath(fs, aiw, "diagnosis");
+  const contextSection = skipSemantic
+    ? undefined
+    : await suggestSemanticContext(fs, aiw, title, services.embeddingProvider);
   fs.write(
     path,
-    `# ${title}\n\n## Reproduction\n\n- Command: \`<command that reproduces the bug>\`\n- Observed: <what actually happens>\n\n## Expected\n\n- <the correct behavior>\n\n## Root Cause\n\n- <evidence-backed cause, file:line when known>\n\n## Scope\n\n- In scope: <files and behavior this fix touches>\n- Out of scope: <explicitly excluded>\n`,
+    `# ${title}\n\n## Reproduction\n\n- Command: \`<command that reproduces the bug>\`\n- Observed: <what actually happens>\n\n## Expected\n\n- <the correct behavior>\n\n## Root Cause\n\n- <evidence-backed cause, file:line when known>\n\n## Scope\n\n- In scope: <files and behavior this fix touches>\n- Out of scope: <explicitly excluded>\n${contextSection ?? ""}`,
   );
   return { exitCode: 0, output: `Diagnosis artifact created: ${path}` };
 }
@@ -257,7 +289,13 @@ async function handleRisk({ args, root, fs, services }: CommandContext): Promise
   return runRiskAssess(args.slice(2), root, fs, services.embeddingProvider);
 }
 
-function handleGate({ args, root, aiw, fs }: CommandContext): CommandResult {
+async function handleGate({
+  args,
+  root,
+  aiw,
+  fs,
+  services,
+}: CommandContext): Promise<CommandResult> {
   if (!fs.exists(join(aiw, "manifest.yml"))) return installationRequired();
   const stage = args[1];
   if (!stage || !APPROVAL_STAGES.includes(stage as HumanApprovalStage))
@@ -267,6 +305,7 @@ function handleGate({ args, root, aiw, fs }: CommandContext): CommandResult {
     };
   const workflowStage = stage as HumanApprovalStage;
   const observe = args.slice(2).includes("--observe");
+  const triageRequested = args.slice(2).includes("--triage");
   if (!observe) assertStageReady(aiw, fs, workflowStage);
   const { ledger: gateLedger } = readActiveWorkflow(aiw, fs);
   const stageRecord = gateLedger.stages[workflowStage];
@@ -389,11 +428,57 @@ function handleGate({ args, root, aiw, fs }: CommandContext): CommandResult {
       }),
     );
   const { ledger } = readActiveWorkflow(aiw, fs);
+  const artifactContent = fs.read(artifactPath);
   const advisories = hasQualityGate
-    ? triageAdvisories(stage as QualityGateStage, fs.read(artifactPath))
+    ? triageAdvisories(stage as QualityGateStage, artifactContent)
     : [];
+  if (triageRequested && (workflowStage === "verification" || workflowStage === "review")) {
+    const decisionConfig = loadDecisionConfig(fs, aiw);
+    if (!decisionConfig?.enabled) {
+      advisories.push(
+        "Advisory decision triage skipped: decision model is disabled in .aiw/settings.yml.",
+      );
+    } else {
+      const provider = services.decisionProvider ?? createOllamaDecisionProvider(decisionConfig);
+      try {
+        if (!(await provider.available())) {
+          advisories.push(
+            `Advisory decision triage skipped: model ${decisionConfig.model} is not available at ${decisionConfig.baseUrl}.`,
+          );
+        } else if (workflowStage === "verification") {
+          const decision = await provider.decide(buildEvidenceTriageRequest(artifactContent));
+          advisories.push(
+            `Advisory decision triage (never replaces human approval): gate=${decision.answers.gate?.choice ?? "unknown"} (confidence ${formatConfidence(decision.answers.gate?.confidence)}), evidence_complete=${formatNoul(decision.answers.evidence_complete?.noul)}.`,
+          );
+        } else {
+          const findings = parseReviewFindings(artifactContent);
+          const severeFindings = findings.filter(
+            (finding) => finding.severity.toLowerCase() === "severe",
+          );
+          if (severeFindings.length > 0) {
+            const decision = await provider.decide(buildFindingsTriageRequest(findings));
+            const summary = severeFindings
+              .map(
+                (finding) => `${finding.id}=${decision.answers[finding.id]?.choice ?? "unclear"}`,
+              )
+              .join(", ");
+            advisories.push(
+              `Advisory decision triage (refuter still owns corroboration): ${summary}.`,
+            );
+          } else {
+            advisories.push("Advisory decision triage: no severe findings to triage.");
+          }
+        }
+      } catch (error) {
+        debugLog("models", `gate --triage degraded for ${workflowStage}`, error);
+        advisories.push(
+          `Advisory decision triage degraded: ${error instanceof Error ? error.message : String(error)}.`,
+        );
+      }
+    }
+  }
   const updated = beginStageApproval(ledger, workflowStage, {
-    artifactHash: stageFingerprint(fs.read(artifactPath)),
+    artifactHash: stageFingerprint(artifactContent),
     qualityGate: hasQualityGate ? "passed" : "not-applicable",
     updatedAt: new Date().toISOString(),
   });
